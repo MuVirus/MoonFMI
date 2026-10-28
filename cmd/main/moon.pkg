@@ -1,0 +1,5 @@
+// import {
+//   "MuVirus/MoonFMI" @lib,
+// }
+
+pkgtype(kind: "executable")
