@@ -1,0 +1,32 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/MoonFMI/src/schema"
+
+import {
+  "MuVirus/MoonFMI/src/xml",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn default_xml_limits() -> @xml.XmlLimits
+
+// Errors
+
+// Types and methods
+pub(all) enum FmiVersion {
+  V2
+  V3
+} derive(Eq, @debug.Debug)
+pub fn FmiVersion::all() -> Array[Self]
+pub fn FmiVersion::equal(Self, Self) -> Bool
+pub fn FmiVersion::not_equal(Self, Self) -> Bool
+pub fn FmiVersion::to_repr(Self) -> @debug.Repr
+
+pub struct ModelDescription {
+  version : FmiVersion
+  model_name : String
+}
+pub fn ModelDescription::empty(FmiVersion) -> Self
+
+// Type aliases
+
+// Traits

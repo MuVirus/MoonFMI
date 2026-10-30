@@ -1,0 +1,22 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/MoonFMI/src/sim"
+
+import {
+  "MuVirus/MoonFMI/src/fmi",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct SimulationConfig {
+  fmu : @fmi.Fmu
+  stop_time : Double
+}
+pub fn SimulationConfig::default() -> Self
+pub fn SimulationConfig::new(@fmi.Fmu, Double) -> Self
+
+// Type aliases
+
+// Traits

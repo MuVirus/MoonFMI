@@ -1,0 +1,37 @@
+[
+  {
+    "id": "fmi2-valid",
+    "file": "tests/data/model-description/valid/fmi2-minimal.xml",
+    "schema": "docs/standards/schemas/fmi2/fmi2ModelDescription.xsd",
+    "expect": "pass",
+    "purpose": "A well-formed FMI 2 model description must satisfy the official XSD."
+  },
+  {
+    "id": "fmi3-valid",
+    "file": "tests/data/model-description/valid/fmi3-minimal.xml",
+    "schema": "docs/standards/schemas/fmi3/fmi3ModelDescription.xsd",
+    "expect": "pass",
+    "purpose": "Version selection: FMI 3 uses a different XSD and a different root shape."
+  },
+  {
+    "id": "fmi2-missing-guid",
+    "file": "tests/data/model-description/invalid-structure/fmi2-missing-guid.xml",
+    "schema": "docs/standards/schemas/fmi2/fmi2ModelDescription.xsd",
+    "expect": "fail",
+    "purpose": "A required attribute is missing; XSD must reject it."
+  },
+  {
+    "id": "fmi2-unknown-index",
+    "file": "tests/data/model-description/semantic-invalid/fmi2-unknown-index.xml",
+    "schema": "docs/standards/schemas/fmi2/fmi2ModelDescription.xsd",
+    "expect": "pass",
+    "purpose": "XSD accepts Unknown index=99; only the semantic checker can reject the dangling reference."
+  },
+  {
+    "id": "fmi2-external-entity",
+    "file": "tests/data/model-description/malicious/fmi2-external-entity.xml",
+    "schema": "docs/standards/schemas/fmi2/fmi2ModelDescription.xsd",
+    "expect": "fail",
+    "purpose": "DTD and external entities are rejected before XSD validation."
+  }
+]

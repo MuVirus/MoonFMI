@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+  fmiVersion="2.0"
+  modelName="BadReference"
+  guid="{00000000-0000-0000-0000-000000000003}"
+  numberOfEventIndicators="0">
+  <CoSimulation modelIdentifier="BadReference"/>
+  <ModelVariables>
+    <ScalarVariable name="x" valueReference="0" causality="output" variability="continuous">
+      <Real/>
+    </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs>
+      <Unknown index="99"/>
+    </Outputs>
+  </ModelStructure>
+</fmiModelDescription>

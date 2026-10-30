@@ -1,0 +1,17 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/MoonFMI/src/zip"
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct ZipArchive {
+  entries : Int32
+}
+pub fn ZipArchive::entry_count(Self) -> Int32
+pub fn ZipArchive::new() -> Self
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,22 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/MoonFMI/src/backend/wasm"
+
+import {
+  "MuVirus/MoonFMI/src/fmi",
+}
+
+// Values
+pub fn backend_tag(@fmi.Fmu) -> String
+
+// Errors
+
+// Types and methods
+pub struct WasmBackend {
+  component_ready : Bool
+}
+pub fn WasmBackend::is_ready(Self) -> Bool
+pub fn WasmBackend::new() -> Self
+
+// Type aliases
+
+// Traits

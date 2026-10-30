@@ -11,7 +11,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 3. **FMU 导出**（先源码 FMU，再 WASM FMU）
 4. **验证、打包与交叉测试**
 
-> 当前阶段：文档与标准资料建设完成，代码实现尚未开始。文中的包名、API 和阶段划分均为设计提案，落地时会根据 MoonBit 工具链能力调整。
+> 当前阶段：P0 的基础设施已落地——9 包骨架、依赖方向检查、Windows/Linux CI 配置、8 个真实 FMU 的下载与校验、可选的官方 XSD 对照。代码仍以占位类型为主，业务逻辑从 P0 后续阶段开始。详见 [`records/2026-10-30.md`](records/2026-10-30.md)。
 
 ---
 
@@ -23,6 +23,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | [`research/`](research/README.md) | FMPy、fmi-rs、WASM-FMI、MoonBit 生态、其他工具的研究 | 架构与选型 |
 | [`design/`](design/README.md) | 总体架构、导入器、主算法、导出器、WASM 策略、ABI、验证、打包、CLI 与测试 | 实现者 |
 | [`roadmap/`](roadmap/README.md) | 分阶段路线图、P0 详细执行计划、任务 backlog、风险清单 | 项目管理者与贡献者 |
+| [`records/`](records/README.md) | 按阶段归档的实施记录：做了什么、怎么验证、与计划的偏差 | 项目管理者与后续维护者 |
 | [`references/`](references/README.md) | 外部链接、术语表 | 所有人 |
 
 ### 建议阅读顺序
@@ -57,6 +58,11 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 2. [`design/cli-and-testing.md`](design/cli-and-testing.md)
 3. [`research/other-tools.md`](research/other-tools.md)
 
+**准备复现或审查已完成的阶段：**
+
+1. [`records/README.md`](records/README.md)
+2. 按日期归档的记录，例如 [`records/2026-10-30.md`](records/2026-10-30.md)
+
 ---
 
 ## 2. 当前状态
@@ -71,7 +77,11 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | 竞品与生态研究 | ✅ 完成 | `research/` |
 | 架构与详细设计 | ✅ 完成（提案） | `design/` |
 | 路线图与风险 | ✅ 完成 | `roadmap/` |
-| MoonBit 代码实现 | ⬜ 未开始 | 仓库目前只有占位代码 |
+| P0 基础设施 | ✅ 完成 | 9 包骨架、CI、FMU 语料、XSD 对照；见 [`records/2026-10-30.md`](records/2026-10-30.md) |
+| 9 包骨架与依赖检查 | ✅ 完成 | `src/`、`tools/check-deps.mjs`；native/wasm 各 8 个测试通过 |
+| Windows + Linux CI | 🟡 已配置，待首跑 | `.github/workflows/ci.yml` |
+| 真实 FMU 测试语料 | ✅ 完成 | 8 个 Reference-FMUs v0.0.42，清单 + SHA-256 + 离线缓存 |
+| 官方 XSD 对照 | ✅ 完成（可选） | 5 个样品，5/5 按预期；不实现 XSD 引擎 |
 | FMI-LS-WASM POC | ⬜ 未开始 | 需要验证工具链 |
 
 状态图例：✅ 完成，🟡 进行中，⬜ 未开始，⚠️ 有阻塞或待验证。
@@ -172,6 +182,7 @@ tests/
 
 - 标准升级时，先更新 `standards/` 的随附文件与清单，再更新受影响的 API/模型描述文档，最后更新设计与路线图。
 - 任何设计决策变更，应在 `design/` 对应文档中记录“决策 / 理由 / 替代方案 / 影响”。
+- 每个阶段结束，在 `records/` 新增一份实施记录，写清实际命令、证据、与计划的偏差和遗留问题；记录是历史快照，不回改。
 - 新增外部依赖前，先在 `research/moonbit-ecosystem.md` 中补充评估，避免核心包被不成熟依赖锁死。
 - 路线图中的阶段完成标准应可验证（测试、交叉检查、性能指标），避免“代码写完即完成”。
 

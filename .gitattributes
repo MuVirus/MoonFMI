@@ -1,0 +1,8 @@
+# Keep the working tree byte-identical on Windows and Linux so that
+# `moon fmt --check` and the generated `.mbti` comparison are meaningful.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.zip binary
+*.fmu binary

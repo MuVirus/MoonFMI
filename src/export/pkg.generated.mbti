@@ -1,0 +1,34 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/MoonFMI/src/export"
+
+import {
+  "MuVirus/MoonFMI/src/schema",
+  "MuVirus/MoonFMI/src/zip",
+  "moonbitlang/core/debug",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct ExportRequest {
+  version : @schema.FmiVersion
+  archive : @zip.ZipArchive
+  target : ExportTarget
+}
+pub fn ExportRequest::source(@schema.FmiVersion) -> Self
+
+pub(all) enum ExportTarget {
+  Source
+  Wasm
+  Native
+} derive(Eq, @debug.Debug)
+pub fn ExportTarget::all() -> Array[Self]
+pub fn ExportTarget::equal(Self, Self) -> Bool
+pub fn ExportTarget::not_equal(Self, Self) -> Bool
+pub fn ExportTarget::to_repr(Self) -> @debug.Repr
+
+// Type aliases
+
+// Traits

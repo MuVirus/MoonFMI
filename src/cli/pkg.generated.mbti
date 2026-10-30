@@ -1,0 +1,26 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/MoonFMI/src/cli"
+
+import {
+  "MuVirus/MoonFMI/src/export",
+}
+
+// Values
+pub fn default_export_target() -> @export.ExportTarget
+
+pub fn default_stop_time() -> Double
+
+// Errors
+
+// Types and methods
+pub(all) enum Command {
+  Validate
+  Info
+  Simulate
+}
+pub fn Command::all() -> Array[Self]
+pub fn Command::name(Self) -> String
+
+// Type aliases
+
+// Traits

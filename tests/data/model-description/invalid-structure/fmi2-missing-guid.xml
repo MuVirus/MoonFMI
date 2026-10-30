@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+  fmiVersion="2.0"
+  modelName="MissingGuid">
+  <CoSimulation modelIdentifier="MissingGuid"/>
+  <ModelVariables>
+    <ScalarVariable name="x" valueReference="0" causality="output" variability="continuous">
+      <Real/>
+    </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs>
+      <Unknown index="1"/>
+    </Outputs>
+  </ModelStructure>
+</fmiModelDescription>

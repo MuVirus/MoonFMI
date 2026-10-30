@@ -1,0 +1,18 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/MoonFMI/src/xml"
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct XmlLimits {
+  max_bytes : Int32
+  max_depth : Int32
+}
+pub fn XmlLimits::allows_size(Self, Int32) -> Bool
+pub fn XmlLimits::default() -> Self
+
+// Type aliases
+
+// Traits

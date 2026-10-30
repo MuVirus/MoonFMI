@@ -19,7 +19,7 @@ repository = "https://github.com/MuVirus/MoonFMI"
 
 license = "Apache-2.0"
 
-keywords = []
+keywords = [ ]
 
 preferred_target = "wasm"
 

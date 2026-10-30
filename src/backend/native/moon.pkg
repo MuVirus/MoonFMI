@@ -1,0 +1,5 @@
+import {
+  "MuVirus/MoonFMI/src/fmi",
+}
+
+supported_targets = "native"

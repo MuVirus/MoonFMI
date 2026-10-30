@@ -1,0 +1,205 @@
+{
+  "bundle": {
+    "name": "Reference-FMUs",
+    "version": "v0.0.42",
+    "url": "https://github.com/modelica/Reference-FMUs/releases/download/v0.0.42/Reference-FMUs.zip",
+    "bytes": 4455975,
+    "sha256": "b6b4a195b9c0f6bdd3459cd949cbb35fc21ee2049d6dab4cb7a3ba7da63b1e97",
+    "license": "BSD-2-Clause",
+    "licenseUrl": "https://github.com/modelica/Reference-FMUs/blob/v0.0.42/LICENSE.txt",
+    "source": "https://github.com/modelica/Reference-FMUs"
+  },
+  "samples": [
+    {
+      "id": "fmi2-bouncingball",
+      "archivePath": "2.0/BouncingBall.fmu",
+      "cachePath": "fmi2/BouncingBall.fmu",
+      "bytes": 218148,
+      "sha256": "1c7a40ab239c03e4795b230c6fe414a673030d0ce9f26a160301dadca7ff30b7",
+      "fmiVersion": "2.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "output",
+        "event-indicators",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "Two outputs and one event indicator; the smallest end-to-end CS smoke test.",
+      "modelIdentifier": "BouncingBall",
+      "binaries": {
+        "windows": "binaries/win64/BouncingBall.dll",
+        "linux": "binaries/linux64/BouncingBall.so"
+      }
+    },
+    {
+      "id": "fmi2-feedthrough",
+      "archivePath": "2.0/Feedthrough.fmu",
+      "cachePath": "fmi2/Feedthrough.fmu",
+      "bytes": 218651,
+      "sha256": "97efc93d9317a4f313a7075aac199107416015dfe394407ff341030861914f96",
+      "fmiVersion": "2.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "input",
+        "output",
+        "direct-feedthrough",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "Six inputs and six outputs; exercises value passing in both directions.",
+      "modelIdentifier": "Feedthrough",
+      "binaries": {
+        "windows": "binaries/win64/Feedthrough.dll",
+        "linux": "binaries/linux64/Feedthrough.so"
+      }
+    },
+    {
+      "id": "fmi2-resource",
+      "archivePath": "2.0/Resource.fmu",
+      "cachePath": "fmi2/Resource.fmu",
+      "bytes": 217421,
+      "sha256": "ebbaf400ab38db705ff690ac94f7ef9044ff3a284bae57f50562e3a93952eaf5",
+      "fmiVersion": "2.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "resources",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "Contains resources/; checks resourcePath and file lookup.",
+      "modelIdentifier": "Resource",
+      "binaries": {
+        "windows": "binaries/win64/Resource.dll",
+        "linux": "binaries/linux64/Resource.so"
+      }
+    },
+    {
+      "id": "fmi2-dahlquist",
+      "archivePath": "2.0/Dahlquist.fmu",
+      "cachePath": "fmi2/Dahlquist.fmu",
+      "bytes": 206357,
+      "sha256": "8f716dddc2fadef29e35d37e29586d5e607894b8a2adb4f16b4a78a1aca58e86",
+      "fmiVersion": "2.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "state",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "Simple linear state; useful as a reference trajectory.",
+      "modelIdentifier": "Dahlquist",
+      "binaries": {
+        "windows": "binaries/win64/Dahlquist.dll",
+        "linux": "binaries/linux64/Dahlquist.so"
+      }
+    },
+    {
+      "id": "fmi3-bouncingball",
+      "archivePath": "3.0/BouncingBall.fmu",
+      "cachePath": "fmi3/BouncingBall.fmu",
+      "bytes": 363815,
+      "sha256": "9a0093d05b2a029dcfd27237a9eb12e77466803413fb34158c45042617c97de2",
+      "fmiVersion": "3.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "output",
+        "event-indicators",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "FMI 3 counterpart of the FMI 2 bouncing-ball model.",
+      "modelIdentifier": "BouncingBall",
+      "binaries": {
+        "windows": "binaries/x86_64-windows/BouncingBall.dll",
+        "linux": "binaries/x86_64-linux/BouncingBall.so"
+      }
+    },
+    {
+      "id": "fmi3-feedthrough",
+      "archivePath": "3.0/Feedthrough.fmu",
+      "cachePath": "fmi3/Feedthrough.fmu",
+      "bytes": 371241,
+      "sha256": "1500e682eb50e4da165f7c632647e835d02bd2e13ebbc87822c187f7b8282a2e",
+      "fmiVersion": "3.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "input",
+        "output",
+        "direct-feedthrough",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "FMI 3 value passing in both directions.",
+      "modelIdentifier": "Feedthrough",
+      "binaries": {
+        "windows": "binaries/x86_64-windows/Feedthrough.dll",
+        "linux": "binaries/x86_64-linux/Feedthrough.so"
+      }
+    },
+    {
+      "id": "fmi3-resource",
+      "archivePath": "3.0/Resource.fmu",
+      "cachePath": "fmi3/Resource.fmu",
+      "bytes": 405537,
+      "sha256": "7bb8f9cbc31a2fde13151a1b94e1d973c1591500c5e2f2f627037c5a6897ee47",
+      "fmiVersion": "3.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "resources",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "FMI 3 resourcePath is an absolute native path, not a file:// URI.",
+      "modelIdentifier": "Resource",
+      "binaries": {
+        "windows": "binaries/x86_64-windows/Resource.dll",
+        "linux": "binaries/x86_64-linux/Resource.so"
+      }
+    },
+    {
+      "id": "fmi3-statespace",
+      "archivePath": "3.0/StateSpace.fmu",
+      "cachePath": "fmi3/StateSpace.fmu",
+      "bytes": 363594,
+      "sha256": "a45e8b5c53dcf6e518fc210bd66d27f8fcd1e291ccff01e541d318f7ac156af9",
+      "fmiVersion": "3.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "arrays",
+        "state",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "FMI 3 array variables; useful once the typed model supports dimensions.",
+      "modelIdentifier": "StateSpace",
+      "binaries": {
+        "windows": "binaries/x86_64-windows/StateSpace.dll",
+        "linux": "binaries/x86_64-linux/StateSpace.so"
+      }
+    }
+  ]
+}

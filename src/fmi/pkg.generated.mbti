@@ -1,0 +1,26 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/MoonFMI/src/fmi"
+
+import {
+  "MuVirus/MoonFMI/src/schema",
+  "MuVirus/MoonFMI/src/zip",
+}
+
+// Values
+
+// Errors
+
+// Types and methods
+pub struct Fmu {
+  name : String
+  version : @schema.FmiVersion
+  archive : @zip.ZipArchive
+}
+pub fn Fmu::entry_count(Self) -> Int32
+pub fn Fmu::name(Self) -> String
+pub fn Fmu::placeholder() -> Self
+pub fn Fmu::version(Self) -> @schema.FmiVersion
+
+// Type aliases
+
+// Traits

@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Pin the toolchain: "latest" makes CI go red for reasons nobody changed.
+  MOONBIT_VERSION: "0.1.20261023"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MoonBit (Linux)
+        if: runner.os == 'Linux'
+        env:
+          MOONBIT_INSTALL_VERSION: ${{ env.MOONBIT_VERSION }}
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s -- "$MOONBIT_VERSION"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Install MoonBit (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MOONBIT_INSTALL_VERSION: ${{ env.MOONBIT_VERSION }}
+        run: |
+          irm https://cli.moonbitlang.com/install/powershell.ps1 | iex
+          "$HOME\.moon\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Show toolchain versions
+        run: moon version --all
+
+      - name: Fetch and verify test FMUs (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          if ! command -v unzip >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y unzip
+          fi
+          node tests/data/fetch-fmus.mjs
+
+      - name: Run local check script (Linux)
+        if: runner.os == 'Linux'
+        run: bash scripts/check.sh
+
+      - name: Run local check script (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+
+      - name: Reject a dirty tree
+        shell: bash
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --porcelain
+            echo "::error::generated files are out of date; run moon info && moon fmt"
+            exit 1
+          fi

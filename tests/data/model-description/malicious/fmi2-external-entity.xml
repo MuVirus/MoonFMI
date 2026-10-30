@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE fmiModelDescription [
+  <!ENTITY xxe SYSTEM "file:///C:/Windows/win.ini">
+]>
+<fmiModelDescription
+  fmiVersion="2.0"
+  modelName="ExternalEntity"
+  guid="{00000000-0000-0000-0000-000000000004}"
+  numberOfEventIndicators="0">
+  <CoSimulation modelIdentifier="ExternalEntity"/>
+  <ModelVariables>
+    <ScalarVariable name="x" valueReference="0" causality="output" variability="continuous">
+      <Real start="&xxe;"/>
+    </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs>
+      <Unknown index="1"/>
+    </Outputs>
+  </ModelStructure>
+</fmiModelDescription>
