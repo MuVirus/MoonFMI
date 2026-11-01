@@ -1,1 +1,7 @@
-// No package imports: zip is the bottom of the dependency graph.
+import {
+  "hustcer/fzip",
+}
+
+import {
+  "moonbitlang/core/encoding/utf8",
+} for "wbtest"

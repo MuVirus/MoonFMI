@@ -50,8 +50,19 @@ moon check --target native --deny-warn
 echo "== check: wasm =="
 moon check --target wasm --deny-warn
 
+echo "== native test fixtures =="
+if command -v clang >/dev/null 2>&1; then
+  sh tests/abi/build-fixture.sh
+else
+  echo "clang is not on PATH; the dynamic-loading tests need it" >&2
+  exit 1
+fi
+
 echo "== test: native =="
 moon test --target native --deny-warn
+
+echo "== test: native (release integration) =="
+moon test --target native --release --deny-warn -p MuVirus/MoonFMI/tests/integration
 
 echo "== test: wasm =="
 moon test --target wasm --deny-warn

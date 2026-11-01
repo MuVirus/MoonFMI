@@ -160,12 +160,12 @@ extern "c" fn moonfmi2_do_step(
 
 ### 3.2 函数指针来源
 
-- 用 `tonyfettes/dl` 的 `symbol` / `funcref` 获取地址；
+- 用 `src/backend/native` 的 `DynamicLibrary::symbol` / `funcref` 获取地址；
 - 作为 `void*` 传给 shim；
 - shim 按官方头文件转换为具体函数指针类型；
 - 不在 MoonBit 侧手写 30 多个函数指针签名（容易错，且枚举/结构体难处理）。
 
-替代方案：shim 自己 `dlopen` 并持有句柄。这样 MoonBit 不依赖 `dl`，但 shim 变成完整加载器，跨平台代码更多。首版建议复用 `dl`，只把 ABI 细节放进 shim。
+这一层原本打算复用 `tonyfettes/dl`，但它的 `0.1.1` 钉在 `tonyfettes/c@0.7.4`，当前工具链装不上（见 [`../research/moonbit-ecosystem.md`](../research/moonbit-ecosystem.md) §2.1.1），所以 `src/backend/native` 改为自己声明平台函数、加一个 `dl.c`，接口形状仍与 `dl` 保持相近。替代方案（shim 自己 `dlopen` 并持有句柄）不采用：那样 shim 会变成完整加载器，跨平台代码更多。
 
 ### 3.3 导出侧
 
@@ -363,7 +363,7 @@ C 枚举宽度由实现决定（可能是 `int`、`unsigned int` 或更小）。
 moonfmi (native executable)
   ├─ MoonBit 核心/运行时
   ├─ C shim 静态库（libmoonfmi_shim.a / .lib）
-  └─ tonyfettes/dl（或等价）
+  └─ 动态加载封装（`src/backend/native`，自研）
 ```
 
 需要确认：
@@ -376,7 +376,7 @@ moonfmi (native executable)
 
 若不能直接链接，退路：
 
-- 把 shim 编成独立动态库，MoonBit 通过 `dl` 加载并调用；
+- 把 shim 编成独立动态库，MoonBit 通过自研的动态加载封装调用；
 - 或减少 shim 范围，只对结构体/可变参数使用。
 
 ### 8.2 导出侧

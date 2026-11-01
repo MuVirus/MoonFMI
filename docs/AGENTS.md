@@ -11,7 +11,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 3. **FMU 导出**（先源码 FMU，再 WASM FMU）
 4. **验证、打包与交叉测试**
 
-> 当前阶段：P0 的基础设施已落地——9 包骨架、依赖方向检查、Windows/Linux CI 配置、8 个真实 FMU 的下载与校验、可选的官方 XSD 对照。代码仍以占位类型为主，业务逻辑从 P0 后续阶段开始。详见 [`records/2026-10-30.md`](records/2026-10-30.md)。
+> 当前阶段：P0 第二周已完成——XML 安全读取、ZIP 安全打开、真实 FMU 集成测试、动态库加载与诊断。9 包骨架、依赖方向检查、Windows/Linux CI 配置、8 个真实 FMU 的下载与校验、可选的官方 XSD 对照仍在。XML 的 1 MB/100 ms 目标未达到（实测约 144 ms），已登记为风险。详见 [`records/2026-10-31.md`](records/2026-10-31.md)。
 
 ---
 
@@ -23,7 +23,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | [`research/`](research/README.md) | FMPy、fmi-rs、WASM-FMI、MoonBit 生态、其他工具的研究 | 架构与选型 |
 | [`design/`](design/README.md) | 总体架构、导入器、主算法、导出器、WASM 策略、ABI、验证、打包、CLI 与测试 | 实现者 |
 | [`roadmap/`](roadmap/README.md) | 分阶段路线图、P0 详细执行计划、任务 backlog、风险清单 | 项目管理者与贡献者 |
-| [`records/`](records/README.md) | 按阶段归档的实施记录：做了什么、怎么验证、与计划的偏差 | 项目管理者与后续维护者 |
+| [`records/`](records/README.md) | 按日期归档的工作日志：做了什么、怎么验证、遗留问题 | 项目管理者与后续维护者 |
 | [`references/`](references/README.md) | 外部链接、术语表 | 所有人 |
 
 ### 建议阅读顺序
@@ -78,6 +78,10 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | 架构与详细设计 | ✅ 完成（提案） | `design/` |
 | 路线图与风险 | ✅ 完成 | `roadmap/` |
 | P0 基础设施 | ✅ 完成 | 9 包骨架、CI、FMU 语料、XSD 对照；见 [`records/2026-10-30.md`](records/2026-10-30.md) |
+| P0 XML 读取 | ✅ 完成 | 32 MB/深度/属性/`DOCTYPE` 限制，错误带行列号；见 [`records/2026-10-31.md`](records/2026-10-31.md) |
+| P0 ZIP 打开 | ✅ 完成 | 路径、条目数、大小、压缩比、重名、CRC 检查；暂不落盘 |
+| P0 动态库加载 | ✅ 完成 | Windows/Linux C stub，缺文件/缺依赖/缺符号/卸载后可删除均已验证 |
+| P0 真实 FMU 集成 | ✅ 部分完成 | 5 个 FMU 打开并解析；`7z` 逐文件对比待补 |
 | 9 包骨架与依赖检查 | ✅ 完成 | `src/`、`tools/check-deps.mjs`；native/wasm 各 8 个测试通过 |
 | Windows + Linux CI | 🟡 已配置，待首跑 | `.github/workflows/ci.yml` |
 | 真实 FMU 测试语料 | ✅ 完成 | 8 个 Reference-FMUs v0.0.42，清单 + SHA-256 + 离线缓存 |
@@ -98,7 +102,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 
 ### 3.2 导入器可行，但 native 与 wasm 是两条路径
 
-- **Native 导入**：解压 FMU、解析 `modelDescription.xml`、用 `dlopen` / `LoadLibraryW` 加载 `binaries/<platform>/<modelIdentifier>.dll|so|dylib`，再解析 C 符号。MoonBit 生态已有 `tonyfettes/dl` 一类动态加载库，技术上可行。
+- **Native 导入**：解压 FMU、解析 `modelDescription.xml`、用 `dlopen` / `LoadLibraryW` 加载 `binaries/<platform>/<modelIdentifier>.dll|so|dylib`，再解析 C 符号。计划中的 `tonyfettes/dl` 已停止维护且在当前工具链上装不上，`src/backend/native` 改为自己声明平台函数；结论见 [`research/moonbit-ecosystem.md`](research/moonbit-ecosystem.md) §2.1.1。
 - **浏览器导入**：浏览器不能加载 native 动态库。能执行的只有：
   - 符合 **FMI-LS-WASM** 的 WASM component FMU；或
   - 将源码 FMU 编译成 wasm 后的自定义运行方式。
@@ -183,7 +187,7 @@ tests/
 - 标准升级时，先更新 `standards/` 的随附文件与清单，再更新受影响的 API/模型描述文档，最后更新设计与路线图。
 - 任何设计决策变更，应在 `design/` 对应文档中记录“决策 / 理由 / 替代方案 / 影响”。
 - 每个阶段结束，在 `records/` 新增一份实施记录，写清实际命令、证据、与计划的偏差和遗留问题；记录是历史快照，不回改。
-- 新增外部依赖前，先在 `research/moonbit-ecosystem.md` 中补充评估，避免核心包被不成熟依赖锁死。
+- 新增外部依赖前，先在 `research/moonbit-ecosystem.md` 中补充评估，避免核心包被不成熟依赖锁死；**并且必须先告知用户**：为什么需要、候选版本与是否最新、许可证、维护状态、替代方案、不引入的后果，得到确认后再改 `moon.mod`。已用依赖的升级同样要先告知。评估结果与当前版本清单写在 `research/moonbit-ecosystem.md` §13。
 - 路线图中的阶段完成标准应可验证（测试、交叉检查、性能指标），避免“代码写完即完成”。
 
 ---

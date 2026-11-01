@@ -1,0 +1,18 @@
+import {
+  "MuVirus/MoonFMI/src/backend/native" @native_backend,
+  "MuVirus/MoonFMI/src/xml",
+  "MuVirus/MoonFMI/src/zip",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+  "tonyfettes/c",
+} for "wbtest"
+
+supported_targets = "native"
+
+options(
+  targets: {
+    "perf_budget_debug.mbt": [ "debug" ],
+    "perf_budget_release.mbt": [ "not", "debug" ],
+  },
+)

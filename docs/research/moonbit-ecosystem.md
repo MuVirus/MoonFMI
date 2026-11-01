@@ -57,6 +57,31 @@ pub fn DynamicLibrary::close(self) -> Unit raise ...
 - Windows 路径用 `String`（UTF-16）传给 `LoadLibraryW`；
 - POSIX 路径用 `Bytes`（UTF-8）。
 
+### 2.1.1 版本现状（2026-11-01 核实）
+
+mooncakes 上只有 `0.1.0` 和 `0.1.1`，最后一次发布是 2026-02-03。`0.1.1` 把依赖钉在 `tonyfettes/c@0.7.4`，这个版本的 `moon.mod.json` 当前工具链已经不再支持，所以安装会直接失败：
+
+```text
+$ moon add tonyfettes/dl
+Downloading tonyfettes/c@0.7.4
+Error: When installing packages
+Caused by:
+    `moon.mod.json` at '.mooncakes/tonyfettes/c' is no longer supported.
+    Run `moon fmt` to migrate to `moon.mod`.
+```
+
+“库存在”不等于“能用”。即使手工把缓存里的 `moon.mod.json` / `moon.pkg.json` 迁移成新格式（只是为了验证，不代表可复现的方案），还有第二道坎：它的 `dl.c` 无条件 `#include <dlfcn.h>`，没有任何 `_WIN32` 分支，在 Windows 上编译直接失败：
+
+```text
+dl.c(1): fatal error C1083: 无法打开包括文件: “dlfcn.h”: No such file or directory
+```
+
+P0 的两个目标平台里 Windows 是主力，这一条就足够判定不可用。此外它的能力也不够：错误只有一种 `DynamicLibraryError(String)`，分不出“缺依赖”和“缺符号”；没有“已卸载”状态，关闭后再取符号会拿到悬空指针；没有按错误码诊断，非英文 Windows 的错误文本里找不到 `126`。
+
+P0 第二周因此没有采用它，改为在 `src/backend/native/dl.c` 里直接声明平台函数（通过 `native-stub` 编进构建），MoonBit 侧封装成 `src/backend/native/dynamic_library.mbt`。这样一来 `tonyfettes/dl` 从“默认方案”变成“它恢复维护后可以回来替换的可选项”，替换成本被限制在一个文件内。
+
+同类的库里没有替代品：`tonyfettes/epoxy` 名字接近，但它是 OpenGL 函数指针分发，不是通用动态加载器。
+
 ### 2.2 对 MoonFMI 的意义
 
 - native FMU 加载路径可行；
@@ -283,6 +308,8 @@ MoonFMI 需要的 XML 能力：
 - 用 XSD 作为字段清单，并在 CI 中做独立对照检查；
 - 语义规则手写。
 
+2026-11-01 查到的唯一相关包是 `ouoankang/moonbit-xsd-datatypes@0.1.2`（2026-10-30 发布，当日下载量两位数）。它只做 XSD 内置简单类型的词法解析和 facet 检查，不读 `.xsd` 文件、不做元素顺序和出现次数校验，因此达不到“校验一份 `modelDescription.xml`”的要求；新建、下载量低、API 未稳定，也不适合在 P0 引入。P0 仍按原计划用外部工具（`xmllint` / `lxml`）做对照。
+
 详见 [`../design/xsd-and-validation.md`](../design/xsd-and-validation.md)。
 
 ---
@@ -294,6 +321,7 @@ MoonFMI 需要的 XML 能力：
 | 包 | 特点 | 风险 |
 | --- | --- | --- |
 | `hustcer/fzip` | deflate、ZIP、Zip64、路径穿越防护、Apache-2.0 | ZIP 部分较年轻（2026-03 起），需实测条目/压缩比控制能力 |
+| `bobzhang/zip` | 2026-10-29 发布，读写齐全，独立实现 | 才到 `0.1.2`，下载量低，未经过完整 FMU 语料验证 |
 | `moonbit-community/flate` / `zipc` | deflate/zip 基础 | 功能覆盖需确认 |
 | `moonbitstack/moonzip` | 社区 zip | 同上 |
 | 自研目录解析 + 库解压 | 自己控制安全策略，deflate 用库 | 只写几百行，作为 `fzip` 不满足时的退路 |
@@ -405,7 +433,7 @@ import {
 | --- | --- | --- |
 | XML 库 | API 不成熟/不保留位置 | 默认 `Milky2018/xml`；不满足再自研 |
 | ZIP 库 | Zip64/路径安全缺陷 | 默认 `fzip`；安全策略自己控制，必要时自写目录解析 |
-| `dl` | 平台行为差异 | Windows/Linux/macOS 测试 |
+| `dl` | 平台行为差异；`tonyfettes/dl` 已停止维护且装不上 | 自研 `dl.c` 封装；`tonyfettes/dl` 恢复维护再评估 |
 | C shim | 构建/链接复杂 | 最小化 shim；CI 多平台 |
 | `wit-bindgen` | MoonBit 后端不完整 | POC；手写 canonical ABI |
 | `wasm-tools` | 版本要求高 | 固定版本；CI 缓存 |
@@ -439,3 +467,37 @@ import {
 - `wit-bindgen`：<https://github.com/bytecodealliance/wit-bindgen>
 - MoonFMI 的 ABI 设计：[`../design/ffi-and-abi.md`](../design/ffi-and-abi.md)
 - MoonFMI 的架构：[`../design/architecture.md`](../design/architecture.md)
+
+---
+
+## 13. 依赖清单与准入规则（2026-11-01 核实）
+
+### 13.1 已在用的第三方依赖
+
+版本号对照 mooncakes 的模块接口（`https://mooncakes.io/api/v0/modules/<用户>/<模块>`）逐个查过，下面四个都已经是最新发布版本，没有可升级项。
+
+| 依赖 | 锁定版本 | mooncakes 最新 | 许可证 | 用在哪 | 备注 |
+| --- | --- | --- | --- | --- | --- |
+| `Milky2018/xml` | 0.6.1 | 0.6.1 | Apache-2.0 | `src/xml` | 无传递依赖；pull 模式；位置信息完整 |
+| `hustcer/fzip` | 0.8.8 | 0.8.8 | Apache-2.0 | `src/zip` | 无传递依赖；只用来解压，安全策略自写 |
+| `moonbitlang/x` | 0.5.7 | 0.5.7 | Apache-2.0 | `src/xml`（`encoding`）、native 后端与集成测试（`fs`） | 官方实验包，接口可能变 |
+| `tonyfettes/c` | 0.8.0 | 0.8.0 | Apache-2.0 | `src/backend/native`、集成测试 | 传递依赖 `tonyfettes/nat@0.1.2` |
+
+`moonbitlang/core` 随工具链发布，不在 `moon.mod` 里，版本由 `moon` 的版本固定。
+
+### 13.2 计划需要、但生态里没有（或不能用）的能力
+
+| 能力 | 生态现状 | 处理 |
+| --- | --- | --- |
+| 动态库加载 | 只有 `tonyfettes/dl@0.1.1`，钉在 `tonyfettes/c@0.7.4`，当前工具链装不上（见 §2.1.1）；`tonyfettes/epoxy` 是 OpenGL 分发，不可替代 | 自研 `src/backend/native/dl.c` + `dynamic_library.mbt` |
+| 通用 XSD 校验 | 只有 `ouoankang/moonbit-xsd-datatypes@0.1.2`，仅覆盖内置简单类型 | 不引入；CI 用外部 `xmllint` / `lxml` 对照 |
+| FMI/FMU 本身 | mooncakes 搜不到任何 FMI 实现 | 自研，这本来就是项目目标 |
+| ZIP 写入（导出阶段才需要） | `fzip` 支持；另有 `bobzhang/zip@0.1.2` | 暂不引入新包，`fzip` 够用就继续用 |
+
+### 13.3 准入规则
+
+1. **引入前先告知**：用途、锁定版本、是否最新、许可证、维护状态（最后发布时间、下载量）、替代方案、不引入的后果，得到确认再改 `moon.mod`。
+2. **升级同样要告知**：已用依赖从 A 升到 B，也要先说明变了什么、为什么要升。
+3. 能用手头的库或标准库解决，就不新增依赖；安全边界（路径、大小、压缩比、实体）永远自己写，不外包给库的“默认行为”。
+4. 引入或升级后，更新 §13.1 的表格并锁版本；评估过程写在本文件，不写进代码注释。
+5. 发布不足一个月、下载量极低的包，不进核心路径；只能用于试验，并准备自研退路。

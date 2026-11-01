@@ -66,10 +66,11 @@
 | --- | --- |
 | 可能性 | 中 |
 | 影响 | 中：基础能力受阻 |
-| 触发 | 第三方库 API 不稳定；wasm/native 行为不一致；无安全限制 |
-| 缓解 | 优先用 `Milky2018/xml` / `fzip` 加薄封装；只有满足不了安全或位置要求时才自研 |
+| 触发 | 第三方库 API 不稳定；wasm/native 行为不一致；无安全限制；解析吞吐不足 |
+| 现状 | `Milky2018/xml@0.6.1` 读 1.08 MB 说明书约 144 ms（目标 100 ms），封装层只占约 4 ms；`fzip` 不暴露符号链接属性，`unzip_list` 不返回 CRC |
+| 缓解 | 优先用 `Milky2018/xml` / `fzip` 加薄封装；CRC 归因自己读中央目录；落盘前补符号链接检查；性能不够时先减事件、再评估自研子集解析器 |
 | 应急 | 引入经过审计的 C 库并通过 shim；限制输入 |
-| 关联 | [`../design/xsd-and-validation.md`](../design/xsd-and-validation.md) |
+| 关联 | [`../design/xsd-and-validation.md`](../design/xsd-and-validation.md)、[`../records/2026-10-31.md`](../records/2026-10-31.md) |
 
 ### R-06 · XSD 覆盖不足/规范与 XSD 冲突
 

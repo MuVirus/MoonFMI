@@ -156,6 +156,8 @@ FMU 本质上就是一个 ZIP 压缩包，里面装着说明书、动态库和�
 
 用 C 写一个小库，导出四个函数：两个简单的算术函数、一个往结构体里填数据的函数、一个接收回调的函数。然后用两种方式在 MoonBit 里加载它：现成的 `tonyfettes/dl` 库，和直接声明 C 函数。
 
+> 实际执行时 `tonyfettes/dl@0.1.1` 依赖的 `tonyfettes/c@0.7.4` 已不被当前工具链支持，安装失败，所以只走了“直接声明 C 函数”这条路，见 [`../research/moonbit-ecosystem.md`](../research/moonbit-ecosystem.md) §2.1.1 和 [`../records/2026-10-31.md`](../records/2026-10-31.md)。
+
 重点不是“能调用”，而是“出错时能不能查清楚”：库文件不存在、库存在但缺某个函数、依赖的库不在同一个目录、卸载之后文件能不能删掉。这些错误信息直接决定以后用户遇到 FMU 加载失败时，能不能自己看懂原因。
 
 参考：[`moonbit-ecosystem.md`](../research/moonbit-ecosystem.md) §3；<https://github.com/moonbit-community/tonyfettes-dl>。

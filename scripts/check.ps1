@@ -53,9 +53,17 @@ Write-Host "== check: wasm =="
 moon check --target wasm --deny-warn
 Assert-Exit "moon check --target wasm"
 
+Write-Host "== native test fixtures =="
+& (Join-Path $PSScriptRoot "..\tests\abi\build-fixture.ps1")
+Assert-Exit "building the native test fixtures"
+
 Write-Host "== test: native =="
 moon test --target native --deny-warn
 Assert-Exit "moon test --target native"
+
+Write-Host "== test: native (release integration) =="
+moon test --target native --release --deny-warn -p MuVirus/MoonFMI/tests/integration
+Assert-Exit "moon test --target native --release (integration)"
 
 Write-Host "== test: wasm =="
 moon test --target wasm --deny-warn

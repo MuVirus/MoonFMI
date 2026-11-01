@@ -24,6 +24,21 @@ You can browse and install extra skills here:
 - Try to keep deprecated blocks in file called `deprecated.mbt` in each
   directory.
 
+## Third-party dependencies
+
+- Before adding a dependency, or upgrading an existing one, stop and tell the
+  user first: why it is needed, the version you would pin, whether that is the
+  latest release, its licence, how recently it was published, what the
+  alternative is, and what happens without it. Only edit `moon.mod` after the
+  user agrees.
+- Keep the current inventory and the evaluation notes in
+  `docs/research/moonbit-ecosystem.md` §13. Check versions against
+  `https://mooncakes.io/api/v0/modules/<user>/<module>` instead of guessing.
+- A library that exists but cannot be installed or is unmaintained does not
+  count as available. Record the exact failure when a candidate is rejected.
+- Standard library and already-present dependencies come first. Security
+  limits (paths, sizes, compression ratio, entities) stay in our own code.
+
 ## Tooling
 
 - `moon fmt` is used to format your code properly.

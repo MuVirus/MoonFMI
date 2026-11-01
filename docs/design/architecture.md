@@ -363,7 +363,7 @@ pub struct FmiError {
 | 解析器 | 现成 pull parser（`Milky2018/xml`）+ 安全策略封装 | 不重造 XML 解析器；位置信息、安全限制由封装层补齐 | 自研解析器 |
 | ZIP | 现成解压库（`fzip`）+ 自写安全检查 | deflate 用库，目录与解压策略自己控制 | 全部自研 |
 | XSD | 仅作 CI 外部对照，不实现 XSD 引擎 | MoonBit 无通用 XSD 校验器；共用官方 XSD 即可 | 运行时 XSD |
-| 动态加载 | `tonyfettes/dl` 或等价封装 | 已有 native 支持 | 自己写 `extern "c"` |
+| 动态加载 | 自研薄封装（`dlopen` / `LoadLibraryExW`） | 计划里的 `tonyfettes/dl` 已停止维护且装不上 | 直接用 `extern "c"` 调系统 API |
 | 结构体传参 | C shim | 避免布局/对齐不确定 | MoonBit 直接映射 |
 | WASM 路径 | LS-WASM component | 标准化、可互操作 | 自定义 JS ABI |
 | 导出顺序 | 源码 → WASM → native | 工具链约束 | 先 native 二进制 |

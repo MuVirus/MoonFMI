@@ -25,5 +25,5 @@ pub struct ExportRequest {
 
 ///|
 pub fn ExportRequest::source(version : @schema.FmiVersion) -> ExportRequest {
-  { version, archive: @zip.ZipArchive::new(), target: ExportTarget::Source, }
+  { version, archive: @zip.ZipArchive::empty(), target: ExportTarget::Source, }
 }

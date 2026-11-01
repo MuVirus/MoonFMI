@@ -1,1 +1,8 @@
-// No package imports: xml is the bottom of the dependency graph.
+import {
+  "Milky2018/xml" @xml_lib,
+  "moonbitlang/x/encoding",
+}
+
+import {
+  "moonbitlang/core/encoding/utf8",
+} for "wbtest"

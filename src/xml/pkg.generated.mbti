@@ -4,14 +4,88 @@ package "MuVirus/MoonFMI/src/xml"
 // Values
 
 // Errors
+pub(all) suberror XmlError {
+  InvalidInput(message~ : String)
+  LimitExceeded(message~ : String, line~ : Int32, column~ : Int32)
+  DoctypeNotAllowed(line~ : Int32, column~ : Int32)
+  ParseError(message~ : String, line~ : Int32, column~ : Int32)
+}
+pub fn XmlError::column(Self) -> Int32
+pub fn XmlError::line(Self) -> Int32
+pub fn XmlError::message(Self) -> String
+pub fn XmlError::to_string(Self) -> String
 
 // Types and methods
+pub struct XmlAttribute {
+  name : String
+  value : String
+  span : XmlSpan
+}
+pub fn XmlAttribute::name(Self) -> String
+pub fn XmlAttribute::span(Self) -> XmlSpan
+pub fn XmlAttribute::value(Self) -> String
+
+pub struct XmlElement {
+  name : String
+  attributes : Array[XmlAttribute]
+  span : XmlSpan
+}
+pub fn XmlElement::attribute(Self, String) -> String?
+pub fn XmlElement::attributes(Self) -> Array[XmlAttribute]
+pub fn XmlElement::name(Self) -> String
+pub fn XmlElement::span(Self) -> XmlSpan
+
+pub(all) enum XmlEvent {
+  Start(XmlElement)
+  End(String)
+  Empty(XmlElement)
+  Text(String)
+  CData(String)
+  Comment(String)
+  ProcessingInstruction(target~ : String, data~ : String)
+  Declaration(version~ : String, encoding~ : String?, standalone~ : String?)
+  DocType
+  Eof
+}
+
 pub struct XmlLimits {
   max_bytes : Int32
   max_depth : Int32
+  max_attributes : Int32
+  max_attribute_length : Int32
 }
 pub fn XmlLimits::allows_size(Self, Int32) -> Bool
 pub fn XmlLimits::default() -> Self
+pub fn XmlLimits::max_bytes(Self) -> Int32
+pub fn XmlLimits::max_depth(Self) -> Int32
+pub fn XmlLimits::new(max_bytes? : Int32, max_depth? : Int32, max_attributes? : Int32, max_attribute_length? : Int32) -> Self
+
+pub struct XmlPosition {
+  line : Int32
+  column : Int32
+}
+pub fn XmlPosition::column(Self) -> Int32
+pub fn XmlPosition::line(Self) -> Int32
+
+pub struct XmlReader {
+  inner : @Milky2018/xml.Reader
+  limits : XmlLimits
+  mut depth : Int32
+}
+pub fn XmlReader::column(Self) -> Int32
+pub fn XmlReader::depth(Self) -> Int32
+pub fn XmlReader::from_bytes(Bytes, limits? : XmlLimits) -> Self raise XmlError
+pub fn XmlReader::line(Self) -> Int32
+pub fn XmlReader::new(String, limits? : XmlLimits) -> Self raise XmlError
+pub fn XmlReader::read_event(Self) -> XmlEvent raise XmlError
+pub fn XmlReader::read_events(Self) -> Array[XmlEvent] raise XmlError
+
+pub struct XmlSpan {
+  start : XmlPosition
+  end : XmlPosition
+}
+pub fn XmlSpan::end(Self) -> XmlPosition
+pub fn XmlSpan::start(Self) -> XmlPosition
 
 // Type aliases
 

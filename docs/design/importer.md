@@ -189,7 +189,7 @@ FMI 3 的完整平台列表以规范为准；上表是当前需要支持的主�
 
 ### 5.1 加载方式
 
-- 使用 `tonyfettes/dl` 或等价的 `dlopen` / `LoadLibraryW` 封装。
+- 使用 `src/backend/native` 的 `DynamicLibrary`（内部是 `dlopen` / `LoadLibraryExW` 的薄封装）。计划中的 `tonyfettes/dl` 在当前工具链上装不上，已改为自研，见 [`../research/moonbit-ecosystem.md`](../research/moonbit-ecosystem.md) §2.1.1。
 - 传入**绝对路径**，不使用裸文件名。
 - POSIX：`RTLD_NOW | RTLD_LOCAL`，让符号解析错误尽早暴露，并避免污染全局符号表。
 - Windows：优先 `LoadLibraryExW` + 安全搜索标志；若 FMU 依赖同目录 DLL，将该目录加入受限搜索路径，而不是修改全局 `PATH`。

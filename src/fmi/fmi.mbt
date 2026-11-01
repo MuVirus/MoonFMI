@@ -10,7 +10,7 @@ pub fn Fmu::placeholder() -> Fmu {
   {
     name: "placeholder",
     version: @schema.FmiVersion::V2,
-    archive: @zip.ZipArchive::new(),
+    archive: @zip.ZipArchive::empty(),
   }
 }
 

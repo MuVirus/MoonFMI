@@ -94,7 +94,7 @@
 | R-04 | FMPy 的模块划分 | ✅ | 见 [`fmpy.md`](fmpy.md) |
 | R-05 | fmi-rs 的 crate 分层 | ✅ | 见 [`fmi-rs.md`](fmi-rs.md) |
 | R-06 | MoonBit 的 XML/ZIP 能力 | 🟡 | 有候选库，需 spike |
-| R-07 | MoonBit 的动态加载能力 | ✅ | `tonyfettes/dl` 可用；需 ABI 验证 |
+| R-07 | MoonBit 的动态加载能力 | ✅ | `tonyfettes/dl` 已停止维护且装不上；自研 `dl.c` 可行 |
 | R-08 | MoonBit 能否导出 native 动态库 | ⚠️ | 目前不能直接导出；需 C 包装 |
 | R-09 | MoonBit 的 WASM 目标与组件模型 | 🟡 | 可产出 wasm；component 化需工具链 POC |
 | R-10 | 浏览器 FMU 执行路径 | ✅ | 只能 wasm component / 自定义 wasm |

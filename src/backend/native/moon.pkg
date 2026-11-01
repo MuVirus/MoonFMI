@@ -1,5 +1,12 @@
 import {
   "MuVirus/MoonFMI/src/fmi",
+  "moonbitlang/core/encoding/utf8",
+  "moonbitlang/x/fs",
+  "tonyfettes/c",
 }
 
 supported_targets = "native"
+
+options(
+  "native-stub": [ "dl.c" ],
+)

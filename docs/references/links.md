@@ -86,7 +86,7 @@
 | --- | --- | --- | --- |
 | MoonBit 文档 | <https://docs.moonbitlang.com> | 语言/工具链 | 滚动 |
 | Mooncakes | <https://mooncakes.io> | 包索引 | 滚动 |
-| `tonyfettes/dl` | <https://github.com/moonbit-community/tonyfettes-dl> | 动态库加载 | 社区镜像；mooncakes 包名 `tonyfettes/dl` |
+| `tonyfettes/dl` | <https://github.com/moonbit-community/tonyfettes-dl> | 动态库加载 | 社区镜像；mooncakes 包名 `tonyfettes/dl`；0.1.1 已停止维护且装不上，仅供参考 |
 | MoonBit 仓库 | <https://github.com/moonbitlang> | 工具链/核心库 | 滚动 |
 
 ---
