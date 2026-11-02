@@ -31,12 +31,13 @@
 
 | 项目 | 内容 |
 | --- | --- |
-| 可能性 | 中 |
+| 可能性 | 低（P0 已验证） |
 | 影响 | 高：结构体/回调/`size_t` 绑定受阻 |
 | 触发 | MoonBit 构建系统不支持外部 C 静态库/目标文件 |
-| 缓解 | P0 尽早做小实验；缩小中间层范围；编为独立动态库由 `dl` 加载 |
+| 现状 | P0 第三周验证：`native-stub` 直接编入，Windows（MSVC）和 Linux（cc）都通，不需要额外编译/链接参数；静态库和独立 shim DLL 两条退路未使用但保留 |
+| 缓解 | 已用 `native-stub`；缩小中间层范围；需要链接第三方 C 库时再评估静态库 |
 | 应急 | 只对可变参数/结构体使用独立 shim DLL；其余直接 FFI |
-| 关联 | [`../design/ffi-and-abi.md`](../design/ffi-and-abi.md) |
+| 关联 | [`../design/ffi-and-abi.md`](../design/ffi-and-abi.md) §8.1、[`../records/2026-11-02.md`](../records/2026-11-02.md) |
 
 ### R-03 · ABI 假设错误（布尔/枚举/`size_t`/对齐）
 
@@ -45,9 +46,10 @@
 | 可能性 | 中 |
 | 影响 | 高：崩溃/静默错误，难调试 |
 | 触发 | FMI 2/3 布尔混用；32 位 `size_t`；枚举宽度不同；结构体偏移错误 |
+| 现状 | Windows/Linux 的 `sizeof`/`offsetof`/枚举值基线已提交，自动检查逐字段比较；shim 另有 4 条编译期断言。32 位与 aarch64 未覆盖 |
 | 缓解 | 编译期 `sizeof`/`offsetof` 断言；每个平台 ABI 测试；官方头文件编译 shim |
 | 应急 | 回退到 C shim 全量转换；限制支持平台 |
-| 关联 | [`../design/ffi-and-abi.md`](../design/ffi-and-abi.md) |
+| 关联 | [`../design/ffi-and-abi.md`](../design/ffi-and-abi.md) §8.3、§10.2、[`../../tests/abi/README.md`](../../tests/abi/README.md) |
 
 ### R-04 · 回调/可变参数/重入问题
 
@@ -56,9 +58,10 @@
 | 可能性 | 中 |
 | 影响 | 中–高：日志丢失、死锁、崩溃 |
 | 触发 | FMI 2 logger 可变参数；FMU 内部线程回调；回调中调用 MoonBit 复杂逻辑 |
-| 缓解 | C 侧 `vsnprintf` + 队列；不在回调中做重活；生命周期/锁测试 |
+| 现状 | 截断/编码/5 万条消息内存/释放后无迟到回调/FMU 线程日志均有测试。日志可变参数不做格式化（避免执行 FMU 的格式串），多线程同时回调同一实例未验证；投递是同步的，没有队列和锁 |
+| 缓解 | C 侧复制 + UTF-8 安全截断；不在回调中做重活；生命周期测试；C 调用 MoonBit 的参数是借用的，C 侧必须 `moonbit_decref`（已由内存测试发现并修正） |
 | 应急 | 回调只入队，主线程轮询；异步 CS 后置 |
-| 关联 | [`../design/importer.md`](../design/importer.md) |
+| 关联 | [`../design/ffi-and-abi.md`](../design/ffi-and-abi.md) §4、§8.1.1、[`../records/2026-11-02.md`](../records/2026-11-02.md) |
 
 ### R-05 · XML/ZIP 库不成熟或不可移植
 
@@ -265,7 +268,7 @@
 
 | 影响 \ 可能性 | 低 | 中 | 高 |
 | --- | --- | --- | --- |
-| 高 | R-03 | R-02, R-09 | R-01, R-11 |
+| 高 | R-02, R-03 | R-09 | R-01, R-11 |
 | 中 | R-16 | R-04, R-05, R-07, R-10, R-12, R-15, R-19, R-20 | R-06, R-08, R-13, R-14, R-17, R-18 |
 | 低 | — | R-23 | R-21, R-22 |
 

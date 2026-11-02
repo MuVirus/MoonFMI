@@ -11,6 +11,20 @@ import {
 // Errors
 
 // Types and methods
+pub(all) enum FmiStatus {
+  Ok
+  Warning
+  Discard
+  Error
+  Fatal
+  Pending
+}
+pub fn FmiStatus::from_int32(Int32) -> Self
+pub fn FmiStatus::is_failure(Self) -> Bool
+pub fn FmiStatus::is_ok(Self) -> Bool
+pub fn FmiStatus::name(Self) -> String
+pub fn FmiStatus::to_int32(Self) -> Int32
+
 pub struct Fmu {
   name : String
   version : @schema.FmiVersion

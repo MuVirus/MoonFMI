@@ -58,6 +58,19 @@ else
   exit 1
 fi
 
+echo "== ABI baseline =="
+node tests/abi/check-abi.mjs
+
+echo "== FMI 2 reference host =="
+if command -v pwsh >/dev/null 2>&1; then
+  pwsh -NoProfile -File tests/abi/run-fmi2-host.ps1 -Output tests/abi/.cache/fmi2-host.json
+elif command -v pwsh.exe >/dev/null 2>&1; then
+  pwsh.exe -NoProfile -File tests/abi/run-fmi2-host.ps1 -Output tests/abi/.cache/fmi2-host.json
+else
+  sh tests/abi/run-fmi2-host.sh tests/abi/.cache/fmi2-host.json
+fi
+node tests/abi/check-host.mjs tests/abi/.cache/fmi2-host.json
+
 echo "== test: native =="
 moon test --target native --deny-warn
 

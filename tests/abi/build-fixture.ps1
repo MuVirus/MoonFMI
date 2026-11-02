@@ -39,5 +39,26 @@ if ($LASTEXITCODE -ne 0) {
 # The broken library must stay broken: the dependency is not shipped with it.
 Remove-Item -LiteralPath $dependency -Force
 
+$probe = Join-Path $cache "probe.exe"
+& $clang.Source -O2 (Join-Path $here "probe.c") -o $probe
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "building the ABI probe failed with exit code $LASTEXITCODE"
+}
+
+$logging = Join-Path $cache "libmoonfmi_logging_fmu.dll"
+& $clang.Source -shared -O2 (Join-Path $here "logging_fmu.c") -o $logging
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "building the logging FMU failed with exit code $LASTEXITCODE"
+}
+
+$hostExe = Join-Path $cache "fmi2_host.exe"
+& $clang.Source -O2 (Join-Path $here "fmi2_host.c") -o $hostExe
+if ($LASTEXITCODE -ne 0) {
+  Write-Error "building the FMI 2 reference host failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "built $fixture"
 Write-Host "built $broken (dependency intentionally absent)"
+Write-Host "built $probe"
+Write-Host "built $logging"
+Write-Host "built $hostExe"

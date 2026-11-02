@@ -57,6 +57,17 @@ Write-Host "== native test fixtures =="
 & (Join-Path $PSScriptRoot "..\tests\abi\build-fixture.ps1")
 Assert-Exit "building the native test fixtures"
 
+Write-Host "== ABI baseline =="
+node tests/abi/check-abi.mjs
+Assert-Exit "ABI baseline check"
+
+Write-Host "== FMI 2 reference host =="
+$hostJson = Join-Path $root "tests/abi/.cache/fmi2-host.json"
+& (Join-Path $PSScriptRoot "..\tests\abi\run-fmi2-host.ps1") -Output $hostJson
+Assert-Exit "running the FMI 2 reference host"
+node tests/abi/check-host.mjs $hostJson
+Assert-Exit "comparing the FMI 2 reference host output"
+
 Write-Host "== test: native =="
 moon test --target native --deny-warn
 Assert-Exit "moon test --target native"

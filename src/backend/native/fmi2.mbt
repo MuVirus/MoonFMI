@@ -1,0 +1,489 @@
+///|
+/// A loaded FMI 2.0.4 Co-Simulation library.
+///
+/// The shim resolves the exported `fmi2*` functions once, checks that the FMU
+/// uses the `default` type platform and keeps the dynamic library loaded until
+/// `close` is called. Instances borrow the library, so the library refuses to
+/// unload while one of them is still alive.
+pub struct Fmi2Library {
+  library : DynamicLibrary
+  shim : @c.Pointer[Unit]
+  mut open_instances : Int32
+  mut closed : Bool
+}
+
+///|
+pub(all) suberror Fmi2Error {
+  Fmi2LibraryLoad(DynamicLibraryError)
+  Fmi2LibraryUnload(DynamicLibraryError)
+  Fmi2ShimRejected(detail~ : String)
+  Fmi2InstantiateFailed(instance_name~ : String, detail~ : String)
+  Fmi2InstanceFreed(operation~ : String)
+  Fmi2StatusFailed(operation~ : String, status~ : @fmi.FmiStatus)
+  Fmi2InstancesAlive(count~ : Int32)
+}
+
+///|
+pub fn Fmi2Error::message(self : Fmi2Error) -> String {
+  match self {
+    Fmi2LibraryLoad(error) => error.message()
+    Fmi2LibraryUnload(error) => error.message()
+    Fmi2ShimRejected(detail~) =>
+      "the FMU is not a usable FMI 2 library: " + detail
+    Fmi2InstantiateFailed(instance_name~, detail~) =>
+      "fmi2Instantiate failed for '" + instance_name + "': " + detail
+    Fmi2InstanceFreed(operation~) =>
+      "cannot call " + operation + " on a released FMI instance"
+    Fmi2StatusFailed(operation~, status~) =>
+      operation + " failed with status " + status.name()
+    Fmi2InstancesAlive(count~) =>
+      "the library still owns " +
+      count.to_string() +
+      " live instance(s); free them first"
+  }
+}
+
+///|
+/// A log message forwarded by the FMU.
+///
+/// Messages are truncated to 4096 bytes before decoding, on a UTF-8 character
+/// boundary, so a truncated message is always valid text.
+pub(all) struct Fmi2LogMessage {
+  status : @fmi.FmiStatus
+  instance_name : String
+  category : String
+  message : String
+}
+
+///|
+struct Fmi2LogSink {
+  callback : (Fmi2LogMessage) -> Unit
+  mut active : Bool
+}
+
+///|
+/// A live FMI 2 Co-Simulation instance.
+///
+/// The native component handle stays private; callers only see status codes,
+/// doubles and log messages.
+pub struct Fmi2Instance {
+  library : Fmi2Library
+  handle : @c.Pointer[Unit]
+  sink : Fmi2LogSink
+  mut freed : Bool
+}
+
+///|
+#borrow(instance_name, guid, resource_path)
+extern "C" fn fmi2_instance_new(
+  library : @c.Pointer[Unit],
+  instance_name : Bytes,
+  guid : Bytes,
+  resource_path : Bytes,
+  logging_on : Int32,
+  log_sink : (Int32, Bytes, Bytes, Bytes) -> Unit,
+  log_deliver : FuncRef[
+    ((Int32, Bytes, Bytes, Bytes) -> Unit, Int32, Bytes, Bytes, Bytes) -> Unit,
+  ],
+) -> @c.Pointer[Unit] = "moonfmi_fmi2_instance_new"
+
+///|
+extern "C" fn fmi2_library_new(handle : @c.Pointer[Unit]) -> @c.Pointer[Unit] = "moonfmi_fmi2_library_new"
+
+///|
+extern "C" fn fmi2_library_version(handle : @c.Pointer[Unit]) -> Bytes = "moonfmi_fmi2_library_version"
+
+///|
+extern "C" fn fmi2_library_free(handle : @c.Pointer[Unit]) -> Unit = "moonfmi_fmi2_library_free"
+
+///|
+extern "C" fn fmi2_instance_free(handle : @c.Pointer[Unit]) -> Unit = "moonfmi_fmi2_instance_free"
+
+///|
+extern "C" fn fmi2_instance_log_count(handle : @c.Pointer[Unit]) -> UInt64 = "moonfmi_fmi2_instance_log_count"
+
+///|
+extern "C" fn fmi2_instance_is_freed(handle : @c.Pointer[Unit]) -> Int32 = "moonfmi_fmi2_instance_is_freed"
+
+///|
+extern "C" fn fmi2_setup_experiment(
+  handle : @c.Pointer[Unit],
+  tolerance_defined : Int32,
+  tolerance : Double,
+  start_time : Double,
+  stop_time_defined : Int32,
+  stop_time : Double,
+) -> Int32 = "moonfmi_fmi2_setup_experiment"
+
+///|
+extern "C" fn fmi2_enter_initialization_mode(
+  handle : @c.Pointer[Unit],
+) -> Int32 = "moonfmi_fmi2_enter_initialization_mode"
+
+///|
+extern "C" fn fmi2_exit_initialization_mode(handle : @c.Pointer[Unit]) -> Int32 = "moonfmi_fmi2_exit_initialization_mode"
+
+///|
+extern "C" fn fmi2_terminate(handle : @c.Pointer[Unit]) -> Int32 = "moonfmi_fmi2_terminate"
+
+///|
+extern "C" fn fmi2_do_step(
+  handle : @c.Pointer[Unit],
+  current_time : Double,
+  step_size : Double,
+  new_step : Int32,
+) -> Int32 = "moonfmi_fmi2_do_step"
+
+///|
+#borrow(references, values)
+extern "C" fn fmi2_get_real(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Double],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_get_real"
+
+///|
+#borrow(references, values)
+extern "C" fn fmi2_set_real(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Double],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_set_real"
+
+///|
+extern "C" fn fmi2_last_error() -> Bytes = "moonfmi_fmi2_last_error"
+
+///|
+fn fmi2_error_text() -> String {
+  @utf8.decode_lossy(fmi2_last_error().exact_view())
+}
+
+///|
+/// FMI 2 expects `fmuResourceLocation` to be a URI. Callers normally have a
+/// filesystem path, so a plain absolute path is converted here. A value that
+/// already starts with `file:` is passed through unchanged.
+fn fmi2_resource_location(path : String) -> String {
+  let slashes = path.replace_all(old="\\", new="/")
+  let prefixed = if slashes.has_prefix("file:") {
+    slashes
+  } else if slashes.length() >= 2 && slashes[1] == ':' {
+    "file:///" + slashes
+  } else if slashes.has_prefix("/") {
+    "file://" + slashes
+  } else {
+    slashes
+  }
+  if prefixed.has_suffix("/") {
+    prefixed
+  } else {
+    prefixed + "/"
+  }
+}
+
+///|
+pub fn Fmi2Library::open(path : String) -> Fmi2Library raise Fmi2Error {
+  let library = DynamicLibrary::open(path) catch {
+    error => raise Fmi2LibraryLoad(error)
+  }
+  let shim = fmi2_library_new(library.handle)
+  if shim.is_null() {
+    let detail = fmi2_error_text()
+    library.close() catch {
+      _ => ()
+    }
+    raise Fmi2ShimRejected(detail~)
+  }
+  { library, shim, open_instances: 0, closed: false, }
+}
+
+///|
+pub fn Fmi2Library::path(self : Fmi2Library) -> String {
+  self.library.path()
+}
+
+///|
+/// The `fmi2GetVersion` string reported by the FMU, normally `"2.0"`.
+pub fn Fmi2Library::version(self : Fmi2Library) -> String {
+  @utf8.decode_lossy(fmi2_library_version(self.shim).exact_view())
+}
+
+///|
+pub fn Fmi2Library::is_closed(self : Fmi2Library) -> Bool {
+  self.closed
+}
+
+///|
+/// The number of instances that were created by this library and not freed.
+pub fn Fmi2Library::open_instance_count(self : Fmi2Library) -> Int32 {
+  self.open_instances
+}
+
+///|
+/// Unloads the FMU binary. Every instance must be freed first, because the
+/// FMU's code disappears when the dynamic library is unloaded.
+pub fn Fmi2Library::close(self : Fmi2Library) -> Unit raise Fmi2Error {
+  if self.closed {
+    return
+  }
+  if self.open_instances > 0 {
+    raise Fmi2InstancesAlive(count=self.open_instances)
+  }
+  fmi2_library_free(self.shim)
+  self.closed = true
+  self.library.close() catch {
+    error => raise Fmi2LibraryUnload(error)
+  }
+}
+
+///|
+/// Creates a Co-Simulation instance.
+///
+/// `resource_path` is the directory that holds the FMU's `resources/` folder
+/// and must be absolute; FMI 2 requires it to end with a path separator.
+/// `on_log` is called synchronously from whichever thread the FMU logs on, so
+/// it must not block. Once `free` starts, it is never called again.
+pub fn Fmi2Library::instantiate(
+  self : Fmi2Library,
+  instance_name~ : String,
+  guid~ : String,
+  resource_path~ : String,
+  logging_on~ : Bool = true,
+  on_log~ : (Fmi2LogMessage) -> Unit = fn(_) {  },
+) -> Fmi2Instance raise Fmi2Error {
+  if self.closed {
+    raise Fmi2ShimRejected(detail="the library has already been unloaded")
+  }
+  let sink = { callback: on_log, active: true, }
+  let handle = fmi2_instance_new(
+    self.shim,
+    @utf8.encode(instance_name),
+    @utf8.encode(guid),
+    @utf8.encode(fmi2_resource_location(resource_path)),
+    if logging_on {
+      1
+    } else {
+      0
+    },
+    fn(status, name, category, message) {
+      if sink.active {
+        (sink.callback)({
+          status: @fmi.FmiStatus::from_int32(status),
+          instance_name: @utf8.decode_lossy(name.exact_view()),
+          category: @utf8.decode_lossy(category.exact_view()),
+          message: @utf8.decode_lossy(message.exact_view()),
+        })
+      }
+    },
+    fn(deliver, status, name, category, message) {
+      deliver(status, name, category, message)
+    },
+  )
+  if handle.is_null() {
+    raise Fmi2InstantiateFailed(instance_name~, detail=fmi2_error_text())
+  }
+  self.open_instances = self.open_instances + 1
+  { library: self, handle, sink, freed: false, }
+}
+
+///|
+fn Fmi2Instance::ensure_live(
+  self : Fmi2Instance,
+  operation : String,
+) -> Unit raise Fmi2Error {
+  if self.freed || fmi2_instance_is_freed(self.handle) != 0 {
+    raise Fmi2InstanceFreed(operation~)
+  }
+}
+
+///|
+fn fail_on_failure(
+  status : @fmi.FmiStatus,
+  operation : String,
+) -> Unit raise Fmi2Error {
+  if status.is_failure() {
+    raise Fmi2StatusFailed(operation~, status~)
+  }
+}
+
+///|
+pub fn Fmi2Instance::setup_experiment(
+  self : Fmi2Instance,
+  start_time~ : Double,
+  stop_time? : Double,
+  tolerance? : Double,
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2SetupExperiment")
+  let (tolerance_defined, tolerance) = match tolerance {
+    Some(value) => (1, value)
+    None => (0, 0.0)
+  }
+  let (stop_time_defined, stop_time) = match stop_time {
+    Some(value) => (1, value)
+    None => (0, 0.0)
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_setup_experiment(
+      self.handle,
+      tolerance_defined,
+      tolerance,
+      start_time,
+      stop_time_defined,
+      stop_time,
+    ),
+  )
+  fail_on_failure(status, "fmi2SetupExperiment")
+}
+
+///|
+pub fn Fmi2Instance::enter_initialization_mode(
+  self : Fmi2Instance,
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2EnterInitializationMode")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_enter_initialization_mode(self.handle),
+  )
+  fail_on_failure(status, "fmi2EnterInitializationMode")
+}
+
+///|
+pub fn Fmi2Instance::exit_initialization_mode(
+  self : Fmi2Instance,
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2ExitInitializationMode")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_exit_initialization_mode(self.handle),
+  )
+  fail_on_failure(status, "fmi2ExitInitializationMode")
+}
+
+///|
+/// Advances the simulation.
+///
+/// The status is returned rather than raised: `Discard` asks the caller to
+/// retry the step with a smaller step size and is not an error.
+pub fn Fmi2Instance::do_step(
+  self : Fmi2Instance,
+  current_time : Double,
+  step_size : Double,
+  new_step~ : Bool = true,
+) -> @fmi.FmiStatus {
+  if self.freed {
+    return Fatal
+  }
+  @fmi.FmiStatus::from_int32(
+    fmi2_do_step(
+      self.handle,
+      current_time,
+      step_size,
+      if new_step {
+        1
+      } else {
+        0
+      },
+    ),
+  )
+}
+
+///|
+pub fn Fmi2Instance::get_real(
+  self : Fmi2Instance,
+  references : Array[UInt32],
+) -> Array[Double] raise Fmi2Error {
+  self.ensure_live("fmi2GetReal")
+  let count = references.length()
+  let refs = FixedArray::make(count, 0U)
+  for index, reference in references {
+    refs[index] = reference
+  }
+  let values = FixedArray::make(count, 0.0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_get_real(self.handle, refs, values, count),
+  )
+  fail_on_failure(status, "fmi2GetReal")
+  let result = Array(capacity=count)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+pub fn Fmi2Instance::set_real(
+  self : Fmi2Instance,
+  references : Array[UInt32],
+  values : Array[Double],
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2SetReal")
+  if references.length() != values.length() {
+    raise Fmi2StatusFailed(operation="fmi2SetReal", status=Error)
+  }
+  let count = references.length()
+  let refs = FixedArray::make(count, 0U)
+  let buffer = FixedArray::make(count, 0.0)
+  for index, reference in references {
+    refs[index] = reference
+    buffer[index] = values[index]
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_set_real(self.handle, refs, buffer, count),
+  )
+  fail_on_failure(status, "fmi2SetReal")
+}
+
+///|
+pub fn Fmi2Instance::get_real_one(
+  self : Fmi2Instance,
+  reference : UInt32,
+) -> Double raise Fmi2Error {
+  self.get_real([reference])[0]
+}
+
+///|
+pub fn Fmi2Instance::set_real_one(
+  self : Fmi2Instance,
+  reference : UInt32,
+  value : Double,
+) -> Unit raise Fmi2Error {
+  self.set_real([reference], [value])
+}
+
+///|
+pub fn Fmi2Instance::terminate(self : Fmi2Instance) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2Terminate")
+  let status = @fmi.FmiStatus::from_int32(fmi2_terminate(self.handle))
+  fail_on_failure(status, "fmi2Terminate")
+}
+
+///|
+/// The number of log messages that reached the shim.
+///
+/// Messages the shim dropped because logging was disabled, or that arrived
+/// while the instance was being freed, are not counted. Messages that reached
+/// the shim but were dropped by an inactive sink (`on_log` is not called once
+/// `free` has started) are counted.
+pub fn Fmi2Instance::log_count(self : Fmi2Instance) -> UInt64 {
+  fmi2_instance_log_count(self.handle)
+}
+
+///|
+pub fn Fmi2Instance::is_freed(self : Fmi2Instance) -> Bool {
+  self.freed
+}
+
+///|
+/// Releases the FMU instance.
+///
+/// Log delivery stops before `fmi2FreeInstance` is called, so `on_log` is
+/// never invoked once `free` has started, even if the FMU logs while it is
+/// shutting down.
+pub fn Fmi2Instance::free(self : Fmi2Instance) -> Unit {
+  if self.freed {
+    return
+  }
+  self.sink.active = false
+  fmi2_instance_free(self.handle)
+  self.freed = true
+  self.library.open_instances = self.library.open_instances - 1
+}

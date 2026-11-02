@@ -8,5 +8,5 @@ import {
 supported_targets = "native"
 
 options(
-  "native-stub": [ "dl.c" ],
+  "native-stub": [ "dl.c", "fmi2_shim.c" ],
 )

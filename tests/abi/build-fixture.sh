@@ -23,5 +23,13 @@ clang -shared -fPIC -O2 "$here/broken.c" -L"$cache" -lmoonfmi_dependency \
 # The broken library must stay broken: the dependency is not shipped with it.
 rm -f "$dependency"
 
+clang -O2 "$here/probe.c" -o "$cache/probe"
+clang -shared -fPIC -O2 "$here/logging_fmu.c" -pthread \
+  -o "$cache/libmoonfmi_logging_fmu.so"
+clang -O2 "$here/fmi2_host.c" -o "$cache/fmi2_host"
+
 echo "built $fixture"
 echo "built $broken (dependency intentionally absent)"
+echo "built $cache/probe"
+echo "built $cache/libmoonfmi_logging_fmu.so"
+echo "built $cache/fmi2_host"

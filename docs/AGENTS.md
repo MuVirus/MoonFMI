@@ -11,7 +11,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 3. **FMU 导出**（先源码 FMU，再 WASM FMU）
 4. **验证、打包与交叉测试**
 
-> 当前阶段：P0 第二周已完成——XML 安全读取、ZIP 安全打开、真实 FMU 集成测试、动态库加载与诊断。9 包骨架、依赖方向检查、Windows/Linux CI 配置、8 个真实 FMU 的下载与校验、可选的官方 XSD 对照仍在。XML 的 1 MB/100 ms 目标未达到（实测约 144 ms），已登记为风险。详见 [`records/2026-10-31.md`](records/2026-10-31.md)。
+> 当前阶段：P0 第三周已完成——C 中间层直接编入 MoonBit 构建、FMU 日志回调、ABI 基线、C 参考宿主，以及用 MoonBit 跑通真实 FMI 2 CS 模型（BouncingBall）。XML 的 1 MB/100 ms 目标仍未达到（实测约 144 ms），已登记为风险。详见 [`records/2026-11-02.md`](records/2026-11-02.md)。
 
 ---
 
@@ -81,8 +81,13 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | P0 XML 读取 | ✅ 完成 | 32 MB/深度/属性/`DOCTYPE` 限制，错误带行列号；见 [`records/2026-10-31.md`](records/2026-10-31.md) |
 | P0 ZIP 打开 | ✅ 完成 | 路径、条目数、大小、压缩比、重名、CRC 检查；暂不落盘 |
 | P0 动态库加载 | ✅ 完成 | Windows/Linux C stub，缺文件/缺依赖/缺符号/卸载后可删除均已验证 |
+| P0 C 中间层编入构建 | ✅ 完成 | `native-stub` 直接把 C 文件编进包，Windows/Linux 都通，无需额外链接参数；见 [`records/2026-11-02.md`](records/2026-11-02.md) |
+| P0 FMU 日志回调 | ✅ 完成 | 4 KB UTF-8 安全截断、中文/emoji 往返、5 万条不泄漏、释放后无迟到回调、FMU 线程日志 |
+| P0 ABI 基线 | ✅ 完成 | `tests/abi/baselines/x86_64-{windows,linux}.json`，CI 逐字段比较 |
+| P0 C 参考宿主 | ✅ 完成 | BouncingBall 300 步、6 个采样点，作为 MoonBit 后端的对照答案 |
+| P0 FMI 2 CS 端到端 | ✅ 完成 | MoonBit 加载真实 FMU，与 C 宿主逐点一致（1e-9 时间 / 1e-12 变量） |
 | P0 真实 FMU 集成 | ✅ 部分完成 | 5 个 FMU 打开并解析；`7z` 逐文件对比待补 |
-| 9 包骨架与依赖检查 | ✅ 完成 | `src/`、`tools/check-deps.mjs`；native/wasm 各 8 个测试通过 |
+| 9 包骨架与依赖检查 | ✅ 完成 | `src/`、`tools/check-deps.mjs`；native 45 / wasm 30 个测试通过（含集成测试） |
 | Windows + Linux CI | 🟡 已配置，待首跑 | `.github/workflows/ci.yml` |
 | 真实 FMU 测试语料 | ✅ 完成 | 8 个 Reference-FMUs v0.0.42，清单 + SHA-256 + 离线缓存 |
 | 官方 XSD 对照 | ✅ 完成（可选） | 5 个样品，5/5 按预期；不实现 XSD 引擎 |

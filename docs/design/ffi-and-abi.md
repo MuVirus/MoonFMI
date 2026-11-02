@@ -1,6 +1,7 @@
 # FFI 与 ABI 设计
 
-> 状态：设计提案 + 待工具链验证。原则：**C 边界只传递固定宽度、固定布局的数据；结构体、可变参数、布尔和 `size_t` 交给 C shim。**
+> 状态：导入侧已在 Windows/Linux 实测（第三周），见 §8.1；导出侧与 FMI 3 仍是提案。
+> 原则：**C 边界只传递固定宽度、固定布局的数据；结构体、可变参数、布尔和 `size_t` 交给 C shim。**
 
 ---
 
@@ -206,11 +207,12 @@ typedef void (*fmi2CallbackLogger)(
 
 不能直接把它映射成 MoonBit 函数。C shim 的 trampoline：
 
-1. 用 `va_list` + `vsnprintf` 格式化 `message`；
-2. 限制输出长度（例如 4 KiB），防止日志炸弹；
-3. 复制 `instanceName` / `category`；
-4. 调用固定的 `moonfmi_log_fn`，或写入环形缓冲区；
-5. 不抛异常、不长时间持锁。
+1. 复制 `instanceName` / `category` / `message`；
+2. 把消息截断到 4 KiB，且只截在 UTF-8 字符边界上，防止日志炸弹和半个字符；
+3. 调用固定的 MoonBit 回调，或写入环形缓冲区；
+4. 不抛异常、不长时间持锁。
+
+**尚未处理可变参数本身。** 标准允许 `message` 按 `printf` 格式携带额外参数，但真正的 FMU 基本只传普通字符串；对任意 FMU 的格式串调用 `vsnprintf` 意味着把对方的格式错误变成宿主的未定义行为。当前实现直接使用 `message` 原文、忽略 `...`，并在记录里登记为已知限制。以后若遇到确实使用格式化的 FMU，再按白名单格式化，而不是无条件 `vsnprintf`。
 
 ### 4.2 回调策略
 
@@ -223,11 +225,11 @@ typedef void (*fmi2CallbackLogger)(
 
 ### 4.3 重入与线程
 
-- 日志回调可能在 FMU 内部线程触发；
-- shim 用互斥锁保护队列/上下文；
-- 回调中不调用 MoonBit 复杂逻辑，只复制数据；
-- MoonBit 侧消费队列时避免与 FMU 调用并发；
-- 实例释放前先停止回调并清空队列。
+- 日志回调可能在 FMU 内部线程触发，因此 shim 不在回调里做复杂工作：只复制、截断、调用一次；
+- 当前实现**没有队列，也没有锁**：消息在 FMU 调用的线程上同步投递到 MoonBit。这样不引入跨线程队列的所有权问题，代价是回调必须很快返回；
+- 实测“FMU 自建线程打一条日志”不会崩，但“多个线程同时回调同一个实例”没有验证，暂按“同一实例同一时刻只有一个线程回调”假设；
+- 实例释放前先把日志接收端标记为关闭，再由 shim 调 `fmi2FreeInstance`；释放之后到达的消息被丢弃，不会调用 MoonBit；
+- 退休的实例上下文保留到库卸载，避免迟到的回调写到已释放内存。
 
 ### 4.4 `componentEnvironment`
 
@@ -362,22 +364,74 @@ C 枚举宽度由实现决定（可能是 `int`、`unsigned int` 或更小）。
 ```text
 moonfmi (native executable)
   ├─ MoonBit 核心/运行时
-  ├─ C shim 静态库（libmoonfmi_shim.a / .lib）
+  ├─ native-stub 里的 C 中间层（dl.c、fmi2_shim.c）
   └─ 动态加载封装（`src/backend/native`，自研）
 ```
 
-需要确认：
+**结论：按第一条路走通了，两个平台都不需要额外的编译或链接参数。**
 
-- MoonBit native 构建能否链接外部 C 静态库/目标文件；
-- 头文件包含路径；
-- CRT 一致（MSVC `/MD` vs `/MT`）；
-- 异常模型一致；
-- 符号冲突。
+在 `src/backend/native/moon.pkg` 里写：
 
-若不能直接链接，退路：
+```text
+supported_targets = "native"
 
-- 把 shim 编成独立动态库，MoonBit 通过自研的动态加载封装调用；
-- 或减少 shim 范围，只对结构体/可变参数使用。
+options(
+  "native-stub": [ "dl.c", "fmi2_shim.c" ],
+)
+```
+
+`moon build` / `moon test` 会把这两个文件交给工具链自带的 C 编译器（Windows 上是 MSVC `cl.exe`，Linux 上是系统 `cc`），编译产物直接进最后的可执行文件。实测结果：
+
+| 项目 | 结果 |
+| --- | --- |
+| Windows x86_64（MSVC `cl.exe`） | 编译、链接、运行均正常 |
+| Linux x86_64（WSL，`clang`/`cc`） | 编译、链接、运行均正常 |
+| 头文件包含路径 | 相对路径可用，不需要 `-I` |
+| CRT 选择 | 由工具链统一决定，不需要手工对齐 `/MD`、`/MT` |
+| 链接参数 | 不需要 `cc-link-flags` |
+| 符号冲突 | 未出现；shim 导出符号统一加 `moonfmi_` 前缀 |
+
+第二、三条路（先编静态库、再编独立动态库）因此没有实际尝试。它们仍是备选：一旦某个平台的原生构建不再接受 `native-stub`，或者 shim 需要链接第三方 C 库，就退到静态库。届时 CRT 一致性问题会重新出现——这正是优先选第一条路的理由。
+
+官方头文件不复制、不重写，直接按相对路径 `#include`：
+
+```c
+/* src/backend/native/fmi2_shim.c */
+#include "../../../docs/standards/headers/fmi2/fmi2Functions.h"
+```
+
+`tests/abi/*.c` 在更深一层，写成 `../../docs/...`。这样头文件只有一份，标准升级时不会出现“shim 还在用旧结构体”的漂移。
+
+### 8.1.1 C 调用 MoonBit 闭包
+
+日志回调需要从 C 反调到 MoonBit，实测可行，但有两处与直觉不同：
+
+1. **闭包以 `void*` 传入，调用要走一个 `FuncRef` 适配函数。** MoonBit 侧把一个 `(Int32, Bytes, Bytes, Bytes) -> Unit` 闭包和一个 `FuncRef[(closure, ...) -> Unit]` 一起传给 C；C 保存闭包指针，需要回调时调用适配函数，并把闭包作为第一个参数传回去。C 不能直接按 C 函数指针调用一个 MoonBit 闭包。
+2. **C 传给 MoonBit 的参数是借用的，C 仍持有所有权。** 这与“传进去就归被调用方”的直觉相反。shim 每次回调会造三个 `Bytes`（实例名、类别、消息），调用适配函数之后必须自己 `moonbit_decref`：
+
+   ```c
+   instance->log_thunk(instance->log_closure, (int32_t)status, name, kind, text);
+   moonbit_decref(name);
+   moonbit_decref(kind);
+   moonbit_decref(text);
+   ```
+
+   少写这三行，5 万条 4 KB 日志会让常驻内存涨 225 MB；补上之后同一测试稳定在噪声范围内。这个结论是实测出来的，不是文档里写的。
+
+反过来，MoonBit 传给 C 的闭包由 C 持有：shim 把它存进实例上下文，释放实例时 `moonbit_decref`。两边方向相反，容易记反。
+
+### 8.1.2 句柄与生命周期
+
+`fmi2Library`（C 侧结构体）持有动态库句柄、11 个已解析的函数指针和一份“已退休实例”链表；`Fmi2Library`（MoonBit）只持有指向它的指针。实例释放时：
+
+- 先由 MoonBit 关掉日志接收端，再由 shim 调 `fmi2FreeInstance`，释放 `log_closure`，把实例标成 `freed` 并挂到退休链表；
+- 退休的上下文不立即 `free`，而是等库卸载时统一释放。这样即使 FMU 在 `fmi2FreeInstance` 返回后仍然从别的线程打日志，写到的也是有效内存，最多是日志被丢弃。
+
+### 8.1.3 尚未解决的问题
+
+- 只有 `x86_64` + MSVC/Clang 的实测数据，macOS、aarch64、32 位 Windows 未验证；
+- `fmi2_shim.c` 目前只覆盖 CS 必需的 11 个函数，ME 的 `fmi2GetContinuousStates` 等尚未接入；
+- 回调里再调回 FMU 这类重入场景没有测试。
 
 ### 8.2 导出侧
 
@@ -402,18 +456,29 @@ MoonBit 静态库 + C shim + 官方头文件
 
 ### 8.3 编译期断言
 
-shim 中至少：
+`fmi2_shim.c` 只用负长度数组做断言，不用 `_Static_assert`——后者在 MSVC 的 C 模式下取决于 `/std:` 版本，而数组长度为负在所有 C 编译器上都是硬错误：
 
 ```c
-_Static_assert(sizeof(fmi2Boolean) == sizeof(int), "fmi2Boolean must be int-sized");
-_Static_assert(sizeof(fmi3Boolean) == 1, "fmi3Boolean must be 1 byte");
-_Static_assert(sizeof(fmi3ValueReference) == 4, "valueReference must be 32-bit");
-_Static_assert(sizeof(fmi2ValueReference) == 4, "fmi2ValueReference must be 32-bit");
-_Static_assert(offsetof(fmi2CallbackFunctions, logger) == 0, "callback layout");
-_Static_assert(offsetof(fmi2CallbackFunctions, componentEnvironment) > 0, "callback layout");
+typedef char moonfmi_assert_boolean_is_int[sizeof(fmi2Boolean) == 4 ? 1 : -1];
+typedef char moonfmi_assert_value_reference_is_int[
+  sizeof(fmi2ValueReference) == 4 ? 1 : -1];
+typedef char moonfmi_assert_real_is_double[sizeof(fmi2Real) == 8 ? 1 : -1];
+typedef char moonfmi_assert_logger_is_first[
+  offsetof(fmi2CallbackFunctions, logger) == 0 ? 1 : -1];
 ```
 
-这些断言在 CI 的每个平台上编译一次；失败说明 ABI 假设不成立。
+这四条覆盖 CS 路径上最容易错位的四件事。断言失败时不是运行期读到错数据，而是编译直接报错。
+
+编译期断言只覆盖“已经接入”的类型。完整的尺寸清单由 `tests/abi/probe.c` 打印，Windows 和 Linux 各有一份基准：
+
+| 文件 | 内容 |
+| --- | --- |
+| `tests/abi/baselines/x86_64-windows.json` | MSVC 下的 FMI 2 + FMI 3 类型尺寸、回调字段偏移、枚举值 |
+| `tests/abi/baselines/x86_64-linux.json` | 同一份清单在 Linux/clang 下的结果 |
+
+两份文件内容目前完全相同，但分开保存：它们记录的是“这个平台实际是什么”，不是“我们认为应该相同”。`node tests/abi/check-abi.mjs` 逐字段比较，差异会打印成可读的行，`scripts/check.ps1` 和 `check.sh` 都会调用它。
+
+FMI 3 的 `fmi3Boolean` 在这些平台上实测 1 字节、`fmi3ValueReference` 4 字节，与 FMI 2 的 4 字节布尔形成对照。FMI 3 的 shim 还没写，但尺寸基线已经就位。
 
 ---
 
@@ -442,38 +507,60 @@ _Static_assert(offsetof(fmi2CallbackFunctions, componentEnvironment) > 0, "callb
 
 ### 10.2 ABI 测试
 
-- `sizeof`/`offsetof` 断言；
-- 布尔数组转换：FMI 2 int 数组 vs FMI 3 bool 数组；
-- `size_t` 在 32/64 位的长度参数；
-- 枚举值往返；
-- 字符串 UTF-8（中文、emoji、空串、最大长度）；
+已覆盖：
+
+| 项目 | 方式 | 状态 |
+| --- | --- | --- |
+| `sizeof`/`offsetof` | `probe.c` + 两份平台基准 | ✅ |
+| 枚举值往返 | 基准文件 + `FmiStatus::from_int32` | ✅ |
+| 回调结构体字段顺序 | 编译期断言 + 基准偏移 | ✅ |
+| 变参日志格式化 | 假 FMU 的 7 种消息 | ✅ |
+| 字符串 UTF-8（中文、emoji、截断） | 中文/emoji 往返、4 KB 边界退让 | ✅ |
+| 实例/字符串生命周期 | 释放后无迟到回调、长消息不泄漏 | ✅ |
+| 函数指针调用（CS） | BouncingBall 全流程 | ✅ |
+
+未覆盖：
+
+- FMI 2 int 数组与 FMI 3 bool 数组的批量转换（FMI 3 shim 未实现）；
+- `size_t` 在 32 位目标上的行为；
 - 二进制长度 0/非 0；
-- 回调结构体字段顺序；
-- 变参日志格式化；
-- 函数指针调用（每个接口至少一个 CS/ME 函数）；
-- 实例/状态/字符串生命周期；
-- 多实例并发日志。
+- ME/SE 函数指针；
+- 多实例并发日志（目前只测了单实例 + FMU 自身线程）。
 
 ### 10.3 对照测试
 
-- 用 C 参考程序直接调用同一 FMU，比较返回值；
-- 用 FMPy 跑同一模型，比较输出；
-- 用 `nm`/`dumpbin` 检查导出符号；
-- 用 WAT/反汇编检查 wasm 边界（WASM 后端）。
+已建立一条完整的 C 对照链：
+
+```text
+tests/abi/fmi2_host.c         独立的 C 宿主，只用官方头文件
+  → 加载 BouncingBall.fmu 里的 DLL/SO
+  → 300 步 × 10 ms，每 0.5 s 采样 (time, h, v)
+  → tests/abi/baselines/fmi2-bouncingball.json
+  → node tests/abi/check-host.mjs 逐样本比较（相对误差 1e-9）
+```
+
+MoonBit 侧跑同一个模型，把六组采样和同一份基准逐个比较（时间误差 1e-9，变量误差 1e-12），见 `tests/integration/fmi2_wbtest.mbt`。C 宿主和 MoonBit 后端是两条独立路径，结果一致才说明 shim 没有读错位置。
+
+尚未做：用 FMPy 跑同一模型交叉验证；用 `nm`/`dumpbin` 自动检查导出符号。
 
 ---
 
 ## 11. 待验证问题
 
 1. MoonBit native 构建如何链接外部 C 静态库/目标文件？
+   **已答（第三周）**：不需要静态库——`native-stub` 直接把 C 文件编进包里，两个平台都通；详见 §8.1。
 2. `FuncRef[T]` 能否安全表示所有 FMI 函数指针并跨 shim 传递？
+   **部分已答**：`FuncRef` 用于 C→MoonBit 回调可行（§8.1.1）；FMU 返回的 CCS 函数指针仍由 shim 按官方头文件转换，不经 `FuncRef`。
 3. MoonBit 函数能否被 C 以固定签名回调（用于同步中间更新）？
+   **已答**：能，闭包以 `void*` 传入，经 `FuncRef` 适配函数调用；参数是借用的，C 要自己 `moonbit_decref`。尚未测试在回调里再调回 FMU 的重入场景。
 4. Windows 32 位的调用约定/结构体对齐是否与 64 位一致？
+   **未答**，首版只承诺 64 位。
 5. `fmi3Boolean` 在目标编译器上是否恒为 1 字节？
+   **在已测平台上是**：Windows/MSVC 与 Linux/clang 的基线都是 1 字节；其他平台仍需基线确认。
 6. C shim 与 MoonBit 运行时的 CRT/异常模型如何统一？
+   **已答（native-stub 路线）**：C 文件由同一个构建、同一个编译器、同一套运行库编译，不存在两套 CRT；C++ 异常不参与，shim 只用返回码。
 7. 回调线程与 MoonBit 运行时线程安全边界在哪里？
-
-这些问题的答案应记录在 P0 spike 报告中，并更新本文。
+   **部分已答**：FMU 自有线程打日志不会崩（有测试）；日志是同步投递，不排队，回调里不能做阻塞操作。尚不清楚多个线程同时回调时的 MoonBit 运行时保证，目前按“一个实例同一时刻只从一个线程回调”假设。
 
 ---
 

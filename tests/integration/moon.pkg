@@ -11,6 +11,7 @@ import {
 supported_targets = "native"
 
 options(
+  "native-stub": [ "support.c" ],
   targets: {
     "perf_budget_debug.mbt": [ "debug" ],
     "perf_budget_release.mbt": [ "not", "debug" ],
