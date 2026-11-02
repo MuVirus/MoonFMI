@@ -11,7 +11,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 3. **FMU 导出**（先源码 FMU，再 WASM FMU）
 4. **验证、打包与交叉测试**
 
-> 当前阶段：P0 第三周已完成——C 中间层直接编入 MoonBit 构建、FMU 日志回调、ABI 基线、C 参考宿主，以及用 MoonBit 跑通真实 FMI 2 CS 模型（BouncingBall）。XML 的 1 MB/100 ms 目标仍未达到（实测约 144 ms），已登记为风险。详见 [`records/2026-11-02.md`](records/2026-11-02.md)。
+> 当前阶段：P0 四周已完成。导入侧（XML、ZIP、动态库、C 中间层、日志、ABI、FMI 2 CS 端到端）全部跑通；WebAssembly 侧 G1–G3（最小组件、resource、字符串/字节数组）已验证，G4–G7 留到 P7。总结与五个决定见 [`roadmap/p0-report.md`](roadmap/p0-report.md)，实施记录见 [`records/2026-11-02.md`](records/2026-11-02.md)。XML 的 1 MB/100 ms 目标仍未达到（实测约 144 ms），已登记为风险。
 
 ---
 
@@ -50,7 +50,8 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 1. [`research/wasm-fmi.md`](research/wasm-fmi.md)
 2. [`design/exporter.md`](design/exporter.md)
 3. [`design/wasm-strategy.md`](design/wasm-strategy.md)
-4. [`design/packaging.md`](design/packaging.md)
+4. [`roadmap/p0-report.md`](roadmap/p0-report.md) §3（已跑通的 G1–G3 与命令）
+5. [`design/packaging.md`](design/packaging.md)
 
 **准备做验证与测试：**
 
@@ -60,8 +61,9 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 
 **准备复现或审查已完成的阶段：**
 
-1. [`records/README.md`](records/README.md)
-2. 按日期归档的记录，例如 [`records/2026-10-30.md`](records/2026-10-30.md)
+1. [`roadmap/p0-report.md`](roadmap/p0-report.md)
+2. [`records/README.md`](records/README.md)
+3. 按日期归档的记录，例如 [`records/2026-10-30.md`](records/2026-10-30.md)
 
 ---
 
@@ -91,7 +93,8 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | Windows + Linux CI | 🟡 已配置，待首跑 | `.github/workflows/ci.yml` |
 | 真实 FMU 测试语料 | ✅ 完成 | 8 个 Reference-FMUs v0.0.42，清单 + SHA-256 + 离线缓存 |
 | 官方 XSD 对照 | ✅ 完成（可选） | 5 个样品，5/5 按预期；不实现 XSD 引擎 |
-| FMI-LS-WASM POC | ⬜ 未开始 | 需要验证工具链 |
+| FMI-LS-WASM POC | 🟡 G1–G3 通过 | MoonBit → component → wasmtime/jco 可行；G4 Adder FMU、G5 浏览器、G6 回调、G7 native 对照未做；见 [`records/2026-11-02.md`](records/2026-11-02.md) §9 |
+| P0 总结报告 | ✅ 完成 | [`roadmap/p0-report.md`](roadmap/p0-report.md)，五个决定已定 |
 
 状态图例：✅ 完成，🟡 进行中，⬜ 未开始，⚠️ 有阻塞或待验证。
 

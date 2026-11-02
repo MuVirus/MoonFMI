@@ -6,3 +6,4 @@ target
 .moonagent/
 tests/data/.cache/
 tests/abi/.cache/
+tests/spikes/*/.cache/

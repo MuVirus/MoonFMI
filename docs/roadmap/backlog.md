@@ -117,14 +117,16 @@
 
 | ID | 任务 | 优先级 | 规模 | 依赖 | 验收 |
 | --- | --- | --- | --- | --- | --- |
-| F-01 | POC-1 core → component | P2 | M | A-07 | wasmtime 调用 |
+| F-01 | ✅ POC-1 core → component | P2 | M | A-07 | wasmtime 调用（P0 已完成） |
 | F-02 | WIT 绑定（common） | P2 | L | F-01 | `get-version` |
-| F-03 | resource 实例生命周期 | P2 | L | F-02 | 宿主 drop |
+| F-03 | ✅ resource 实例生命周期 | P2 | L | F-02 | 宿主 drop（P0 探针已完成） |
 | F-04 | 最小 CS component | P2 | XL | F-03 | Adder 步进 |
 | F-05 | wasmtime 宿主 + 回调 | P2 | L | F-04 | 日志/结果 |
 | F-06 | `jco` 浏览器 POC | P3 | L | F-04 | Chrome/Firefox |
 | F-07 | WASM FMU 打包/manifest | P2 | M | F-04 | XSD/布局 |
 | F-08 | WASM 导出器 | P3 | XL | F-04/E-01 | 生成可加载 FMU |
+
+> F-01 / F-03 是 P0 第四周的探针，结论见 [`p0-report.md`](p0-report.md) §3 和 [`../../tests/spikes/wasm-component/`](../../tests/spikes/wasm-component/README.md)。F-02 起进入 P7。
 
 ---
 

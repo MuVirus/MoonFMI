@@ -1,0 +1,15 @@
+package moonfmi:store@0.1.0;
+
+interface counter {
+    resource counter {
+        constructor(start: u32);
+        bump: func(by: u32) -> u32;
+        value: func() -> u32;
+    }
+
+    dropped: func() -> u32;
+}
+
+world counter-world {
+    export counter;
+}

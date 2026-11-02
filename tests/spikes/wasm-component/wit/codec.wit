@@ -1,0 +1,16 @@
+package moonfmi:codec@0.1.0;
+
+interface codec {
+    record sample {
+        name: string,
+        values: list<f64>,
+    }
+
+    echo-string: func(text: string) -> string;
+    echo-bytes: func(data: list<u8>) -> list<u8>;
+    summarize: func(input: sample) -> string;
+}
+
+world codec-world {
+    export codec;
+}

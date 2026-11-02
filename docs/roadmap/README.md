@@ -10,6 +10,7 @@
 | --- | --- |
 | [`roadmap.md`](roadmap.md) | P0–P8 阶段、目标、交付物、退出标准 |
 | [`p0-plan.md`](p0-plan.md) | P0 详细执行计划：做什么、参考什么、验收标准 |
+| [`p0-report.md`](p0-report.md) | P0 总结：环境、命令、结果、踩坑、五个决定 |
 | [`backlog.md`](backlog.md) | 可执行任务清单、优先级、依赖 |
 | [`risks.md`](risks.md) | 风险登记、触发条件、缓解/应急 |
 

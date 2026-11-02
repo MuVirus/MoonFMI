@@ -208,6 +208,8 @@ FMI 2 的日志函数用的是 C 的可变参数（`printf` 那种写法），Mo
 
 ## 第四周：WebAssembly 与总结
 
+> 已完成。结果、命令和五个决定见 [`p0-report.md`](p0-report.md)。
+
 ### 试试 WebAssembly
 
 先只做最小的目标：把 MoonBit 编译成 WebAssembly，导出一个 `add(i32, i32) -> i32`，用 `wasm-tools` 包成组件（component），再用 wasmtime 调用它。这一步必须过，否则后面免谈。

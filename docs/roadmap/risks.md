@@ -104,9 +104,10 @@
 | 可能性 | 高 |
 | 影响 | 中–高：WASM 返工 |
 | 触发 | WIT world 改名；manifest 变更；`wit-bindgen` 无 MoonBit 后端；canonical ABI 不支持 resource |
-| 缓解 | 隔离 `backend/wasm`；固定草案 commit；可行性门槛 G1–G7 |
+| 现状 | P0 第四周：`wit-bindgen 0.63.0` 的 MoonBit 后端可用；G1（最小组件）、G2（resource drop）、G3（string/list/record）已通过；G4–G7 与 LS-WASM 草案 world 尚未验证 |
+| 缓解 | 隔离 `backend/wasm`；固定草案 commit/工具版本；可行性门槛 G1–G7；G4 通过前不承诺 LS-WASM 兼容 |
 | 应急 | WASM 保持实验性；先做自定义 core wasm 试验；不阻塞本机版本 |
-| 关联 | [`../design/wasm-strategy.md`](../design/wasm-strategy.md) |
+| 关联 | [`../design/wasm-strategy.md`](../design/wasm-strategy.md) §8、[`p0-report.md`](p0-report.md) §3 |
 
 ### R-09 · MoonBit wasm 运行时与 component 不兼容
 
@@ -115,9 +116,10 @@
 | 可能性 | 中 |
 | 影响 | 高：WASM 导出不可行 |
 | 触发 | GC/内存初始化失败；WASI p2 adapter 不匹配；字符串/数组边界错误 |
+| 现状 | P0 第四周：core wasm → component 链路可用；GC 初始化、`cabi_realloc`、UTF-16 字符串、`list<u8>`、resource dtor 都已在 wasmtime 与 jco/Node 上验证；没有测试 WASI import、浏览器和线程 |
 | 缓解 | 最小可行性试验先行；记录产物；保留本机路径 |
 | 应急 | 用 C/Rust 写 guest，MoonBit 只做宿主/工具 |
-| 关联 | [`../research/wasm-fmi.md`](../research/wasm-fmi.md) |
+| 关联 | [`../research/wasm-fmi.md`](../research/wasm-fmi.md)、[`../../tests/spikes/wasm-component/`](../../tests/spikes/wasm-component/README.md) |
 
 ### R-10 · 性能不达标
 
@@ -262,6 +264,15 @@
 - 缓解：依赖审计；优先 MIT/Apache/BSD；记录许可证；
 - 应急：替换/自研；隔离动态依赖。
 
+### R-24 · CI 未在托管环境首跑
+
+- 现状：`.github/workflows/ci.yml` 已写好，Windows/Linux 检查脚本在本地通过，但 GitHub Actions 还没有实际跑过一次；
+- 触发：首次 push/PR 时出现环境差异（路径、工具版本、下载缓存、行结尾）；
+- 影响：中——"CI 能拦住错误"尚未由远端证明，合并前可能需要一两轮修补；
+- 缓解：首跑后记录实际耗时与失败点；把工具版本和缓存策略固定下来；
+- 应急：先用本地 `scripts/check.ps1` / `check.sh` 作为门禁，CI 修复不阻塞功能开发；
+- 关联：[`../../.github/workflows/ci.yml`](../../.github/workflows/ci.yml)、[`../../scripts/check.ps1`](../../scripts/check.ps1)。
+
 ---
 
 ## 4. 风险矩阵
@@ -269,7 +280,7 @@
 | 影响 \ 可能性 | 低 | 中 | 高 |
 | --- | --- | --- | --- |
 | 高 | R-02, R-03 | R-09 | R-01, R-11 |
-| 中 | R-16 | R-04, R-05, R-07, R-10, R-12, R-15, R-19, R-20 | R-06, R-08, R-13, R-14, R-17, R-18 |
+| 中 | R-16, R-24 | R-04, R-05, R-07, R-10, R-12, R-15, R-19, R-20 | R-06, R-08, R-13, R-14, R-17, R-18 |
 | 低 | — | R-23 | R-21, R-22 |
 
 ---

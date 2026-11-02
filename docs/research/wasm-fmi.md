@@ -295,6 +295,8 @@ LS-WASM 要求 `wasm32-wasip2` **component**。MoonBit 的直接产物是 core m
 
 ## 6. POC 计划
 
+> 2026-11-02 状态：POC-1 通过；POC-2 只验证了通用 WIT 的 string/list/record/resource 绑定，还没有实现 FMI 的 `common`；POC-3 未做；POC-4 只到 jco + Node，浏览器未测；POC-5 未做。探针和命令见 [`../../tests/spikes/wasm-component/README.md`](../../tests/spikes/wasm-component/README.md)，数字见 [`../roadmap/p0-report.md`](../roadmap/p0-report.md) §3。
+
 ### POC-1：MoonBit core wasm + component 化
 
 目标：确认 MoonBit 产物能否变成合法 component。

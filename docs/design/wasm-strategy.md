@@ -1,6 +1,6 @@
 # WASM 策略
 
-> 状态：设计提案 + 待验证。LS-WASM 仍是草案，本文把工具链风险隔离在 `backend/wasm` 一个包里；导出侧的 WIT 生成留在 `export`。
+> 状态：设计提案 + 部分验证。G1–G3 已用 MoonBit 组件探针验证（2026-11-02），G4–G7 未做；本文把工具链风险隔离在 `backend/wasm` 一个包里，导出侧的 WIT 生成留在 `export`。
 
 ---
 
@@ -339,17 +339,38 @@ WASM 的优势是沙箱，但要注意：
 
 按 [`../research/wasm-fmi.md`](../research/wasm-fmi.md) 的 POC-1…POC-5 执行。进入正式实现前必须通过：
 
-| 门槛 | 通过标准 |
-| --- | --- |
-| G1 component 化 | 最小 MoonBit 函数 → 合法 component → wasmtime 调用 |
-| G2 resource | MoonBit guest 能实现并导出 resource，宿主能 drop |
-| G3 string/list | UTF-8 字符串与 `list<u8>` 往返正确 |
-| G4 最小 CS | Adder FMU 完成 instantiate/step/get/set/terminate |
-| G5 浏览器 | `jco` 转译后在 Chrome/Firefox 跑通 |
-| G6 回调 | 日志/中间更新回调正确跨边界 |
-| G7 性能 | 记录启动、步进、内存；与 native 对比 |
+| 门槛 | 通过标准 | 状态（2026-11-02） |
+| --- | --- | --- |
+| G1 component 化 | 最小 MoonBit 函数 → 合法 component → wasmtime 调用 | ✅ 通过：`add(10, 20)` 返回 `30` |
+| G2 resource | MoonBit guest 能实现并导出 resource，宿主能 drop | ✅ 通过：1000 个句柄逐个 drop，guest dtor 计数正确 |
+| G3 string/list | UTF-8 字符串与 `list<u8>` 往返正确 | ✅ 通过：wasmtime 与 jco/Node 两条路径，含 10 万字符和 1 MiB |
+| G4 最小 CS | Adder FMU 完成 instantiate/step/get/set/terminate | ⬜ 未做，P7 第一项 |
+| G5 浏览器 | `jco` 转译后在 Chrome/Firefox 跑通 | 🟡 只到 jco + Node，浏览器未测 |
+| G6 回调 | 日志/中间更新回调正确跨边界 | ⬜ 未做 |
+| G7 性能 | 记录启动、步进、内存；与 native 对比 | 🟡 有调用开销初测，无 native 对照 |
 
 任何一项失败，WASM 导出保持“实验性”，不阻塞 native 路线。
+
+### 8.1 G1–G3 的验证方式
+
+探针在 [`../../tests/spikes/wasm-component/`](../../tests/spikes/wasm-component/README.md)，一条命令构建并运行：
+
+```powershell
+node tests/spikes/wasm-component/run.mjs test
+```
+
+工具链：`wit-bindgen 0.63.0`、`wasm-tools 1.263.0`、`wasmtime 50.0.1`、`jco 1.40.0`（仅测试）、`moon 0.1.20261023`。
+
+关键结论：
+
+- `wit-bindgen moonbit` 后端可用，生成 `declare pub fn` 接口包，实现后即可满足；
+- MoonBit 的直接产物是 core wasm，必须 `wasm-tools component embed/new`；`gen/moon.pkg` 已把导出名映射成 canonical ABI 名字；
+- `String` 是 UTF-16，`component embed` 必须加 `--encoding utf16`，否则非 ASCII 乱码；
+- `resource` 的 `[dtor]` 在宿主 `drop` 时确实被调用，生命周期可以跨边界；
+- `string`、`list<u8>`、record 和 `cabi_realloc` 在 10 万字符 / 1 MiB 量级上往返正确；
+- 生成的 component 很小（adder 3.2 KB，codec 19.6 KB），但 jco 转译后的 JS 胶水约 120 KiB。
+
+完整命令、数字和坑见 [`../roadmap/p0-report.md`](../roadmap/p0-report.md) §3。
 
 ---
 

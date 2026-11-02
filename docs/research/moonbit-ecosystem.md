@@ -365,17 +365,19 @@ MoonFMI 需要的 XML 能力：
 ### 8.3 工具链
 
 - `wasm-tools` ≥ 1.200：`component wit`、`component embed`、`component new`、`validate`；
-- `wit-bindgen`：生成 guest/host 绑定，需确认 MoonBit 后端对 resource 的支持；
+- `wit-bindgen`：生成 guest/host 绑定；0.63.0 的 MoonBit 后端可用，已支持 `resource` 的导出与 `[dtor]`；
 - `jco`：浏览器端 component 转译；
 - `preview2-shim`：WASI p2 的 JS 实现。
 
+P0 第四周实际使用的版本：`wasm-tools 1.263.0`、`wit-bindgen 0.63.0`、`wasmtime 50.0.1`、`jco 1.40.0`、`moon 0.1.20261023`。探针与命令见 [`../../tests/spikes/wasm-component/`](../../tests/spikes/wasm-component/README.md)。
+
 ### 8.4 待验证
 
-1. MoonBit wasm 模块能否被 `wasm-tools component embed/new` 正确处理；
-2. `wit-bindgen` MoonBit 后端是否支持 `resource` 和 imported interface；
-3. MoonBit 运行时在 component 中如何初始化/分配内存；
-4. 字符串/列表的 canonical ABI 是否与 MoonBit 内存布局兼容；
-5. 产物大小/性能。
+1. ✅ MoonBit wasm 模块能被 `wasm-tools component embed/new` 正确处理；`component embed` 必须加 `--encoding utf16`（MoonBit `String` 是 UTF-16）。
+2. 🟡 `wit-bindgen` MoonBit 后端支持导出的 `resource`（构造、方法、`[dtor]`）；imported interface / 宿主回调尚未验证。
+3. ✅ MoonBit 运行时在 component 中的初始化/分配可用；`cabi_realloc` 在 10 万字符和 1 MiB 字节数组上正常。
+4. ✅ `string`、`list<u8>`、record 的 canonical ABI 与 MoonBit 内存布局兼容；wasmtime 和 jco/Node 两条路径往返一致。
+5. 🟡 产物大小已记录（adder component 3.2 KB、codec 19.6 KB）；只有 jco/Node 的调用开销初测，没有 native 同模型对照。
 
 详见 [`wasm-fmi.md`](wasm-fmi.md) 与 [`../design/wasm-strategy.md`](../design/wasm-strategy.md)。
 

@@ -12,4 +12,4 @@
 
 原因很简单：这三项本来就要长期保留，做成脚本再重写一遍没有意义。一次性探针只留给第四项。
 
-WebAssembly 的探针还没有开始，计划放在本目录的 `wasm/` 下。
+WebAssembly 的探针放在 [`wasm-component/`](wasm-component/README.md)，用 WIT + `wit-bindgen` + `wasm-tools` 验证 G1–G3。
