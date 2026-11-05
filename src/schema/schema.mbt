@@ -1,8 +1,9 @@
 ///|
+#derive(Eq, Debug)
 pub(all) enum FmiVersion {
   V2
   V3
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend FmiVersion with Eq::{not_equal, equal}

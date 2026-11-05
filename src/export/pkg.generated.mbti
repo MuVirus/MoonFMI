@@ -19,11 +19,12 @@ pub struct ExportRequest {
 }
 pub fn ExportRequest::source(@schema.FmiVersion) -> Self
 
+#derive(Eq, @debug.Debug)
 pub(all) enum ExportTarget {
   Source
   Wasm
   Native
-} derive(Eq, @debug.Debug)
+}
 pub fn ExportTarget::all() -> Array[Self]
 pub fn ExportTarget::equal(Self, Self) -> Bool
 pub fn ExportTarget::not_equal(Self, Self) -> Bool

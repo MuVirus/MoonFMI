@@ -11,7 +11,7 @@ permissions:
 
 env:
   # Pin the toolchain: "latest" makes CI go red for reasons nobody changed.
-  MOONBIT_VERSION: "0.1.20261023"
+  MOONBIT_VERSION: "0.1.20261104"
 
 concurrency:
   group: ci-${{ github.ref }}

@@ -1,9 +1,10 @@
 ///|
+#derive(Eq, Debug)
 pub(all) enum ExportTarget {
   Source
   Wasm
   Native
-} derive(Eq, Debug)
+}
 
 ///|
 pub extend ExportTarget with Eq::{not_equal, equal}
