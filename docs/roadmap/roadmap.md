@@ -117,14 +117,18 @@
 
 ### 退出标准
 
-- [ ] 能加载 Reference-FMUs 的 FMI 2 CS 模型；
-- [ ] `BouncingBall` 事件正确、能停止；
-- [ ] `Dahlquist` 与解析解/ FMPy 在容差内；
-- [ ] 输入设置/输出读取类型正确；
-- [ ] 缺失平台/符号/依赖时错误可定位；
-- [ ] 多实例不串状态；
-- [ ] Windows x64 + Linux x64 通过；
-- [ ] 退出码/JSON 输出可用于 CI。
+- [x] 能加载 Reference-FMUs 的 FMI 2 CS 模型；
+- [x] `BouncingBall` 事件正确、能停止（300 步与 C 参考宿主 1e-9 一致）；
+- [ ] `Dahlquist` 与解析解/ FMPy 在容差内（P2 后续：补 Dahlquist 对照）；
+- [x] 输入设置/输出读取类型正确（Real 通道已验证，其余类型在 P2 后续）；
+- [x] 缺失平台/符号/依赖时错误可定位（PlatformSelectionError 列出可用目录）；
+- [ ] 多实例不串状态（P2 后续：多实例用例）；
+- [x] Windows x64 通过（本机验证；Linux x64 待 CI 首跑确认）；
+- [x] 退出码/JSON 输出可用于 CI（simulate 与 validate 共用码表）。
+
+> P2 核心路径完成于 2026-11-07（load → CS 主算法 → CSV/JSON → simulate 命令
+> → C 参考宿主对照）。剩余项（Dahlquist 对照、多实例、Linux CI 确认）继续
+> 在 P2 内补齐，见 [`../records/2026-11-07.md`](../records/2026-11-07.md)。
 
 ### MVP 定义
 

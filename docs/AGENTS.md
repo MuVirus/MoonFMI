@@ -11,7 +11,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 3. **FMU 导出**（先源码 FMU，再 WASM FMU）
 4. **验证、打包与交叉测试**
 
-> 当前阶段：P1 已完成（2026-11-07）。P0 的导入侧与 WASM 探针结论见 [`roadmap/p0-report.md`](roadmap/p0-report.md)、[`records/2026-11-02.md`](records/2026-11-02.md)。P1 交付了 `schema` 包的 FMI 2/3 类型化模型与解析器、MD-001…063 语义校验、`moonfmi validate/info` CLI（文本/JSON/退出码）、四类测试样品、固定种子 fuzz 回归与 10k 变量性能闸门；8 个真实 Reference-FMUs 全部零诊断通过。实施记录见 [`records/2026-11-07.md`](records/2026-11-07.md)。XML 的 1 MB/100 ms 目标仍未达到（1.6 MB/10k 变量实测 278 ms），已登记为风险；B-19（XSD 字段覆盖脚本）顺延到 P2。下一阶段：P2（FMI 2 CS 仿真 MVP）。
+> 当前阶段：P1 已完成；P2 核心路径已打通（2026-11-07）。`moonfmi simulate` 可对真实 FMI 2 CS FMU 运行主算法并输出 CSV/JSON，BouncingBall 300 步与 C 参考宿主 1e-9 一致。P0 的导入侧与 WASM 探针结论见 [`roadmap/p0-report.md`](roadmap/p0-report.md)、[`records/2026-11-02.md`](records/2026-11-02.md)。P1 交付了 `schema` 包的 FMI 2/3 类型化模型与解析器、MD-001…063 语义校验、`moonfmi validate/info` CLI（文本/JSON/退出码）、四类测试样品、固定种子 fuzz 回归与 10k 变量性能闸门；8 个真实 Reference-FMUs 全部零诊断通过。实施记录见 [`records/2026-11-07.md`](records/2026-11-07.md)。XML 的 1 MB/100 ms 目标仍未达到（1.6 MB/10k 变量实测 278 ms），已登记为风险；B-19（XSD 字段覆盖脚本）顺延到 P2。P2 剩余项：Dahlquist 对照、多实例隔离、Linux CI 确认；然后进入 P3（FMI 2 ME）。P1/P2 实施记录见 [`records/2026-11-07.md`](records/2026-11-07.md)。
 
 ---
 
