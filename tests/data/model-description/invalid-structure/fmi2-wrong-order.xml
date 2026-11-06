@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XSD violation: ModelVariables appears before the interface elements. -->
+<fmiModelDescription fmiVersion="2.0" modelName="BadOrder" guid="{bad-order-0001}">
+  <ModelVariables/>
+  <CoSimulation modelIdentifier="BadOrder"/>
+  <ModelStructure/>
+</fmiModelDescription>

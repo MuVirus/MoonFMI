@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XSD-valid but illegal per the FMI 2 initial table:
+     parameter + variability=continuous. -->
+<fmiModelDescription fmiVersion="2.0" modelName="BadCombo" guid="{md012-bad-01}">
+  <CoSimulation modelIdentifier="BadCombo"/>
+  <ModelVariables>
+    <ScalarVariable name="p" valueReference="0" causality="parameter" variability="continuous" initial="exact">
+      <Real start="0"/>
+    </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure/>
+</fmiModelDescription>

@@ -325,6 +325,8 @@ fn Fmi2Rules::check_variables(self : Fmi2Rules) -> Unit {
             column=variable.column,
           )
         }
+        // MD-016: the declared type must exist and be a Real type.
+        self.check_declared_type(variable, position + 1)
       }
       Integer(attrs) => {
         match (attrs.min, attrs.max) {
@@ -1297,7 +1299,7 @@ fn Fmi3Rules::check_variables(self : Fmi3Rules) -> Unit {
             )
         }
       }
-      Clock(attrs) => {
+      Clock(attrs) =>
         // MD-033: intervalVariability required.
         match attrs.interval_variability {
           Some(variability) => {
@@ -1336,37 +1338,37 @@ fn Fmi3Rules::check_variables(self : Fmi3Rules) -> Unit {
               column=variable.column,
             )
         }
-        // MD-034: clocks references exist and name Clock variables.
-        match variable.clocks {
-          Some(list) =>
-            for clock_name in split_ws_list(list) {
-              match self.index.position_of_name(clock_name) {
-                Some(owner_position) => {
-                  let owner = self.model.variables[owner_position - 1]
-                  if !(owner.type_kind is Clock) {
-                    self.add(
-                      code="MD-034",
-                      message="clocks reference '\{clock_name}' is not a Clock variable",
-                      path~,
-                      line=variable.line,
-                      column=variable.column,
-                    )
-                  }
-                }
-                None =>
-                  self.add(
-                    code="MD-034",
-                    message="clocks reference '\{clock_name}' does not match any variable",
-                    path~,
-                    line=variable.line,
-                    column=variable.column,
-                  )
+      _ => ()
+    }
+    // MD-034: clocks references exist and name Clock variables. The
+    // attribute can appear on any variable kind, not only clocks.
+    match variable.clocks {
+      Some(list) =>
+        for clock_name in split_ws_list(list) {
+          match self.index.position_of_name(clock_name) {
+            Some(owner_position) => {
+              let owner = self.model.variables[owner_position - 1]
+              if !(owner.type_kind is Clock) {
+                self.add(
+                  code="MD-034",
+                  message="clocks reference '\{clock_name}' is not a Clock variable",
+                  path~,
+                  line=variable.line,
+                  column=variable.column,
+                )
               }
             }
-          None => ()
+            None =>
+              self.add(
+                code="MD-034",
+                message="clocks reference '\{clock_name}' does not match any variable",
+                path~,
+                line=variable.line,
+                column=variable.column,
+              )
+          }
         }
-      }
-      _ => ()
+      None => ()
     }
     // MD-019: canHandleMultipleSetPerTimeInstant only for inputs.
     match variable.can_handle_multiple_set_per_time_instant {

@@ -121,17 +121,31 @@ fn parse_fmi3_model(
                 had_start=event is Start(_),
               ),
             )
-          "UnitDefinitions" => units = parse_fmi3_units(cursor)
-          "TypeDefinitions" => types = parse_fmi3_type_definitions(cursor)
-          "LogCategories" => log_categories = parse_fmi2_log_categories(cursor)
+          "UnitDefinitions" =>
+            units = parse_fmi3_units(cursor, had_start=event is Start(_))
+          "TypeDefinitions" =>
+            types = parse_fmi3_type_definitions(
+              cursor,
+              had_start=event is Start(_),
+            )
+          "LogCategories" =>
+            log_categories = parse_fmi2_log_categories(
+              cursor,
+              had_start=event is Start(_),
+            )
           "DefaultExperiment" =>
             experiment = Some(parse_fmi2_experiment(element))
           "ModelVariables" => {
-            variables = parse_fmi3_variables(cursor)
+            variables = parse_fmi3_variables(
+              cursor,
+              had_start=event is Start(_),
+            )
             seen_variables = true
           }
           "ModelStructure" => {
-            structure = Some(parse_fmi3_model_structure(cursor))
+            structure = Some(
+              parse_fmi3_model_structure(cursor, had_start=event is Start(_)),
+            )
             seen_structure = true
           }
           "Annotations" =>
@@ -321,9 +335,16 @@ fn parse_fmi3_interface(
 }
 
 ///|
-fn parse_fmi3_units(cursor : Cursor) -> Array[UnitDef] raise SchemaError {
+fn parse_fmi3_units(
+  cursor : Cursor,
+  had_start~ : Bool,
+) -> Array[UnitDef] raise SchemaError {
   let units : Array[UnitDef] = []
   let parent = cursor.path
+  if !had_start {
+    cursor.set_path(parent)
+    return units
+  }
   while true {
     match cursor.peek() {
       Eof =>
@@ -475,9 +496,14 @@ fn fmi3_type_kind_of(element_name : String) -> Fmi3TypeKind? {
 ///|
 fn parse_fmi3_type_definitions(
   cursor : Cursor,
+  had_start~ : Bool,
 ) -> Array[Fmi3TypeDefinition] raise SchemaError {
   let definitions : Array[Fmi3TypeDefinition] = []
   let parent = cursor.path
+  if !had_start {
+    cursor.set_path(parent)
+    return definitions
+  }
   while true {
     match cursor.peek() {
       Eof =>
@@ -741,9 +767,14 @@ fn parse_bool_start_list(
 ///|
 fn parse_fmi3_variables(
   cursor : Cursor,
+  had_start~ : Bool,
 ) -> Array[Fmi3Variable] raise SchemaError {
   let variables : Array[Fmi3Variable] = []
   let parent = cursor.path
+  if !had_start {
+    cursor.set_path(parent)
+    return variables
+  }
   while true {
     match cursor.peek() {
       Eof =>
@@ -963,6 +994,7 @@ fn parse_fmi3_dimension(
 ///|
 fn parse_fmi3_model_structure(
   cursor : Cursor,
+  had_start~ : Bool,
 ) -> Fmi3ModelStructure raise SchemaError {
   let parent = cursor.path
   let outputs : Array[Fmi3Unknown] = []
@@ -971,6 +1003,16 @@ fn parse_fmi3_model_structure(
   let initial_unknowns : Array[Fmi3Unknown] = []
   let event_indicators : Array[Fmi3Unknown] = []
   let mut order_index = 0
+  if !had_start {
+    cursor.set_path(parent)
+    return {
+      outputs,
+      continuous_state_derivatives: derivatives,
+      clocked_states,
+      initial_unknowns,
+      event_indicators,
+    }
+  }
   while true {
     match cursor.peek() {
       Eof =>

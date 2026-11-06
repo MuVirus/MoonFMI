@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XSD violation: ModelStructure is mandatory in FMI 2. -->
+<fmiModelDescription fmiVersion="2.0" modelName="NoStructure" guid="{missing-struct}">
+  <CoSimulation modelIdentifier="NoStructure"/>
+  <ModelVariables/>
+</fmiModelDescription>

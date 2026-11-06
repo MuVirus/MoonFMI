@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XSD-valid but the dimension reference targets a parameter, not a
+     structuralParameter (MD-031). -->
+<fmiModelDescription fmiVersion="3.0" modelName="BadDim" instantiationToken="{md031-bad-1}">
+  <CoSimulation modelIdentifier="BadDim"/>
+  <ModelVariables>
+    <UInt32 name="n" valueReference="5" causality="parameter" variability="fixed" start="2"/>
+    <Float64 name="v" valueReference="0" causality="output" variability="continuous" initial="calculated">
+      <Dimension valueReference="5"/>
+    </Float64>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="0"/>
+  </ModelStructure>
+</fmiModelDescription>

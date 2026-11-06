@@ -359,16 +359,79 @@ fn convert_span(span : @xml_lib.SourceSpan) -> XmlSpan {
 }
 
 ///|
+/// Reject DOCTYPE declarations. The scan only covers the prologue (before
+/// the root element), so the cost is bounded by the header size instead of
+/// the whole document — a 2 MB model description no longer pays a full
+/// O(n) scan (risk R-05 / R-10).
 fn reject_doctype(input : String) -> Unit raise XmlError {
-  let needle = "<!DOCTYPE"
+  let n = input.length()
   let mut index = 0
-  while index + needle.length() <= input.length() {
-    if is_doctype_at(input, index) {
-      let position = position_at(input, index)
-      raise DoctypeNotAllowed(line=position.0, column=position.1)
+  while index < n {
+    if input[index] != 60 {
+      // 60 == '<'
+      index += 1
+      continue
+    }
+    if index + 1 >= n {
+      return
+    }
+    let next = input[index + 1]
+    if next == 63 {
+      // 63 == '?': XML declaration or processing instruction; skip to '>'.
+      index = skip_prologue_token(input, index + 2, 62)
+    } else if next == 33 {
+      // 33 == '!': a comment or a DOCTYPE. Only a DOCTYPE can appear in
+      // the prologue; comments are skipped to their '-->' terminator.
+      if is_doctype_at(input, index) {
+        let position = position_at(input, index)
+        raise DoctypeNotAllowed(line=position.0, column=position.1)
+      }
+      if index + 3 <= n && input[index + 2] == 45 && input[index + 3] == 45 {
+        // 45 == '-': comment; skip past the first '-->'.
+        index = skip_comment_end(input, index + 4)
+      } else {
+        index = skip_prologue_token(input, index + 2, 62)
+      }
+    } else {
+      // The root element (or stray '</') starts here: the prologue is
+      // over and no DOCTYPE can appear afterwards.
+      return
+    }
+  }
+}
+
+///|
+/// Advance past the next occurrence of `terminator`, returning the index
+/// right after it (or the document length).
+fn skip_prologue_token(
+  input : String,
+  start : Int32,
+  terminator : Int32,
+) -> Int32 {
+  let n = input.length()
+  let mut index = start
+  while index < n {
+    if input[index] == terminator.to_uint16() {
+      return index + 1
     }
     index += 1
   }
+  n
+}
+
+///|
+/// Advance past the next '-->' sequence, returning the index right after
+/// it (or the document length).
+fn skip_comment_end(input : String, start : Int32) -> Int32 {
+  let n = input.length()
+  let mut index = start
+  while index + 2 < n {
+    if input[index] == 45 && input[index + 1] == 45 && input[index + 2] == 62 {
+      return index + 3
+    }
+    index += 1
+  }
+  n
 }
 
 ///|

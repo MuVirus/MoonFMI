@@ -3,3 +3,7 @@ import {
   "moonbitlang/core/string",
   "MuVirus/MoonFMI/src/xml",
 }
+
+import {
+  "moonbitlang/core/encoding/utf8",
+} for "wbtest"

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Security: the model identifier names a binary; path traversal must
+     be rejected (MD-062). -->
+<fmiModelDescription fmiVersion="2.0" modelName="Traversal" guid="{md062-bad-1}">
+  <CoSimulation modelIdentifier="../../windows/system32/cmd"/>
+  <ModelVariables/>
+  <ModelStructure/>
+</fmiModelDescription>

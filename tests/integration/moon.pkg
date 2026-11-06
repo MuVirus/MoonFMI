@@ -1,5 +1,7 @@
 import {
   "MuVirus/MoonFMI/src/backend/native" @native_backend,
+  "MuVirus/MoonFMI/src/fmi",
+  "MuVirus/MoonFMI/src/schema",
   "MuVirus/MoonFMI/src/xml",
   "MuVirus/MoonFMI/src/zip",
   "moonbitlang/core/encoding/utf8",
@@ -15,5 +17,7 @@ options(
   targets: {
     "perf_budget_debug.mbt": [ "debug" ],
     "perf_budget_release.mbt": [ "not", "debug" ],
+    "perf_validate_debug_wbtest.mbt": [ "debug" ],
+    "perf_validate_release_wbtest.mbt": [ "not", "debug" ],
   },
 )

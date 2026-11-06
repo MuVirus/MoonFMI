@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XSD violation: <Bogus> is not a legal root child. -->
+<fmiModelDescription fmiVersion="2.0" modelName="Unknown" guid="{unknown-000001}">
+  <CoSimulation modelIdentifier="Unknown"/>
+  <Bogus/>
+  <ModelVariables/>
+  <ModelStructure/>
+</fmiModelDescription>

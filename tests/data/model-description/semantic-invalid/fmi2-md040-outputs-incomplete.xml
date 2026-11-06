@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XSD-valid but Outputs misses the second output variable (MD-040). -->
+<fmiModelDescription fmiVersion="2.0" modelName="BadOutputs" guid="{md040-bad-01}">
+  <CoSimulation modelIdentifier="BadOutputs"/>
+  <ModelVariables>
+    <ScalarVariable name="a" valueReference="0" causality="output" variability="continuous" initial="calculated">
+      <Real/>
+    </ScalarVariable>
+    <ScalarVariable name="b" valueReference="1" causality="output" variability="continuous" initial="calculated">
+      <Real/>
+    </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs>
+      <Unknown index="1"/>
+    </Outputs>
+  </ModelStructure>
+</fmiModelDescription>

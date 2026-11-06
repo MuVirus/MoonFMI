@@ -160,9 +160,18 @@ fn parse_fmi2_model(
                 had_start=event is Start(_),
               ),
             )
-          "UnitDefinitions" => units = parse_fmi2_units(cursor)
-          "TypeDefinitions" => types = parse_fmi2_type_definitions(cursor)
-          "LogCategories" => log_categories = parse_fmi2_log_categories(cursor)
+          "UnitDefinitions" =>
+            units = parse_fmi2_units(cursor, had_start=event is Start(_))
+          "TypeDefinitions" =>
+            types = parse_fmi2_type_definitions(
+              cursor,
+              had_start=event is Start(_),
+            )
+          "LogCategories" =>
+            log_categories = parse_fmi2_log_categories(
+              cursor,
+              had_start=event is Start(_),
+            )
           "DefaultExperiment" =>
             experiment = Some(parse_fmi2_experiment(element))
           "VendorAnnotations" =>
@@ -170,11 +179,16 @@ fn parse_fmi2_model(
               cursor.skip_subtree("VendorAnnotations")
             }
           "ModelVariables" => {
-            variables = parse_fmi2_variables(cursor)
+            variables = parse_fmi2_variables(
+              cursor,
+              had_start=event is Start(_),
+            )
             seen_variables = true
           }
           "ModelStructure" => {
-            structure = Some(parse_fmi2_model_structure(cursor))
+            structure = Some(
+              parse_fmi2_model_structure(cursor, had_start=event is Start(_)),
+            )
             seen_structure = true
           }
           _ => abort("unreachable")
@@ -414,9 +428,16 @@ fn parse_fmi2_source_files(cursor : Cursor) -> Array[String] raise SchemaError {
 }
 
 ///|
-fn parse_fmi2_units(cursor : Cursor) -> Array[UnitDef] raise SchemaError {
+fn parse_fmi2_units(
+  cursor : Cursor,
+  had_start~ : Bool,
+) -> Array[UnitDef] raise SchemaError {
   let units : Array[UnitDef] = []
   let parent = cursor.path
+  if !had_start {
+    cursor.set_path(parent)
+    return units
+  }
   while true {
     match cursor.peek() {
       Eof =>
@@ -564,9 +585,14 @@ fn parse_fmi2_display_unit(
 ///|
 fn parse_fmi2_type_definitions(
   cursor : Cursor,
+  had_start~ : Bool,
 ) -> Array[Fmi2TypeDefinition] raise SchemaError {
   let definitions : Array[Fmi2TypeDefinition] = []
   let parent = cursor.path
+  if !had_start {
+    cursor.set_path(parent)
+    return definitions
+  }
   while true {
     match cursor.peek() {
       Eof =>
@@ -791,9 +817,14 @@ fn parse_fmi2_enum_items(
 ///|
 fn parse_fmi2_log_categories(
   cursor : Cursor,
+  had_start~ : Bool,
 ) -> Array[LogCategory] raise SchemaError {
   let categories : Array[LogCategory] = []
   let parent = cursor.path
+  if !had_start {
+    cursor.set_path(parent)
+    return categories
+  }
   while true {
     match cursor.peek() {
       Eof =>
@@ -860,9 +891,14 @@ let fmi2_scalar_variable_attrs : Array[String] = [
 ///|
 fn parse_fmi2_variables(
   cursor : Cursor,
+  had_start~ : Bool,
 ) -> Array[Fmi2ScalarVariable] raise SchemaError {
   let variables : Array[Fmi2ScalarVariable] = []
   let parent = cursor.path
+  if !had_start {
+    cursor.set_path(parent)
+    return variables
+  }
   while true {
     match cursor.peek() {
       Eof =>
@@ -978,11 +1014,16 @@ fn parse_fmi2_variables(
 ///|
 fn parse_fmi2_model_structure(
   cursor : Cursor,
+  had_start~ : Bool,
 ) -> Fmi2ModelStructure raise SchemaError {
   let parent = cursor.path
   let mut outputs : Array[Fmi2Unknown] = []
   let mut derivatives : Array[Fmi2Unknown] = []
   let mut initial_unknowns : Array[Fmi2Unknown] = []
+  if !had_start {
+    cursor.set_path(parent)
+    return { outputs: [], derivatives: [], initial_unknowns: [], }
+  }
   let mut order_index = 0
   while true {
     match cursor.peek() {

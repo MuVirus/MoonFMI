@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XSD-valid but min > max (MD-014) and nominal <= 0. -->
+<fmiModelDescription fmiVersion="2.0" modelName="BadBounds" guid="{md014-bad-01}">
+  <CoSimulation modelIdentifier="BadBounds"/>
+  <ModelVariables>
+    <ScalarVariable name="y" valueReference="0" causality="output" variability="continuous" initial="calculated">
+      <Real min="5" max="1" nominal="0"/>
+    </ScalarVariable>
+  </ModelVariables>
+  <ModelStructure>
+    <Outputs>
+      <Unknown index="1"/>
+    </Outputs>
+  </ModelStructure>
+</fmiModelDescription>

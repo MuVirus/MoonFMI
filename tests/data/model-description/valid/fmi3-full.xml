@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="3.0" modelName="Full3" instantiationToken="{00000000-0000-0000-0000-00000000ful3}">
+  <ModelExchange modelIdentifier="Full3" needsCompletedIntegratorStep="true"/>
+  <CoSimulation modelIdentifier="Full3" hasEventMode="true"/>
+  <TypeDefinitions>
+    <EnumerationType name="Mode">
+      <Item name="Off" value="0"/>
+      <Item name="On" value="1"/>
+    </EnumerationType>
+  </TypeDefinitions>
+  <ModelVariables>
+    <UInt32 name="n" valueReference="0" causality="structuralParameter" variability="fixed" start="3"/>
+    <Float64 name="vec" valueReference="1" causality="output" variability="continuous" initial="calculated">
+      <Dimension valueReference="0"/>
+      <Alias name="v" description="velocity alias"/>
+    </Float64>
+    <Float64 name="h" valueReference="2" causality="output" variability="continuous" initial="exact" start="1" reinit="true"/>
+    <Float64 name="der(h)" valueReference="3" causality="local" variability="continuous" initial="calculated" derivative="2"/>
+    <Clock name="tick" valueReference="4" causality="parameter" variability="tunable" intervalVariability="constant" intervalDecimal="0.1"/>
+    <Enumeration name="mode" valueReference="5" causality="parameter" variability="fixed" declaredType="Mode" start="1"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="1"/>
+    <Output valueReference="3"/>
+    <ContinuousStateDerivative valueReference="3"/>
+    <InitialUnknown valueReference="1"/>
+    <InitialUnknown valueReference="3"/>
+    <EventIndicator valueReference="1"/>
+  </ModelStructure>
+</fmiModelDescription>
