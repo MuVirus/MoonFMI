@@ -1,6 +1,5 @@
 ///|
-test "model description keeps its version" {
-  let model = ModelDescription::empty(FmiVersion::V3)
-  assert_eq(model.version, FmiVersion::V3)
-  assert_eq(model.model_name, "")
+test "fmi version identity attribute" {
+  assert_eq(FmiVersion::V2.identity_attribute(), "guid")
+  assert_eq(FmiVersion::V3.identity_attribute(), "instantiationToken")
 }

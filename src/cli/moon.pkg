@@ -1,4 +1,4 @@
 import {
-  "MuVirus/MoonFMI/src/export",
-  "MuVirus/MoonFMI/src/sim",
+  "MuVirus/MoonFMI/src/fmi",
+  "MuVirus/MoonFMI/src/schema",
 }

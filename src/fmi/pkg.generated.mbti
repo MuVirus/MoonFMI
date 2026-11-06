@@ -7,6 +7,9 @@ import {
 }
 
 // Values
+pub fn is_zip_archive(Bytes) -> Bool
+
+pub fn validate_fmu_bytes(Bytes) -> (@schema.ModelDescription?, @schema.ValidationReport)
 
 // Errors
 
