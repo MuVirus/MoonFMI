@@ -15,7 +15,7 @@ const allowed = {
   "src/xml": [],
   "src/schema": ["src/xml"],
   "src/fmi": ["src/schema", "src/zip"],
-  "src/backend/native": ["src/fmi"],
+  "src/backend/native": ["src/fmi", "src/schema", "src/zip"],
   "src/backend/wasm": ["src/fmi"],
   "src/sim": ["src/fmi"],
   "src/export": ["src/schema", "src/zip"],
@@ -34,6 +34,7 @@ const allowed = {
 const targetRules = {
   "src/backend/native": "native",
   "src/backend/wasm": "wasm",
+  "src/cli": "native",
 };
 
 function readPackageConfig(dir) {

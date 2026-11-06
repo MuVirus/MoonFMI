@@ -4,14 +4,44 @@ package "MuVirus/MoonFMI/src/fmi"
 import {
   "MuVirus/MoonFMI/src/schema",
   "MuVirus/MoonFMI/src/zip",
+  "moonbitlang/core/debug",
 }
 
 // Values
+pub fn extract_fmu_to_directory(@zip.ZipArchive, String) -> Array[String] raise ExtractionError
+
+pub fn fmi2_platform_dir(HostPlatform) -> String
+
+pub fn fmi3_platform_dir(HostPlatform) -> String
+
 pub fn is_zip_archive(Bytes) -> Bool
+
+pub fn library_extension(HostPlatform) -> String
+
+pub fn list_platform_dirs(Array[String]) -> Array[String]
+
+pub fn parse_host_platform(String) -> HostPlatform?
+
+pub fn platform_dir(@schema.FmiVersion, HostPlatform) -> String
+
+pub fn remove_directory_best_effort(String, Array[String]) -> Unit
+
+pub fn select_platform(Array[String], @schema.FmiVersion, model_identifier~ : String, host~ : HostPlatform, requested~ : String?) -> (String, String) raise PlatformSelectionError
 
 pub fn validate_fmu_bytes(Bytes) -> (@schema.ModelDescription?, @schema.ValidationReport)
 
 // Errors
+type ExtractionError
+pub fn ExtractionError::message(Self) -> String
+
+type PlatformSelectionError
+pub fn PlatformSelectionError::message(Self) -> String
+
+pub(all) suberror SimulationError {
+  Config(detail~ : String)
+  FmiCall(operation~ : String, detail~ : String)
+}
+pub fn SimulationError::message(Self) -> String
 
 // Types and methods
 pub(all) enum FmiStatus {
@@ -38,6 +68,34 @@ pub fn Fmu::name(Self) -> String
 pub fn Fmu::placeholder() -> Self
 pub fn Fmu::version(Self) -> @schema.FmiVersion
 
+#derive(Eq, @debug.Debug)
+pub(all) enum HostOs {
+  Windows
+  Linux
+  Darwin
+}
+pub fn HostOs::equal(Self, Self) -> Bool
+pub fn HostOs::not_equal(Self, Self) -> Bool
+pub fn HostOs::to_repr(Self) -> @debug.Repr
+
+#derive(Eq, @debug.Debug)
+pub struct HostPlatform {
+  os : HostOs
+  cpu : String
+  bits : Int32
+}
+pub fn HostPlatform::equal(Self, Self) -> Bool
+pub fn HostPlatform::not_equal(Self, Self) -> Bool
+pub fn HostPlatform::to_repr(Self) -> @debug.Repr
+
 // Type aliases
 
 // Traits
+pub(open) trait CsInstance {
+  fn setup_experiment(Self, start~ : Double, stop~ : Double?) -> Unit raise SimulationError
+  fn initialize(Self) -> Unit raise SimulationError
+  fn step(Self, Double, Double) -> Unit raise SimulationError
+  fn read_real(Self, UInt32) -> Double raise SimulationError
+  fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
+  fn finish(Self) -> Unit raise SimulationError
+}

@@ -220,3 +220,29 @@ moonfmi_dl_last_error(void) {
   free(text);
   return bytes;
 }
+
+MOONBIT_FFI_EXPORT
+moonbit_bytes_t
+moonfmi_dl_host_platform(void) {
+#if defined(_WIN32) || defined(_WIN64)
+#if defined(_M_ARM64) || defined(__aarch64__)
+  return moonfmi_bytes_from_string("windows-arm64");
+#else
+  return moonfmi_bytes_from_string("windows-x64");
+#endif
+#elif defined(__APPLE__)
+#if defined(__aarch64__) || defined(__ARM64ARCH__)
+  return moonfmi_bytes_from_string("darwin-arm64");
+#else
+  return moonfmi_bytes_from_string("darwin-x64");
+#endif
+#elif defined(__linux__) || defined(__unix__)
+#if defined(__aarch64__) || defined(__ARM_ARCH_8__)
+  return moonfmi_bytes_from_string("linux-arm64");
+#else
+  return moonfmi_bytes_from_string("linux-x64");
+#endif
+#else
+  return moonfmi_bytes_from_string("unknown");
+#endif
+}

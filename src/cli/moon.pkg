@@ -1,4 +1,11 @@
 import {
+  "moonbitlang/core/env",
+  "moonbitlang/core/string",
+  "moonbitlang/x/fs",
   "MuVirus/MoonFMI/src/fmi",
+  "MuVirus/MoonFMI/src/backend/native",
   "MuVirus/MoonFMI/src/schema",
+  "MuVirus/MoonFMI/src/sim",
 }
+
+supported_targets = "native"

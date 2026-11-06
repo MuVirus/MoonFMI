@@ -1,18 +1,4 @@
 ///|
-pub struct SimulationConfig {
-  fmu : @fmi.Fmu
-  stop_time : Double
-}
-
-///|
-pub fn SimulationConfig::default() -> SimulationConfig {
-  { fmu: @fmi.Fmu::placeholder(), stop_time: 10.0, }
-}
-
-///|
-pub fn SimulationConfig::new(
-  fmu : @fmi.Fmu,
-  stop_time : Double,
-) -> SimulationConfig {
-  { fmu, stop_time, }
-}
+/// The simulation package hosts the master algorithms (CS here, ME in
+/// P3). It only depends on the `CsInstance` trait from `src/fmi`, so it
+/// stays target-neutral and mock-testable.

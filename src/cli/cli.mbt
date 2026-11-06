@@ -19,6 +19,7 @@ pub fn usage() -> String {
   "Usage:\n" +
   "  moonfmi validate <file.fmu | modelDescription.xml> [--json] [--strict]\n" +
   "  moonfmi info <file.fmu | modelDescription.xml> [--json]\n" +
+  "  moonfmi simulate <file.fmu> [--start-time T] [--stop-time T] [--step-size H] [--output out.csv] [--json]\n" +
   "  moonfmi version\n" +
   "\n" +
   "Commands:\n" +
@@ -222,6 +223,9 @@ pub fn run(
   if command == "info" {
     return run_info(argv, 1, read_file)
   }
+  if command == "simulate" {
+    return run_simulate(argv, 1, read_file)
+  }
   println("moonfmi: unknown command '" + command + "'\n")
   println(usage())
   2
@@ -389,5 +393,294 @@ fn info_json(model : @schema.ModelDescription) -> String {
   builder.write_string(",\n  \"variables\": ")
   builder.write_string(model.variable_count().to_string())
   builder.write_string("\n}")
+  builder.to_string()
+}
+
+///|
+/// Parsed value flags of the simulate command. Missing values fall back
+/// to the model's DefaultExperiment, then to hard defaults.
+priv struct SimulateOptions {
+  mut start_time : Double?
+  mut stop_time : Double?
+  mut step_size : Double?
+  mut output : String?
+  mut platform_override : String?
+  mut json : Bool
+}
+
+///|
+/// Parse `--name value` pairs; a missing value is a usage error.
+fn parse_simulate_options(
+  args : Array[String],
+  skip : Int32,
+) -> (SimulateOptions, String?) {
+  let options : SimulateOptions = {
+    start_time: None,
+    stop_time: None,
+    step_size: None,
+    output: None,
+    platform_override: None,
+    json: false,
+  }
+  let mut index = skip
+  while index < args.length() {
+    let arg = args[index]
+    if arg == "--json" {
+      options.json = true
+      index += 1
+    } else if arg == "--start-time" ||
+      arg == "--stop-time" ||
+      arg == "--step-size" ||
+      arg == "--output" ||
+      arg == "--platform" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '" + arg + "' needs a value"))
+      }
+      let value = args[index + 1]
+      if arg == "--start-time" || arg == "--stop-time" || arg == "--step-size" {
+        let number = parse_simulation_double(value)
+        match number {
+          Some(number) =>
+            if arg == "--start-time" {
+              options.start_time = Some(number)
+            } else if arg == "--stop-time" {
+              options.stop_time = Some(number)
+            } else {
+              options.step_size = Some(number)
+            }
+          None => return (options, Some("'" + value + "' is not a number"))
+        }
+      } else if arg == "--output" {
+        options.output = Some(value)
+      } else {
+        options.platform_override = Some(value)
+      }
+      index += 2
+    } else {
+      return (options, Some("unknown argument '" + arg + "'"))
+    }
+  }
+  (options, None)
+}
+
+///|
+/// Parse a `--start-time` style value; accepts plain numbers only.
+fn parse_simulation_double(text : String) -> Double? {
+  Some(@string.parse_double(text) catch { _ => return None })
+}
+
+///|
+/// Value references and names of all FMI 2 Real outputs, in document
+/// order. These are the recorded series of a simulation.
+fn real_outputs(
+  model : @schema.Fmi2ModelDescription,
+) -> Array[(UInt32, String)] {
+  let outputs : Array[(UInt32, String)] = []
+  for variable in model.variables {
+    if variable.effective_causality() == Output {
+      match variable.payload {
+        Real(_attrs) => outputs.push((variable.value_reference, variable.name))
+        _ => ()
+      }
+    }
+  }
+  outputs
+}
+
+///|
+/// Render one double for CSV output. Uses shortest round-trip form.
+fn csv_double(value : Double) -> String {
+  value.to_string()
+}
+
+///|
+/// Render the whole result as CSV with a header row.
+fn result_csv(
+  model : @schema.Fmi2ModelDescription,
+  result : @sim.SimulationResult,
+) -> String {
+  let outputs = real_outputs(model)
+  let builder = StringBuilder()
+  builder.write_string("time")
+  for output in outputs {
+    builder.write_string(",")
+    builder.write_string(output.1)
+  }
+  builder.write_string("\n")
+  for row, time in result.times() {
+    builder.write_string(csv_double(time))
+    for index = 0; index < outputs.length(); index = index + 1 {
+      builder.write_string(",")
+      builder.write_string(csv_double(result.series()[index][row]))
+    }
+    builder.write_string("\n")
+  }
+  builder.to_string()
+}
+
+///|
+fn run_simulate(
+  argv : Array[String],
+  skip : Int32,
+  read_file : (String) -> Bytes raise ReadError,
+) -> Int32 {
+  if skip >= argv.length() {
+    println("moonfmi simulate: missing file argument\n")
+    println(usage())
+    return 2
+  }
+  let (options, error) = parse_simulate_options(argv, skip + 1)
+  if error is Some(message) {
+    println("moonfmi simulate: \{message}\n")
+    println(usage())
+    return 2
+  }
+  let path = argv[skip]
+  let data = read_file(path) catch {
+    error =>
+      match error {
+        Failed(message) => {
+          println("moonfmi: cannot read '" + path + "': " + message)
+          return 3
+        }
+      }
+  }
+  let host_name = @native.host_platform_name()
+  let host = match @fmi.parse_host_platform(host_name) {
+    Some(host) => host
+    None => {
+      println("moonfmi: unknown host platform '\{host_name}'")
+      return 1
+    }
+  }
+  // Private working directory, created fresh for every run.
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let directory = ".moonfmi-tmp/run-\{@env.now()}"
+  let loaded = match options.platform_override {
+    Some(requested) =>
+      @native.load_fmi2_fmu(
+        data,
+        host~,
+        temp_directory=directory,
+        platform_override=requested,
+      ) catch {
+        error => {
+          println("moonfmi: \{error.message()}")
+          return 1
+        }
+      }
+    None =>
+      @native.load_fmi2_fmu(data, host~, temp_directory=directory) catch {
+        error => {
+          println("moonfmi: \{error.message()}")
+          return 1
+        }
+      }
+  }
+  let outputs = real_outputs(loaded.model())
+  let references : Array[UInt32] = []
+  for output in outputs {
+    references.push(output.0)
+  }
+  // Step size: flag first, then the model's default experiment, then 0.01.
+  let step_size = match options.step_size {
+    Some(value) => value
+    None =>
+      match loaded.model().default_experiment {
+        Some(experiment) => experiment.step_size.unwrap_or(0.01)
+        None => 0.01
+      }
+  }
+  let stop_time = match options.stop_time {
+    Some(value) => value
+    None =>
+      match loaded.model().default_experiment {
+        Some(experiment) => experiment.stop_time.unwrap_or(1.0)
+        None => 1.0
+      }
+  }
+  let start_time = options.start_time.unwrap_or(0.0)
+  let config = @sim.CsConfig::new(
+    start_time~,
+    stop_time~,
+    step_size~,
+    record=references,
+  )
+  let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
+    error => {
+      println("moonfmi: simulation failed: \{error.message()}")
+      loaded.dispose()
+      return 1
+    }
+  }
+  let csv = result_csv(loaded.model(), result)
+  loaded.dispose()
+  match options.output {
+    Some(file) => {
+      @fs.write_string_to_file(file, csv) catch {
+        error =>
+          match error {
+            @fs.IOError(message) => {
+              println("moonfmi: cannot write '\{file}': \{message}")
+              return 1
+            }
+          }
+      }
+      if options.json {
+        println(
+          simulate_json(path, start_time, stop_time, step_size, outputs, result),
+        )
+      } else {
+        println(
+          "simulated \{path}: \{result.steps()} steps from \{start_time} to \{stop_time}, \{outputs.length()} output(s), CSV written to \{file}",
+        )
+      }
+    }
+    None =>
+      // Without --output the CSV goes to stdout so the result is usable
+      // in pipes; --json replaces it with a summary object.
+      if options.json {
+        println(
+          simulate_json(path, start_time, stop_time, step_size, outputs, result),
+        )
+      } else {
+        println(csv)
+      }
+  }
+  0
+}
+
+///|
+fn simulate_json(
+  path : String,
+  start_time : Double,
+  stop_time : Double,
+  step_size : Double,
+  outputs : Array[(UInt32, String)],
+  result : @sim.SimulationResult,
+) -> String {
+  let builder = StringBuilder()
+  builder.write_string("{\n  \"file\": ")
+  builder.write_string(json_string(path))
+  builder.write_string(",\n  \"startTime\": ")
+  builder.write_string(csv_double(start_time))
+  builder.write_string(",\n  \"stopTime\": ")
+  builder.write_string(csv_double(stop_time))
+  builder.write_string(",\n  \"stepSize\": ")
+  builder.write_string(csv_double(step_size))
+  builder.write_string(",\n  \"steps\": ")
+  builder.write_string(result.steps().to_string())
+  builder.write_string(",\n  \"samples\": ")
+  builder.write_string(result.times().length().to_string())
+  builder.write_string(",\n  \"outputs\": [")
+  for index, output in outputs {
+    if index > 0 {
+      builder.write_string(", ")
+    }
+    builder.write_string(json_string(output.1))
+  }
+  builder.write_string("]\n}")
   builder.to_string()
 }

@@ -2,6 +2,7 @@ import {
   "MuVirus/MoonFMI/src/backend/native" @native_backend,
   "MuVirus/MoonFMI/src/fmi",
   "MuVirus/MoonFMI/src/schema",
+  "MuVirus/MoonFMI/src/sim",
   "MuVirus/MoonFMI/src/xml",
   "MuVirus/MoonFMI/src/zip",
   "moonbitlang/core/encoding/utf8",

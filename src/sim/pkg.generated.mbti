@@ -6,16 +6,27 @@ import {
 }
 
 // Values
+pub fn run_cs_simulation(&@fmi.CsInstance, config~ : CsConfig) -> SimulationResult raise @fmi.SimulationError
 
 // Errors
 
 // Types and methods
-pub struct SimulationConfig {
-  fmu : @fmi.Fmu
+pub struct CsConfig {
+  start_time : Double
   stop_time : Double
+  step_size : Double
+  record : Array[UInt32]
 }
-pub fn SimulationConfig::default() -> Self
-pub fn SimulationConfig::new(@fmi.Fmu, Double) -> Self
+pub fn CsConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32]) -> Self
+
+pub(all) struct SimulationResult {
+  times : Array[Double]
+  series : Array[Array[Double]]
+  steps : Int32
+}
+pub fn SimulationResult::series(Self) -> Array[Array[Double]]
+pub fn SimulationResult::steps(Self) -> Int32
+pub fn SimulationResult::times(Self) -> Array[Double]
 
 // Type aliases
 
