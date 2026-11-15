@@ -18,8 +18,9 @@ pub struct CsConfig {
   stop_time : Double
   step_size : Double
   record : Array[UInt32]
+  deadline : UInt64?
 }
-pub fn CsConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32]) -> Self
+pub fn CsConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], deadline? : UInt64?) -> Self
 
 pub struct MeConfig {
   start_time : Double
@@ -30,8 +31,9 @@ pub struct MeConfig {
   state_count : Int32
   event_indicator_count : Int32
   max_event_iterations : Int32
+  deadline : UInt64?
 }
-pub fn MeConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], solver? : MeSolver, state_count~ : Int32, event_indicator_count~ : Int32, max_event_iterations? : Int32) -> Self
+pub fn MeConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], solver? : MeSolver, state_count~ : Int32, event_indicator_count~ : Int32, max_event_iterations? : Int32, deadline? : UInt64?) -> Self
 
 pub(all) enum MeSolver {
   Euler

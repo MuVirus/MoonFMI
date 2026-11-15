@@ -6,6 +6,8 @@ import {
   "MuVirus/MoonFMI/src/backend/native",
   "MuVirus/MoonFMI/src/schema",
   "MuVirus/MoonFMI/src/sim",
+  "MuVirus/MoonFMI/src/zip",
+  "moonbitlang/x/crypto",
 }
 
 supported_targets = "native"

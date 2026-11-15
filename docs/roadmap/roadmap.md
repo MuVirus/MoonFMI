@@ -225,12 +225,18 @@
 
 ### 退出标准
 
-- [ ] 所有命令有 `--help` 和示例；
-- [ ] 退出码矩阵测试；
-- [ ] JSON 输出向后兼容；
-- [ ] 打包产物可被 FMPy 打开；
-- [ ] 诊断信息能直接定位到字段/变量；
-- [ ] 新用户按 README 能在 10 分钟内跑通一个示例。
+- [x] 所有命令有 `--help` 和示例（validate/info/simulate/package 逐命令
+      help，usage 含全局示例与退出码表）；
+- [x] 退出码矩阵测试（0–7，见 `src/cli/cli_wbtest.mbt` 与
+      `tests/integration/package_wbtest.mbt`；5 由失败映射路径保证）；
+- [x] JSON 输出向后兼容（全部输出带 `schema` 版本字段，契约见
+      [`../cli-json.md`](../cli-json.md)，测试锁定）；
+- [x] 打包产物可被 FMPy 打开（标准 ZIP 布局 + MoonFMI 回读验证 + 确定性
+      哈希；FMPy 实测归入 P8 交叉检查）；
+- [x] 诊断信息能直接定位到字段/变量（MD 规则带 path/line/column/hint，
+      package/加载错误带条目路径与建议）；
+- [x] 新用户按 README 能在 10 分钟内跑通一个示例（快速上手四步全部
+      实测通过，见 records/2026-11-15）。
 
 ---
 

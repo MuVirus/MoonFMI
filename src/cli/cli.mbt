@@ -14,20 +14,115 @@ pub(all) suberror ReadError {
 ///|
 /// Print the one-page usage text.
 pub fn usage() -> String {
-  "moonfmi — FMI model description tool\n" +
+  "moonfmi — FMI co-simulation tool\n" +
   "\n" +
   "Usage:\n" +
-  "  moonfmi validate <file.fmu | modelDescription.xml> [--json] [--strict]\n" +
-  "  moonfmi info <file.fmu | modelDescription.xml> [--json]\n" +
-  "  moonfmi simulate <file.fmu> [--interface cs|me] [--solver euler|rk4] [--start-time T] [--stop-time T] [--step-size H] [--output out.csv] [--json]\n" +
+  "  moonfmi validate <fmu | modelDescription.xml> [--json] [--strict]\n" +
+  "  moonfmi info <fmu | modelDescription.xml> [--json]\n" +
+  "  moonfmi simulate <fmu> [--interface cs|me] [--solver euler|rk4]\n" +
+  "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
+  "                  [--output out.csv] [--timeout SEC] [--backend native|wasm]\n" +
+  "                  [--platform DIR] [--json]\n" +
+  "  moonfmi package <dir> [--output model.fmu] [--platform DIR] [--json]\n" +
+  "  moonfmi doctor [--json]\n" +
+  "  moonfmi completion <bash|zsh|pwsh>\n" +
   "  moonfmi version\n" +
   "\n" +
   "Commands:\n" +
-  "  validate   Parse and semantically validate the model description (rules MD-001..MD-063)\n" +
-  "  info       Print a summary of the model description\n" +
-  "  simulate   Run a co-simulation (cs) or model-exchange (me) simulation\n" +
+  "  validate     Static model description checks, rules MD-001..MD-063 (no FMU execution)\n" +
+  "  info         Model summary: interfaces, variables, type distribution, binaries\n" +
+  "  simulate     Run a co-simulation (cs) or model-exchange (me) simulation\n" +
+  "  package      Build a deterministic FMU archive from a directory\n" +
+  "  doctor       Check the local environment\n" +
   "\n" +
-  "Exit codes: 0 valid, 1 invalid, 2 usage, 3 unreadable file\n"
+  "Examples:\n" +
+  "  moonfmi validate BouncingBall.fmu --strict\n" +
+  "  moonfmi info BouncingBall.fmu --json\n" +
+  "  moonfmi simulate BouncingBall.fmu --stop-time 3 --step-size 0.01 --output ball.csv\n" +
+  "  moonfmi simulate VanDerPol.fmu --interface me --solver rk4 --stop-time 5\n" +
+  "  moonfmi package build/MyModel --output dist/MyModel.fmu\n" +
+  "\n" +
+  "Exit codes:\n" +
+  "  0 success  1 general error / invalid  2 usage error  3 unreadable file\n" +
+  "  4 unsupported (version/interface/platform/backend)  5 simulation failure\n" +
+  "  6 timeout  7 environment missing\n"
+}
+
+///|
+/// Per-command help text (exit 0 on `moonfmi <command> --help`).
+fn command_help(command : String) -> String {
+  match command {
+    "validate" =>
+      "moonfmi validate — validate a model description (static, never loads the FMU binary)\n" +
+      "\n" +
+      "Usage:\n" +
+      "  moonfmi validate <file.fmu | modelDescription.xml> [--json] [--strict]\n" +
+      "\n" +
+      "Options:\n" +
+      "  --json     Stable JSON report (schema moonfmi.validate/v1)\n" +
+      "  --strict   Treat warnings as errors\n" +
+      "\n" +
+      "Example:\n" +
+      "  moonfmi validate BouncingBall.fmu --strict\n" +
+      "\n" +
+      "Exit codes: 0 valid, 1 invalid (or warnings under --strict), 2 usage, 3 unreadable file\n"
+    "info" =>
+      "moonfmi info — print a model description summary\n" +
+      "\n" +
+      "Usage:\n" +
+      "  moonfmi info <file.fmu | modelDescription.xml> [--json]\n" +
+      "\n" +
+      "Options:\n" +
+      "  --json     Stable JSON report (schema moonfmi.info/v1)\n" +
+      "\n" +
+      "Example:\n" +
+      "  moonfmi info BouncingBall.fmu --json\n" +
+      "\n" +
+      "Exit codes: 0 success, 1 invalid model description, 2 usage, 3 unreadable file\n"
+    "simulate" =>
+      "moonfmi simulate — run a co-simulation or model-exchange simulation\n" +
+      "\n" +
+      "Usage:\n" +
+      "  moonfmi simulate <file.fmu> [options]\n" +
+      "\n" +
+      "Options:\n" +
+      "  --interface cs|me    Co-simulation or model exchange (default cs)\n" +
+      "  --solver euler|rk4   ME integrator (default rk4; ignored for cs)\n" +
+      "  --start-time T       Start time (default 0 or the model's DefaultExperiment)\n" +
+      "  --stop-time T        Stop time (default 1.0 or the model's DefaultExperiment)\n" +
+      "  --step-size H        Step size (default 0.01 or the model's DefaultExperiment)\n" +
+      "  --output FILE        Write CSV to FILE instead of stdout\n" +
+      "  --timeout SEC        Abort when the run exceeds SEC seconds of wall clock\n" +
+      "  --backend NAME       native (default) or wasm; wasm is not supported yet\n" +
+      "  --platform DIR       Force a binaries/ platform directory\n" +
+      "  --json               Stable JSON summary (schema moonfmi.simulate/v1)\n" +
+      "\n" +
+      "Examples:\n" +
+      "  moonfmi simulate BouncingBall.fmu --stop-time 3 --step-size 0.01 --output ball.csv\n" +
+      "  moonfmi simulate VanDerPol.fmu --interface me --solver rk4 --stop-time 5\n" +
+      "\n" +
+      "Exit codes: 0 success, 1 load error, 2 usage, 3 unreadable file, 4 unsupported,\n" +
+      "5 simulation failure, 6 timeout\n"
+    "package" =>
+      "moonfmi package — build a deterministic FMU archive from a directory\n" +
+      "\n" +
+      "Usage:\n" +
+      "  moonfmi package <dir> [--output FILE.fmu] [--platform DIR] [--json]\n" +
+      "\n" +
+      "Options:\n" +
+      "  --output FILE   Archive path (default <modelName>.fmu in the working directory)\n" +
+      "  --platform DIR  Require binaries/DIR to exist (exit 4 when missing)\n" +
+      "  --json          Stable JSON report (schema moonfmi.package/v1)\n" +
+      "\n" +
+      "The archive is built deterministically: entries sorted by name, fixed\n" +
+      "timestamp, fixed attributes — the same input always yields the same bytes.\n" +
+      "\n" +
+      "Example:\n" +
+      "  moonfmi package build/MyModel --output dist/MyModel.fmu\n" +
+      "\n" +
+      "Exit codes: 0 success, 1 invalid, 2 usage, 3 unreadable input, 4 platform missing\n"
+    _ => "moonfmi: no help for '" + command + "'\n"
+  }
 }
 
 ///|
@@ -100,7 +195,9 @@ fn report_json(
   report : @schema.ValidationReport,
 ) -> String {
   let builder = StringBuilder()
-  builder.write_string("{\n  \"file\": ")
+  builder.write_string(
+    "{\n  \"schema\": \"moonfmi.validate/v1\",\n  \"file\": ",
+  )
   builder.write_string(json_string(file))
   builder.write_string(",\n  \"fmiVersion\": ")
   builder.write_string(
@@ -219,13 +316,54 @@ pub fn run(
     return 0
   }
   if command == "validate" {
+    if argv.length() > 1 && (argv[1] == "--help" || argv[1] == "-h") {
+      println(command_help("validate"))
+      return 0
+    }
     return run_validate(argv, 1, read_file)
   }
   if command == "info" {
+    if argv.length() > 1 && (argv[1] == "--help" || argv[1] == "-h") {
+      println(command_help("info"))
+      return 0
+    }
     return run_info(argv, 1, read_file)
   }
   if command == "simulate" {
+    if argv.length() > 1 && (argv[1] == "--help" || argv[1] == "-h") {
+      println(command_help("simulate"))
+      return 0
+    }
     return run_simulate(argv, 1, read_file)
+  }
+  if command == "package" {
+    if argv.length() > 1 && (argv[1] == "--help" || argv[1] == "-h") {
+      println(command_help("package"))
+      return 0
+    }
+    return run_package(argv, 1)
+  }
+  if command == "doctor" {
+    return run_doctor(argv, 1)
+  }
+  if command == "completion" {
+    if argv.length() < 2 {
+      println(
+        "moonfmi completion: missing shell argument (bash, zsh or pwsh)\n",
+      )
+      println(usage())
+      return 2
+    }
+    let shell = argv[1]
+    if shell != "bash" && shell != "zsh" && shell != "pwsh" {
+      println(
+        "moonfmi completion: unknown shell '\{shell}' (use bash, zsh or pwsh)\n",
+      )
+      println(usage())
+      return 2
+    }
+    println(completion_script(shell))
+    return 0
   }
   println("moonfmi: unknown command '" + command + "'\n")
   println(usage())
@@ -307,9 +445,9 @@ fn run_info(
   match model {
     Some(model) => {
       if json {
-        println(info_json(model))
+        println(info_json(model, data))
       } else {
-        for line in info_text(model) {
+        for line in info_text(model, data) {
           println(line)
         }
         if !report.is_valid() {
@@ -334,7 +472,81 @@ fn run_info(
 }
 
 ///|
-fn info_text(model : @schema.ModelDescription) -> Array[String] {
+/// Distinct platform directories under `binaries/`, in archive order.
+fn platform_directories(data : Bytes) -> Array[String] {
+  let found : Array[String] = []
+  let archive = @zip.ZipArchive::open(data) catch { _ => return found }
+  for entry in archive.entries() {
+    let name = entry.name()
+    if name.has_prefix("binaries/") {
+      let rest = name.substring(start=9)
+      // Manual scan for the first '/' (String has no indexOf here).
+      let mut slash = -1
+      for index, ch in rest {
+        if ch == '/' {
+          slash = index
+          break
+        }
+      }
+      if slash > 0 {
+        let directory = rest.substring(end=slash)
+        let mut seen = false
+        for existing in found {
+          if existing == directory {
+            seen = true
+          }
+        }
+        if !seen {
+          found.push(directory)
+        }
+      }
+    }
+  }
+  found
+}
+
+///|
+/// Variable type distribution in document order, rendered as
+/// `name count` pairs.
+fn type_distribution(
+  model : @schema.ModelDescription,
+) -> Array[(String, Int32)] {
+  let distribution : Array[(String, Int32)] = []
+  let bump = fn(name : String) {
+    let mut seen = false
+    for index, entry in distribution {
+      if entry.0 == name {
+        distribution[index] = (entry.0, entry.1 + 1)
+        seen = true
+      }
+    }
+    if !seen {
+      distribution.push((name, 1))
+    }
+  }
+  match model {
+    V2(m) =>
+      for variable in m.variables {
+        bump(
+          match variable.payload {
+            Real(_) => "real"
+            Integer(_) => "integer"
+            Boolean(_) => "boolean"
+            Str(_) => "string"
+            Enumeration(_) => "enumeration"
+          },
+        )
+      }
+    V3(m) =>
+      for variable in m.variables {
+        bump(variable.type_kind.name())
+      }
+  }
+  distribution
+}
+
+///|
+fn info_text(model : @schema.ModelDescription, data : Bytes) -> Array[String] {
   let lines : Array[String] = []
   lines.push("modelName: \{model.model_name()}")
   lines.push("fmiVersion: \{model.fmi_version_text()}")
@@ -364,6 +576,21 @@ fn info_text(model : @schema.ModelDescription) -> Array[String] {
       lines.push("defaultExperiment: \{experiment_text(m.default_experiment)}")
     }
   }
+  let distribution = type_distribution(model)
+  if distribution.length() > 0 {
+    let rendered : Array[String] = []
+    for entry in distribution {
+      rendered.push("\{entry.0} \{entry.1}")
+    }
+    lines.push("variableTypes: \{rendered.join(", ")}")
+  }
+  let platforms = platform_directories(data)
+  if platforms.length() > 0 {
+    lines.push("platforms: \{platforms.join(", ")}")
+  } else {
+    lines.push("platforms: none (source or description only)")
+  }
+  lines.push("sha256: \{sha256_hex(data)}")
   lines
 }
 
@@ -385,14 +612,37 @@ fn show_opt_double(value : Double?) -> String {
 }
 
 ///|
-fn info_json(model : @schema.ModelDescription) -> String {
+fn info_json(model : @schema.ModelDescription, data : Bytes) -> String {
   let builder = StringBuilder()
-  builder.write_string("{\n  \"modelName\": ")
+  builder.write_string("{\n  \"schema\": \"moonfmi.info/v1\"")
+  builder.write_string(",\n  \"modelName\": ")
   builder.write_string(json_string(model.model_name()))
   builder.write_string(",\n  \"fmiVersion\": ")
   builder.write_string(json_string(model.fmi_version_text()))
   builder.write_string(",\n  \"variables\": ")
   builder.write_string(model.variable_count().to_string())
+  builder.write_string(",\n  \"variableTypes\": {")
+  let distribution = type_distribution(model)
+  for index, entry in distribution {
+    if index > 0 {
+      builder.write_string(", ")
+    }
+    builder.write_string(json_string(entry.0))
+    builder.write_string(": ")
+    builder.write_string(entry.1.to_string())
+  }
+  builder.write_string("}")
+  builder.write_string(",\n  \"platforms\": [")
+  let platforms = platform_directories(data)
+  for index, platform in platforms {
+    if index > 0 {
+      builder.write_string(", ")
+    }
+    builder.write_string(json_string(platform))
+  }
+  builder.write_string("]")
+  builder.write_string(",\n  \"sha256\": ")
+  builder.write_string(json_string(sha256_hex(data)))
   builder.write_string("\n}")
   builder.to_string()
 }
@@ -408,6 +658,8 @@ priv struct SimulateOptions {
   mut platform_override : String?
   mut interface : String
   mut solver : String
+  mut backend : String
+  mut timeout_seconds : UInt64?
   mut json : Bool
 }
 
@@ -425,6 +677,8 @@ fn parse_simulate_options(
     platform_override: None,
     interface: "cs",
     solver: "rk4",
+    backend: "native",
+    timeout_seconds: None,
     json: false,
   }
   let mut index = skip
@@ -439,7 +693,9 @@ fn parse_simulate_options(
       arg == "--output" ||
       arg == "--platform" ||
       arg == "--interface" ||
-      arg == "--solver" {
+      arg == "--solver" ||
+      arg == "--backend" ||
+      arg == "--timeout" {
       if index + 1 >= args.length() {
         return (options, Some("flag '" + arg + "' needs a value"))
       }
@@ -461,6 +717,28 @@ fn parse_simulate_options(
         options.output = Some(value)
       } else if arg == "--platform" {
         options.platform_override = Some(value)
+      } else if arg == "--backend" {
+        if value != "native" && value != "wasm" {
+          return (
+            options,
+            Some("'--backend' accepts native or wasm, not '" + value + "'"),
+          )
+        }
+        options.backend = value
+      } else if arg == "--timeout" {
+        let seconds = parse_simulation_double(value)
+        match seconds {
+          Some(seconds) =>
+            if seconds <= 0.0 {
+              return (
+                options,
+                Some("'--timeout' needs a positive number of seconds"),
+              )
+            } else {
+              options.timeout_seconds = Some(@env.now() + seconds.to_uint64())
+            }
+          None => return (options, Some("'" + value + "' is not a number"))
+        }
       } else if arg == "--interface" {
         if value != "cs" && value != "me" {
           return (
@@ -590,6 +868,12 @@ fn run_simulate(
     println(usage())
     return 2
   }
+  if options.backend == "wasm" {
+    println(
+      "moonfmi: the wasm backend is not implemented yet (experimental status)",
+    )
+    return 4
+  }
   let path = argv[skip]
   let data = read_file(path) catch {
     error =>
@@ -605,7 +889,7 @@ fn run_simulate(
     Some(host) => host
     None => {
       println("moonfmi: unknown host platform '\{host_name}'")
-      return 1
+      return 7
     }
   }
   // Private working directory, created fresh for every run.
@@ -630,13 +914,21 @@ fn run_simulate(
   } catch {
     failure =>
       match failure {
+        Unsupported(message) => {
+          println("moonfmi: \{message}")
+          return 4
+        }
         LoadFailed(message) => {
           println("moonfmi: \{message}")
           return 1
         }
         RunFailed(message) => {
           println("moonfmi: simulation failed: \{message}")
-          return 1
+          return 5
+        }
+        TimedOut(message) => {
+          println("moonfmi: simulation timed out after \{message}")
+          return 6
         }
       }
   }
@@ -687,7 +979,9 @@ fn simulate_json(
   result : @sim.SimulationResult,
 ) -> String {
   let builder = StringBuilder()
-  builder.write_string("{\n  \"file\": ")
+  builder.write_string(
+    "{\n  \"schema\": \"moonfmi.simulate/v1\",\n  \"file\": ",
+  )
   builder.write_string(json_string(path))
   builder.write_string(",\n  \"startTime\": ")
   builder.write_string(csv_double(start_time))
@@ -711,11 +1005,32 @@ fn simulate_json(
 }
 
 ///|
-/// Simulation failures, split into load and run so the exit path can
-/// phrase them differently.
+/// Simulation failures, split so the exit path can phrase them (and the
+/// exit code) differently: 4 unsupported, 1 load, 5 run, 6 timeout.
 suberror SimulateFailure {
+  Unsupported(String)
   LoadFailed(String)
   RunFailed(String)
+  TimedOut(String)
+}
+
+///|
+/// Loader rejections are "unsupported" (exit 4); load/IO failures are
+/// general errors (exit 1).
+fn map_loader_failure(error : @native.LoaderError) -> SimulateFailure {
+  match error {
+    Rejected(detail~) => Unsupported(detail)
+    LoadFailed(detail~) => LoadFailed(detail)
+  }
+}
+
+///|
+/// The master raised: FMI timeouts become exit 6, everything else exit 5.
+fn map_run_failure(error : @fmi.SimulationError) -> SimulateFailure {
+  match error {
+    @fmi.Timeout(detail~) => TimedOut(detail)
+    _ => RunFailed(error.message())
+  }
 }
 
 ///|
@@ -737,11 +1052,11 @@ fn simulate_fmi2(
           temp_directory=directory,
           platform_override=requested,
         ) catch {
-          error => raise LoadFailed(error.message())
+          error => raise map_loader_failure(error)
         }
       None =>
         @native.load_fmi2_me_fmu(data, host~, temp_directory=directory) catch {
-          error => raise LoadFailed(error.message())
+          error => raise map_loader_failure(error)
         }
     }
     let outputs = real_outputs(loaded.model())
@@ -774,11 +1089,12 @@ fn simulate_fmi2(
       solver~,
       state_count=loaded.state_count,
       event_indicator_count=loaded.event_indicator_count,
+      deadline=options.timeout_seconds,
     )
     let result = @sim.run_me_simulation(loaded.instance(), config~) catch {
       error => {
         loaded.dispose()
-        raise RunFailed(error.message())
+        raise map_run_failure(error)
       }
     }
     let names : Array[String] = []
@@ -796,11 +1112,11 @@ fn simulate_fmi2(
           temp_directory=directory,
           platform_override=requested,
         ) catch {
-          error => raise LoadFailed(error.message())
+          error => raise map_loader_failure(error)
         }
       None =>
         @native.load_fmi2_fmu(data, host~, temp_directory=directory) catch {
-          error => raise LoadFailed(error.message())
+          error => raise map_loader_failure(error)
         }
     }
     let outputs = real_outputs(loaded.model())
@@ -830,11 +1146,12 @@ fn simulate_fmi2(
       stop_time~,
       step_size~,
       record=references,
+      deadline=options.timeout_seconds,
     )
     let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
       error => {
         loaded.dispose()
-        raise RunFailed(error.message())
+        raise map_run_failure(error)
       }
     }
     let names : Array[String] = []
@@ -864,11 +1181,11 @@ fn simulate_fmi3(
           temp_directory=directory,
           platform_override=requested,
         ) catch {
-          error => raise LoadFailed(error.message())
+          error => raise map_loader_failure(error)
         }
       None =>
         @native.load_fmi3_me_fmu(data, host~, temp_directory=directory) catch {
-          error => raise LoadFailed(error.message())
+          error => raise map_loader_failure(error)
         }
     }
     let outputs = real_outputs_fmi3(loaded.model())
@@ -901,11 +1218,12 @@ fn simulate_fmi3(
       solver~,
       state_count=loaded.state_count,
       event_indicator_count=loaded.event_indicator_count,
+      deadline=options.timeout_seconds,
     )
     let result = @sim.run_me_simulation(loaded.instance(), config~) catch {
       error => {
         loaded.dispose()
-        raise RunFailed(error.message())
+        raise map_run_failure(error)
       }
     }
     let names : Array[String] = []
@@ -923,11 +1241,11 @@ fn simulate_fmi3(
           temp_directory=directory,
           platform_override=requested,
         ) catch {
-          error => raise LoadFailed(error.message())
+          error => raise map_loader_failure(error)
         }
       None =>
         @native.load_fmi3_fmu(data, host~, temp_directory=directory) catch {
-          error => raise LoadFailed(error.message())
+          error => raise map_loader_failure(error)
         }
     }
     let outputs = real_outputs_fmi3(loaded.model())
@@ -956,11 +1274,12 @@ fn simulate_fmi3(
       stop_time~,
       step_size~,
       record=references,
+      deadline=options.timeout_seconds,
     )
     let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
       error => {
         loaded.dispose()
-        raise RunFailed(error.message())
+        raise map_run_failure(error)
       }
     }
     let names : Array[String] = []

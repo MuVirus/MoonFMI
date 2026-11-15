@@ -8,6 +8,9 @@ pub struct CsConfig {
   step_size : Double
   /// Value references to record after every communication point.
   record : Array[UInt32]
+  /// Wall-clock deadline in the same unit as `@env.now()`; the loop
+  /// aborts with `SimulationError::Timeout` once it is passed.
+  deadline : UInt64?
 }
 
 ///|
@@ -16,8 +19,9 @@ pub fn CsConfig::new(
   stop_time~ : Double,
   step_size~ : Double,
   record~ : Array[UInt32],
+  deadline~ : UInt64? = None,
 ) -> CsConfig {
-  { start_time, stop_time, step_size, record, }
+  { start_time, stop_time, step_size, record, deadline, }
 }
 
 ///|
@@ -95,6 +99,13 @@ pub fn run_cs_simulation(
   let mut t = config.start_time
   let mut steps = 0
   while t < config.stop_time - time_epsilon {
+    match config.deadline {
+      Some(deadline) =>
+        if @env.now() > deadline {
+          raise @fmi.Timeout(detail="t=\{t}")
+        }
+      None => ()
+    }
     let mut h = config.step_size
     if t + h > config.stop_time {
       h = config.stop_time - t

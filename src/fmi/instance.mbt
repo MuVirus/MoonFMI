@@ -28,6 +28,8 @@ pub(open) trait CsInstance {
 pub(all) suberror SimulationError {
   Config(detail~ : String)
   FmiCall(operation~ : String, detail~ : String)
+  /// The run exceeded its wall-clock deadline.
+  Timeout(detail~ : String)
 }
 
 ///|
@@ -35,6 +37,7 @@ pub fn SimulationError::message(self : SimulationError) -> String {
   match self {
     Config(detail~) => "invalid simulation configuration: \{detail}"
     FmiCall(operation~, detail~) => "\{operation} failed: \{detail}"
+    Timeout(detail~) => "simulation timed out: \{detail}"
   }
 }
 

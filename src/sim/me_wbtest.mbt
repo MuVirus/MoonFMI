@@ -360,6 +360,7 @@ fn me_config_rejected(mock : MockMe, config : MeConfig) -> Bool {
     error =>
       match error {
         Config(_) => { times: [], series: [], steps: -1, events: 0, }
+        Timeout(_) => { times: [], series: [], steps: -2, events: 0, }
         FmiCall(..) => { times: [], series: [], steps: -2, events: 0, }
       }
   }

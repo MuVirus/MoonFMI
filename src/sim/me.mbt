@@ -27,6 +27,9 @@ pub struct MeConfig {
   /// Upper bound on `newDiscreteStates` iterations per event; guards
   /// against chattering loops.
   max_event_iterations : Int32
+  /// Wall-clock deadline in the same unit as `@env.now()`; the loop
+  /// aborts with `SimulationError::Timeout` once it is passed.
+  deadline : UInt64?
 }
 
 ///|
@@ -39,6 +42,7 @@ pub fn MeConfig::new(
   state_count~ : Int32,
   event_indicator_count~ : Int32,
   max_event_iterations~ : Int32 = 100,
+  deadline~ : UInt64? = None,
 ) -> MeConfig {
   {
     start_time,
@@ -49,6 +53,7 @@ pub fn MeConfig::new(
     state_count,
     event_indicator_count,
     max_event_iterations,
+    deadline,
   }
 }
 
@@ -314,6 +319,13 @@ pub fn run_me_simulation(
   let mut events = 0
   let mut terminated = false
   while time < config.stop_time - time_epsilon && !terminated {
+    match config.deadline {
+      Some(deadline) =>
+        if @env.now() > deadline {
+          raise @fmi.Timeout(detail="t=\{time}")
+        }
+      None => ()
+    }
     steps += 1
     let target = if time + config.step_size > config.stop_time {
       config.stop_time

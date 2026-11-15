@@ -2,6 +2,7 @@
 package "MuVirus/MoonFMI/src/zip"
 
 // Values
+pub fn build_deterministic_zip(Array[(String, Bytes)], options? : ZipWriteOptions) -> Bytes raise ZipWriteError
 
 // Errors
 pub(all) suberror ZipError {
@@ -17,6 +18,11 @@ pub(all) suberror ZipError {
   ChecksumMismatch(entry~ : String)
 }
 pub fn ZipError::message(Self) -> String
+
+pub(all) suberror ZipWriteError {
+  Failed(String)
+}
+pub fn ZipWriteError::message(Self) -> String
 
 // Types and methods
 pub struct ZipArchive {
@@ -60,6 +66,12 @@ pub fn ZipLimits::max_entries(Self) -> Int32
 pub fn ZipLimits::max_entry_bytes(Self) -> Int32
 pub fn ZipLimits::max_total_bytes(Self) -> Int32
 pub fn ZipLimits::new(max_archive_bytes? : Int32, max_entries? : Int32, max_entry_bytes? : Int32, max_total_bytes? : Int32, max_compression_ratio? : Int32) -> Self
+
+pub struct ZipWriteOptions {
+  mtime : Int32
+  level : Int32
+}
+pub fn ZipWriteOptions::default() -> Self
 
 // Type aliases
 
