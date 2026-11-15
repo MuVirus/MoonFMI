@@ -106,6 +106,30 @@
       }
     },
     {
+      "id": "fmi2-vanderpol",
+      "archivePath": "2.0/VanDerPol.fmu",
+      "cachePath": "fmi2/VanDerPol.fmu",
+      "bytes": 251434,
+      "sha256": "46e12af728cc5dcd0aa0afbf177f25c11736fce594e01a4edbf3a2e12a2f3157",
+      "fmiVersion": "2.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "states",
+        "me-reference-trajectory",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "Two-state oscillator; the P3 ME reference-trajectory model.",
+      "modelIdentifier": "VanDerPol",
+      "binaries": {
+        "windows": "binaries/win64/VanDerPol.dll",
+        "linux": "binaries/linux64/VanDerPol.so"
+      }
+    },
+    {
       "id": "fmi3-bouncingball",
       "archivePath": "3.0/BouncingBall.fmu",
       "cachePath": "fmi3/BouncingBall.fmu",

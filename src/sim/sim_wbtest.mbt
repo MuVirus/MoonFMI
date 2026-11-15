@@ -72,7 +72,7 @@ test "cs master algorithm rejects bad configurations" {
   let result = run_cs_simulation(mock, config=bad) catch {
     error => {
       assert_true(error is Config(_))
-      { times: [], series: [], steps: -1, }
+      { times: [], series: [], steps: -1, events: 0, }
     }
   }
   assert_eq(result.steps(), -1)

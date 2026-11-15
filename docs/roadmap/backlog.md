@@ -74,8 +74,8 @@
 | C-10 ✅ | CS 主算法 | P1 | L | C-08 | BouncingBall |
 | C-11 | CS 事件/回滚/早退 | P1 | L | C-10 ✅ | 事件测试 |
 | C-12 ✅ | 结果记录 CSV/内存 | P1 | M | C-10 ✅ | 列稳定 |
-| C-13 | ME 主算法（Euler/RK4） | P2 | L | C-08 | VanDerPol |
-| C-14 | ME 事件检测 | P2 | L | C-13 | 事件时间测试 |
+| C-13 ✅ | ME 主算法（Euler/RK4） | P2 | L | C-08 | VanDerPol |
+| C-14 ✅ | ME 事件检测 | P2 | L | C-13 | 事件时间测试 |
 | C-15 | FMI 3 实例化（CS/ME） | P1 | L | C-06/B-08 | Reference-FMU |
 | C-16 | FMI 3 新类型/数组 | P1 | L | C-15 | ABI/数组测试 |
 | C-17 | FMI 3 CS | P1 | M | C-15/C-16 | 事件/早退 |

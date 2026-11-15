@@ -155,11 +155,15 @@
 
 ### 退出标准
 
-- [ ] `VanDerPol` / `BouncingBall` ME 与参考轨迹在容差内；
-- [ ] 事件时间/次数合理；
-- [ ] 状态 reinit/标称值变化处理正确；
-- [ ] 不支持的能力明确报错；
-- [ ] 文档声明“非通用求解器”的边界。
+- [x] `VanDerPol` / `BouncingBall` ME 与参考轨迹在容差内（VanDerPol 与细步长
+      RK4 自收敛参考 1e-5 内；BouncingBall 用物理不变量：不穿地、落回地面）；
+- [x] 事件时间/次数合理（mock 二分定位 1e-9 内；真实 BouncingBall 3 s 内
+      11 次弹跳事件）；
+- [x] 状态 reinit/标称值变化处理正确（事件后重读状态与标称值，mock 验证）；
+- [x] 不支持的能力明确报错（无 Derivatives 的 FMU 拒绝加载、事件迭代上限、
+      非法配置拒绝）；
+- [x] 文档声明“非通用求解器”的边界（README 限制一节 + master-algorithm.md
+      §4.1）。
 
 ### 非目标
 

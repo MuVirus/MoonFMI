@@ -80,6 +80,7 @@ extern "C" fn fmi2_instance_new(
   instance_name : Bytes,
   guid : Bytes,
   resource_path : Bytes,
+  interface_kind : Int32,
   logging_on : Int32,
   log_sink : (Int32, Bytes, Bytes, Bytes) -> Unit,
   log_deliver : FuncRef[
@@ -154,6 +155,78 @@ extern "C" fn fmi2_set_real(
 
 ///|
 extern "C" fn fmi2_last_error() -> Bytes = "moonfmi_fmi2_last_error"
+
+///|
+extern "C" fn fmi2_set_time(handle : @c.Pointer[Unit], time : Double) -> Int32 = "moonfmi_fmi2_set_time"
+
+///|
+#borrow(states)
+extern "C" fn fmi2_set_continuous_states(
+  handle : @c.Pointer[Unit],
+  states : FixedArray[Double],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_set_continuous_states"
+
+///|
+#borrow(states)
+extern "C" fn fmi2_get_continuous_states(
+  handle : @c.Pointer[Unit],
+  states : FixedArray[Double],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_get_continuous_states"
+
+///|
+#borrow(derivatives)
+extern "C" fn fmi2_get_derivatives(
+  handle : @c.Pointer[Unit],
+  derivatives : FixedArray[Double],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_get_derivatives"
+
+///|
+#borrow(indicators)
+extern "C" fn fmi2_get_event_indicators(
+  handle : @c.Pointer[Unit],
+  indicators : FixedArray[Double],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_get_event_indicators"
+
+///|
+#borrow(nominals)
+extern "C" fn fmi2_get_nominals_of_continuous_states(
+  handle : @c.Pointer[Unit],
+  nominals : FixedArray[Double],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_get_nominals_of_continuous_states"
+
+///|
+extern "C" fn fmi2_enter_event_mode(handle : @c.Pointer[Unit]) -> Int32 = "moonfmi_fmi2_enter_event_mode"
+
+///|
+#borrow(needed, terminate, nominals_changed, states_changed, time_defined, next_event_time)
+extern "C" fn fmi2_new_discrete_states(
+  handle : @c.Pointer[Unit],
+  needed : FixedArray[Int32],
+  terminate : FixedArray[Int32],
+  nominals_changed : FixedArray[Int32],
+  states_changed : FixedArray[Int32],
+  time_defined : FixedArray[Int32],
+  next_event_time : FixedArray[Double],
+) -> Int32 = "moonfmi_fmi2_new_discrete_states"
+
+///|
+extern "C" fn fmi2_enter_continuous_time_mode(
+  handle : @c.Pointer[Unit],
+) -> Int32 = "moonfmi_fmi2_enter_continuous_time_mode"
+
+///|
+#borrow(enter_event_mode, terminate_simulation)
+extern "C" fn fmi2_completed_integrator_step(
+  handle : @c.Pointer[Unit],
+  no_set_fmu_state_prior : Int32,
+  enter_event_mode : FixedArray[Int32],
+  terminate_simulation : FixedArray[Int32],
+) -> Int32 = "moonfmi_fmi2_completed_integrator_step"
 
 ///|
 fn fmi2_error_text() -> String {
@@ -261,6 +334,54 @@ pub fn Fmi2Library::instantiate(
     @utf8.encode(instance_name),
     @utf8.encode(guid),
     @utf8.encode(fmi2_resource_location(resource_path)),
+    0,
+    if logging_on {
+      1
+    } else {
+      0
+    },
+    fn(status, name, category, message) {
+      if sink.active {
+        (sink.callback)({
+          status: @fmi.FmiStatus::from_int32(status),
+          instance_name: @utf8.decode_lossy(name.exact_view()),
+          category: @utf8.decode_lossy(category.exact_view()),
+          message: @utf8.decode_lossy(message.exact_view()),
+        })
+      }
+    },
+    fn(deliver, status, name, category, message) {
+      deliver(status, name, category, message)
+    },
+  )
+  if handle.is_null() {
+    raise Fmi2InstantiateFailed(instance_name~, detail=fmi2_error_text())
+  }
+  self.open_instances = self.open_instances + 1
+  { library: self, handle, sink, freed: false, }
+}
+
+///|
+/// Creates a Model Exchange instance. The arguments and lifecycle are the
+/// same as `instantiate`; the FMU must export the ME function group.
+pub fn Fmi2Library::instantiate_me(
+  self : Fmi2Library,
+  instance_name~ : String,
+  guid~ : String,
+  resource_path~ : String,
+  logging_on~ : Bool = true,
+  on_log~ : (Fmi2LogMessage) -> Unit = fn(_) {  },
+) -> Fmi2Instance raise Fmi2Error {
+  if self.closed {
+    raise Fmi2ShimRejected(detail="the library has already been unloaded")
+  }
+  let sink = { callback: on_log, active: true, }
+  let handle = fmi2_instance_new(
+    self.shim,
+    @utf8.encode(instance_name),
+    @utf8.encode(guid),
+    @utf8.encode(fmi2_resource_location(resource_path)),
+    1,
     if logging_on {
       1
     } else {
@@ -486,4 +607,173 @@ pub fn Fmi2Instance::free(self : Fmi2Instance) -> Unit {
   fmi2_instance_free(self.handle)
   self.freed = true
   self.library.open_instances = self.library.open_instances - 1
+}
+
+/// Model Exchange operations (task C-13 bindings).
+
+///|
+fn me_fail(status : @fmi.FmiStatus, operation : String) -> Unit raise Fmi2Error {
+  if status.is_failure() {
+    raise Fmi2StatusFailed(operation~, status~)
+  }
+}
+
+///|
+fn out_flag(values : FixedArray[Int32]) -> Bool {
+  values[0] != 0
+}
+
+///|
+pub fn Fmi2Instance::set_time(
+  self : Fmi2Instance,
+  time : Double,
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2SetTime")
+  let status = @fmi.FmiStatus::from_int32(fmi2_set_time(self.handle, time))
+  me_fail(status, "fmi2SetTime")
+}
+
+///|
+pub fn Fmi2Instance::set_continuous_states(
+  self : Fmi2Instance,
+  states : FixedArray[Double],
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2SetContinuousStates")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_set_continuous_states(self.handle, states, states.length()),
+  )
+  me_fail(status, "fmi2SetContinuousStates")
+}
+
+///|
+/// Fills `states` with the continuous states (`fmi2GetContinuousStates`).
+pub fn Fmi2Instance::get_continuous_states(
+  self : Fmi2Instance,
+  states : FixedArray[Double],
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2GetContinuousStates")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_get_continuous_states(self.handle, states, states.length()),
+  )
+  me_fail(status, "fmi2GetContinuousStates")
+}
+
+///|
+pub fn Fmi2Instance::get_derivatives(
+  self : Fmi2Instance,
+  derivatives : FixedArray[Double],
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2GetDerivatives")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_get_derivatives(self.handle, derivatives, derivatives.length()),
+  )
+  me_fail(status, "fmi2GetDerivatives")
+}
+
+///|
+pub fn Fmi2Instance::get_event_indicators(
+  self : Fmi2Instance,
+  indicators : FixedArray[Double],
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2GetEventIndicators")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_get_event_indicators(self.handle, indicators, indicators.length()),
+  )
+  me_fail(status, "fmi2GetEventIndicators")
+}
+
+///|
+pub fn Fmi2Instance::get_nominals_of_continuous_states(
+  self : Fmi2Instance,
+  nominals : FixedArray[Double],
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2GetNominalsOfContinuousStates")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_get_nominals_of_continuous_states(
+      self.handle,
+      nominals,
+      nominals.length(),
+    ),
+  )
+  me_fail(status, "fmi2GetNominalsOfContinuousStates")
+}
+
+///|
+pub fn Fmi2Instance::enter_event_mode(
+  self : Fmi2Instance,
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2EnterEventMode")
+  let status = @fmi.FmiStatus::from_int32(fmi2_enter_event_mode(self.handle))
+  me_fail(status, "fmi2EnterEventMode")
+}
+
+///|
+/// One `fmi2NewDiscreteStates` iteration.
+pub fn Fmi2Instance::new_discrete_states(
+  self : Fmi2Instance,
+) -> @fmi.EventInfo raise Fmi2Error {
+  self.ensure_live("fmi2NewDiscreteStates")
+  let needed : FixedArray[Int32] = FixedArray::make(1, 0)
+  let terminate : FixedArray[Int32] = FixedArray::make(1, 0)
+  let nominals_changed : FixedArray[Int32] = FixedArray::make(1, 0)
+  let states_changed : FixedArray[Int32] = FixedArray::make(1, 0)
+  let time_defined : FixedArray[Int32] = FixedArray::make(1, 0)
+  let next_event_time : FixedArray[Double] = FixedArray::make(1, 0.0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_new_discrete_states(
+      self.handle,
+      needed,
+      terminate,
+      nominals_changed,
+      states_changed,
+      time_defined,
+      next_event_time,
+    ),
+  )
+  me_fail(status, "fmi2NewDiscreteStates")
+  {
+    new_discrete_states_needed: out_flag(needed),
+    terminate_simulation: out_flag(terminate),
+    nominals_changed: out_flag(nominals_changed),
+    states_changed: out_flag(states_changed),
+    next_event_time_defined: out_flag(time_defined),
+    next_event_time: next_event_time[0],
+  }
+}
+
+///|
+pub fn Fmi2Instance::enter_continuous_time_mode(
+  self : Fmi2Instance,
+) -> Unit raise Fmi2Error {
+  self.ensure_live("fmi2EnterContinuousTimeMode")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_enter_continuous_time_mode(self.handle),
+  )
+  me_fail(status, "fmi2EnterContinuousTimeMode")
+}
+
+///|
+/// `fmi2CompletedIntegratorStep`; returns
+/// `(enter_event_mode, terminate_simulation)`.
+pub fn Fmi2Instance::completed_integrator_step(
+  self : Fmi2Instance,
+  no_set_fmu_state_prior~ : Bool = true,
+) -> (Bool, Bool) raise Fmi2Error {
+  self.ensure_live("fmi2CompletedIntegratorStep")
+  let enter : FixedArray[Int32] = FixedArray::make(1, 0)
+  let terminate : FixedArray[Int32] = FixedArray::make(1, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_completed_integrator_step(
+      self.handle,
+      if no_set_fmu_state_prior {
+        1
+      } else {
+        0
+      },
+      enter,
+      terminate,
+    ),
+  )
+  me_fail(status, "fmi2CompletedIntegratorStep")
+  (out_flag(enter), out_flag(terminate))
 }

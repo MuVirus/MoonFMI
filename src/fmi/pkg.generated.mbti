@@ -44,6 +44,15 @@ pub(all) suberror SimulationError {
 pub fn SimulationError::message(Self) -> String
 
 // Types and methods
+pub(all) struct EventInfo {
+  new_discrete_states_needed : Bool
+  terminate_simulation : Bool
+  nominals_changed : Bool
+  states_changed : Bool
+  next_event_time_defined : Bool
+  next_event_time : Double
+}
+
 pub(all) enum FmiStatus {
   Ok
   Warning
@@ -95,6 +104,24 @@ pub(open) trait CsInstance {
   fn setup_experiment(Self, start~ : Double, stop~ : Double?) -> Unit raise SimulationError
   fn initialize(Self) -> Unit raise SimulationError
   fn step(Self, Double, Double) -> Unit raise SimulationError
+  fn read_real(Self, UInt32) -> Double raise SimulationError
+  fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
+  fn finish(Self) -> Unit raise SimulationError
+}
+
+pub(open) trait MeInstance {
+  fn setup_experiment(Self, start~ : Double, stop~ : Double?) -> Unit raise SimulationError
+  fn initialize(Self) -> Unit raise SimulationError
+  fn set_time(Self, Double) -> Unit raise SimulationError
+  fn set_continuous_states(Self, FixedArray[Double]) -> Unit raise SimulationError
+  fn get_continuous_states(Self, FixedArray[Double]) -> Unit raise SimulationError
+  fn get_derivatives(Self, FixedArray[Double]) -> Unit raise SimulationError
+  fn get_event_indicators(Self, FixedArray[Double]) -> Unit raise SimulationError
+  fn get_nominals_of_continuous_states(Self, FixedArray[Double]) -> Unit raise SimulationError
+  fn enter_event_mode(Self) -> Unit raise SimulationError
+  fn new_discrete_states(Self) -> EventInfo raise SimulationError
+  fn enter_continuous_time_mode(Self) -> Unit raise SimulationError
+  fn completed_integrator_step(Self, no_set_fmu_state_prior~ : Bool) -> (Bool, Bool) raise SimulationError
   fn read_real(Self, UInt32) -> Double raise SimulationError
   fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
   fn finish(Self) -> Unit raise SimulationError

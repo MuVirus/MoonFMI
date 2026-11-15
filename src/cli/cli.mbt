@@ -19,12 +19,13 @@ pub fn usage() -> String {
   "Usage:\n" +
   "  moonfmi validate <file.fmu | modelDescription.xml> [--json] [--strict]\n" +
   "  moonfmi info <file.fmu | modelDescription.xml> [--json]\n" +
-  "  moonfmi simulate <file.fmu> [--start-time T] [--stop-time T] [--step-size H] [--output out.csv] [--json]\n" +
+  "  moonfmi simulate <file.fmu> [--interface cs|me] [--solver euler|rk4] [--start-time T] [--stop-time T] [--step-size H] [--output out.csv] [--json]\n" +
   "  moonfmi version\n" +
   "\n" +
   "Commands:\n" +
   "  validate   Parse and semantically validate the model description (rules MD-001..MD-063)\n" +
   "  info       Print a summary of the model description\n" +
+  "  simulate   Run a co-simulation (cs) or model-exchange (me) simulation\n" +
   "\n" +
   "Exit codes: 0 valid, 1 invalid, 2 usage, 3 unreadable file\n"
 }
@@ -405,6 +406,8 @@ priv struct SimulateOptions {
   mut step_size : Double?
   mut output : String?
   mut platform_override : String?
+  mut interface : String
+  mut solver : String
   mut json : Bool
 }
 
@@ -420,6 +423,8 @@ fn parse_simulate_options(
     step_size: None,
     output: None,
     platform_override: None,
+    interface: "cs",
+    solver: "rk4",
     json: false,
   }
   let mut index = skip
@@ -432,7 +437,9 @@ fn parse_simulate_options(
       arg == "--stop-time" ||
       arg == "--step-size" ||
       arg == "--output" ||
-      arg == "--platform" {
+      arg == "--platform" ||
+      arg == "--interface" ||
+      arg == "--solver" {
       if index + 1 >= args.length() {
         return (options, Some("flag '" + arg + "' needs a value"))
       }
@@ -452,8 +459,24 @@ fn parse_simulate_options(
         }
       } else if arg == "--output" {
         options.output = Some(value)
-      } else {
+      } else if arg == "--platform" {
         options.platform_override = Some(value)
+      } else if arg == "--interface" {
+        if value != "cs" && value != "me" {
+          return (
+            options,
+            Some("'--interface' accepts cs or me, not '" + value + "'"),
+          )
+        }
+        options.interface = value
+      } else {
+        if value != "euler" && value != "rk4" {
+          return (
+            options,
+            Some("'--solver' accepts euler or rk4, not '" + value + "'"),
+          )
+        }
+        options.solver = value
       }
       index += 2
     } else {
@@ -558,65 +581,134 @@ fn run_simulate(
     _ => ()
   }
   let directory = ".moonfmi-tmp/run-\{@env.now()}"
-  let loaded = match options.platform_override {
-    Some(requested) =>
-      @native.load_fmi2_fmu(
-        data,
-        host~,
-        temp_directory=directory,
-        platform_override=requested,
-      ) catch {
-        error => {
-          println("moonfmi: \{error.message()}")
-          return 1
-        }
-      }
-    None =>
-      @native.load_fmi2_fmu(data, host~, temp_directory=directory) catch {
-        error => {
-          println("moonfmi: \{error.message()}")
-          return 1
-        }
-      }
-  }
-  let outputs = real_outputs(loaded.model())
-  let references : Array[UInt32] = []
-  for output in outputs {
-    references.push(output.0)
-  }
-  // Step size: flag first, then the model's default experiment, then 0.01.
-  let step_size = match options.step_size {
-    Some(value) => value
-    None =>
-      match loaded.model().default_experiment {
-        Some(experiment) => experiment.step_size.unwrap_or(0.01)
-        None => 0.01
-      }
-  }
-  let stop_time = match options.stop_time {
-    Some(value) => value
-    None =>
-      match loaded.model().default_experiment {
-        Some(experiment) => experiment.stop_time.unwrap_or(1.0)
-        None => 1.0
-      }
-  }
   let start_time = options.start_time.unwrap_or(0.0)
-  let config = @sim.CsConfig::new(
-    start_time~,
-    stop_time~,
-    step_size~,
-    record=references,
-  )
-  let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
-    error => {
-      println("moonfmi: simulation failed: \{error.message()}")
-      loaded.dispose()
-      return 1
+  // Load per the requested interface, then run the matching master.
+  let (model, result, step_size, stop_time, outputs) = if options.interface ==
+    "me" {
+    let loaded = match options.platform_override {
+      Some(requested) =>
+        @native.load_fmi2_me_fmu(
+          data,
+          host~,
+          temp_directory=directory,
+          platform_override=requested,
+        ) catch {
+          error => {
+            println("moonfmi: \{error.message()}")
+            return 1
+          }
+        }
+      None =>
+        @native.load_fmi2_me_fmu(data, host~, temp_directory=directory) catch {
+          error => {
+            println("moonfmi: \{error.message()}")
+            return 1
+          }
+        }
     }
+    let outputs = real_outputs(loaded.model())
+    let references : Array[UInt32] = []
+    for output in outputs {
+      references.push(output.0)
+    }
+    let step_size = match options.step_size {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.step_size.unwrap_or(0.01)
+          None => 0.01
+        }
+    }
+    let stop_time = match options.stop_time {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.stop_time.unwrap_or(1.0)
+          None => 1.0
+        }
+    }
+    let solver = if options.solver == "euler" { @sim.Euler } else { @sim.Rk4 }
+    let config = @sim.MeConfig::new(
+      start_time~,
+      stop_time~,
+      step_size~,
+      record=references,
+      solver~,
+      state_count=loaded.state_count,
+      event_indicator_count=loaded.event_indicator_count,
+    )
+    let result = @sim.run_me_simulation(loaded.instance(), config~) catch {
+      error => {
+        println("moonfmi: simulation failed: \{error.message()}")
+        loaded.dispose()
+        return 1
+      }
+    }
+    let model = loaded.model()
+    loaded.dispose()
+    (model, result, step_size, stop_time, outputs)
+  } else {
+    let loaded = match options.platform_override {
+      Some(requested) =>
+        @native.load_fmi2_fmu(
+          data,
+          host~,
+          temp_directory=directory,
+          platform_override=requested,
+        ) catch {
+          error => {
+            println("moonfmi: \{error.message()}")
+            return 1
+          }
+        }
+      None =>
+        @native.load_fmi2_fmu(data, host~, temp_directory=directory) catch {
+          error => {
+            println("moonfmi: \{error.message()}")
+            return 1
+          }
+        }
+    }
+    let outputs = real_outputs(loaded.model())
+    let references : Array[UInt32] = []
+    for output in outputs {
+      references.push(output.0)
+    }
+    // Step size: flag first, then the model's default experiment, then 0.01.
+    let step_size = match options.step_size {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.step_size.unwrap_or(0.01)
+          None => 0.01
+        }
+    }
+    let stop_time = match options.stop_time {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.stop_time.unwrap_or(1.0)
+          None => 1.0
+        }
+    }
+    let config = @sim.CsConfig::new(
+      start_time~,
+      stop_time~,
+      step_size~,
+      record=references,
+    )
+    let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
+      error => {
+        println("moonfmi: simulation failed: \{error.message()}")
+        loaded.dispose()
+        return 1
+      }
+    }
+    let model = loaded.model()
+    loaded.dispose()
+    (model, result, step_size, stop_time, outputs)
   }
-  let csv = result_csv(loaded.model(), result)
-  loaded.dispose()
+  let csv = result_csv(model, result)
   match options.output {
     Some(file) => {
       @fs.write_string_to_file(file, csv) catch {

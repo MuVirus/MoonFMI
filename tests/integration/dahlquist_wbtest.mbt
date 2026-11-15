@@ -82,14 +82,18 @@ fn open_dahlquist() -> (@native_backend.Fmi2Library, String) {
   let archive = open_cached_fmu("fmi2/Dahlquist.fmu")
   let dll = root + "/binaries/win64/Dahlquist.dll"
   let so = root + "/binaries/linux64/Dahlquist.so"
-  let have_dll = extract_if_present(archive, "binaries/win64/Dahlquist.dll", dll)
+  let have_dll = extract_if_present(
+    archive, "binaries/win64/Dahlquist.dll", dll,
+  )
   let have_so = extract_if_present(archive, "binaries/linux64/Dahlquist.so", so)
   if !have_dll && !have_so {
     abort("Dahlquist.fmu contains no binary for this platform")
   }
   let resource = absolute_path(root + "/resources")
   if have_dll {
-    let loaded = Some(@native_backend.Fmi2Library::open(dll)) catch { _ => None }
+    let loaded = Some(@native_backend.Fmi2Library::open(dll)) catch {
+      _ => None
+    }
     match loaded {
       Some(library) => return (library, resource)
       None => ()
@@ -142,7 +146,11 @@ test "two instances from one library keep independent state" {
   }
   // Five steps in: a = 0.9^5, b = 0.7^5.
   assert_true(
-    close_enough(instance_a.get_real_one(1U), 0.5904900000000001, 0.000000000001),
+    close_enough(
+      instance_a.get_real_one(1U),
+      0.5904900000000001,
+      0.000000000001,
+    ),
     msg="a drifted: \{instance_a.get_real_one(1U)}",
   )
   assert_true(

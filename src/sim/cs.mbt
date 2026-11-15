@@ -22,11 +22,14 @@ pub fn CsConfig::new(
 
 ///|
 /// Recorded samples: one timestamp per row, one value series per recorded
-/// variable (task C-12).
+/// variable (task C-12). `events` counts the mid-run events the master
+/// handled; co-simulation masters report 0 because FMI 2 CS events stay
+/// inside the FMU.
 pub(all) struct SimulationResult {
   times : Array[Double]
   series : Array[Array[Double]]
   steps : Int32
+  events : Int32
 }
 
 ///|
@@ -44,6 +47,11 @@ pub fn SimulationResult::series(
 ///|
 pub fn SimulationResult::steps(self : SimulationResult) -> Int32 {
   self.steps
+}
+
+///|
+pub fn SimulationResult::events(self : SimulationResult) -> Int32 {
+  self.events
 }
 
 ///|
@@ -97,5 +105,5 @@ pub fn run_cs_simulation(
     steps += 1
   }
   instance.finish()
-  { times, series, steps, }
+  { times, series, steps, events: 0, }
 }

@@ -124,6 +124,21 @@ typedef struct moonfmi_fmi2_library {
   fmi2DoStepTYPE *do_step;
   fmi2GetRealTYPE *get_real;
   fmi2SetRealTYPE *set_real;
+  /* Model Exchange symbols; an FMU may legally export only one interface
+     group, so these resolve optionally and `has_model_exchange` records
+     whether the group is complete. */
+  fmi2SetTimeTYPE *set_time;
+  fmi2SetContinuousStatesTYPE *set_continuous_states;
+  fmi2GetContinuousStatesTYPE *get_continuous_states;
+  fmi2GetDerivativesTYPE *get_derivatives;
+  fmi2GetEventIndicatorsTYPE *get_event_indicators;
+  fmi2GetNominalsOfContinuousStatesTYPE *get_nominals_of_continuous_states;
+  fmi2EnterEventModeTYPE *enter_event_mode;
+  fmi2NewDiscreteStatesTYPE *new_discrete_states;
+  fmi2EnterContinuousTimeModeTYPE *enter_continuous_time_mode;
+  fmi2CompletedIntegratorStepTYPE *completed_integrator_step;
+  int32_t has_co_simulation;
+  int32_t has_model_exchange;
   /* Retired instances keep their context alive until the library is released,
      so a callback from a buggy FMU cannot touch freed memory. */
   struct moonfmi_fmi2_instance *retired;
@@ -198,12 +213,42 @@ moonfmi_fmi2_library_new(void *handle) {
                             (void *)&library->exit_initialization_mode) ||
       !moonfmi_resolve_into(handle, "fmi2Terminate",
                             (void *)&library->terminate) ||
-      !moonfmi_resolve_into(handle, "fmi2DoStep",
-                            (void *)&library->do_step) ||
       !moonfmi_resolve_into(handle, "fmi2GetReal",
                             (void *)&library->get_real) ||
       !moonfmi_resolve_into(handle, "fmi2SetReal",
                             (void *)&library->set_real)) {
+    free(library);
+    return NULL;
+  }
+  /* Each interface group is optional; instantiating a kind whose group is
+     incomplete is rejected later, at `moonfmi_fmi2_instance_new`. */
+  library->has_co_simulation =
+      moonfmi_resolve_into(handle, "fmi2DoStep", (void *)&library->do_step);
+  library->has_model_exchange =
+      moonfmi_resolve_into(handle, "fmi2SetTime",
+                           (void *)&library->set_time) &&
+      moonfmi_resolve_into(handle, "fmi2SetContinuousStates",
+                           (void *)&library->set_continuous_states) &&
+      moonfmi_resolve_into(handle, "fmi2GetContinuousStates",
+                           (void *)&library->get_continuous_states) &&
+      moonfmi_resolve_into(handle, "fmi2GetDerivatives",
+                           (void *)&library->get_derivatives) &&
+      moonfmi_resolve_into(handle, "fmi2GetEventIndicators",
+                           (void *)&library->get_event_indicators) &&
+      moonfmi_resolve_into(handle, "fmi2GetNominalsOfContinuousStates",
+                           (void *)&library->get_nominals_of_continuous_states) &&
+      moonfmi_resolve_into(handle, "fmi2EnterEventMode",
+                           (void *)&library->enter_event_mode) &&
+      moonfmi_resolve_into(handle, "fmi2NewDiscreteStates",
+                           (void *)&library->new_discrete_states) &&
+      moonfmi_resolve_into(handle, "fmi2EnterContinuousTimeMode",
+                           (void *)&library->enter_continuous_time_mode) &&
+      moonfmi_resolve_into(handle, "fmi2CompletedIntegratorStep",
+                           (void *)&library->completed_integrator_step);
+  if (!library->has_co_simulation && !library->has_model_exchange) {
+    moonfmi_set_error(
+        "the shared library exports neither fmi2DoStep nor a complete "
+        "Model Exchange group");
     free(library);
     return NULL;
   }
@@ -288,6 +333,7 @@ moonfmi_fmi2_instance_new(void *library_handle,
                           moonbit_bytes_t instance_name,
                           moonbit_bytes_t guid,
                           moonbit_bytes_t resource_path,
+                          int32_t interface_kind,
                           int32_t logging_on,
                           void *log_closure,
                           moonfmi_log_thunk log_thunk) {
@@ -295,6 +341,23 @@ moonfmi_fmi2_instance_new(void *library_handle,
   if (library == NULL) {
     moonfmi_set_error("the FMI 2 library has already been released");
     return NULL;
+  }
+  fmi2Type type;
+  if (interface_kind == 0) {
+    if (!library->has_co_simulation) {
+      moonfmi_set_error(
+          "the FMU does not export fmi2DoStep; it has no Co-Simulation "
+          "interface");
+      return NULL;
+    }
+    type = fmi2CoSimulation;
+  } else {
+    if (!library->has_model_exchange) {
+      moonfmi_set_error(
+          "the FMU does not export the Model Exchange functions");
+      return NULL;
+    }
+    type = fmi2ModelExchange;
   }
   moonfmi_fmi2_instance *instance =
       (moonfmi_fmi2_instance *)calloc(1, sizeof(moonfmi_fmi2_instance));
@@ -324,7 +387,7 @@ moonfmi_fmi2_instance_new(void *library_handle,
   instance->callbacks.componentEnvironment = instance;
 
   instance->component =
-      library->instantiate(instance->instance_name, fmi2CoSimulation, guid_text,
+      library->instantiate(instance->instance_name, type, guid_text,
                            instance->resource_path, &instance->callbacks,
                            fmi2False, logging_on != 0 ? fmi2True : fmi2False);
   free(guid_text);
@@ -478,4 +541,154 @@ moonfmi_fmi2_set_real(void *handle,
   return (int32_t)instance->library->set_real(
       instance->component, (const fmi2ValueReference *)references,
       (size_t)count, (const fmi2Real *)values);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Model Exchange                                                            */
+/* ------------------------------------------------------------------------- */
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_set_time(void *handle, double time) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->set_time(instance->component, time);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_set_continuous_states(void *handle,
+                                   const double *states,
+                                   int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->set_continuous_states(
+      instance->component, (const fmi2Real *)states, (size_t)count);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_get_continuous_states(void *handle,
+                                   double *states,
+                                   int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->get_continuous_states(
+      instance->component, (fmi2Real *)states, (size_t)count);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_get_derivatives(void *handle,
+                             double *derivatives,
+                             int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->get_derivatives(
+      instance->component, (fmi2Real *)derivatives, (size_t)count);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_get_event_indicators(void *handle,
+                                  double *indicators,
+                                  int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->get_event_indicators(
+      instance->component, (fmi2Real *)indicators, (size_t)count);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_get_nominals_of_continuous_states(void *handle,
+                                               double *nominals,
+                                               int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->get_nominals_of_continuous_states(
+      instance->component, (fmi2Real *)nominals, (size_t)count);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_enter_event_mode(void *handle) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->enter_event_mode(instance->component);
+}
+
+/* The `fmi2EventInfo` struct is flattened into six out slots so MoonBit
+   never needs to describe the struct layout. */
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_new_discrete_states(void *handle,
+                                 int32_t *new_discrete_states_needed,
+                                 int32_t *terminate_simulation,
+                                 int32_t *nominals_of_continuous_states_changed,
+                                 int32_t *values_of_continuous_states_changed,
+                                 int32_t *next_event_time_defined,
+                                 double *next_event_time) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  fmi2EventInfo info;
+  memset(&info, 0, sizeof(info));
+  fmi2Status status =
+      instance->library->new_discrete_states(instance->component, &info);
+  *new_discrete_states_needed = (int32_t)info.newDiscreteStatesNeeded;
+  *terminate_simulation = (int32_t)info.terminateSimulation;
+  *nominals_of_continuous_states_changed =
+      (int32_t)info.nominalsOfContinuousStatesChanged;
+  *values_of_continuous_states_changed =
+      (int32_t)info.valuesOfContinuousStatesChanged;
+  *next_event_time_defined = (int32_t)info.nextEventTimeDefined;
+  *next_event_time = info.nextEventTime;
+  return (int32_t)status;
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_enter_continuous_time_mode(void *handle) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->enter_continuous_time_mode(
+      instance->component);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_completed_integrator_step(void *handle,
+                                       int32_t no_set_fmu_state_prior,
+                                       int32_t *enter_event_mode,
+                                       int32_t *terminate_simulation) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  fmi2Boolean enter = fmi2False;
+  fmi2Boolean terminate = fmi2False;
+  fmi2Status status = instance->library->completed_integrator_step(
+      instance->component,
+      no_set_fmu_state_prior ? fmi2True : fmi2False, &enter, &terminate);
+  *enter_event_mode = (int32_t)enter;
+  *terminate_simulation = (int32_t)terminate;
+  return (int32_t)status;
 }
