@@ -517,22 +517,54 @@ fn csv_double(value : Double) -> String {
 }
 
 ///|
+/// Value references and names of all FMI 3 Float64 outputs, in document
+/// order. Float32 outputs are skipped (the recorder is Double based).
+fn real_outputs_fmi3(
+  model : @schema.Fmi3ModelDescription,
+) -> Array[(UInt32, String)] {
+  let outputs : Array[(UInt32, String)] = []
+  for variable in model.variables {
+    if variable.effective_causality() == Output {
+      if variable.type_kind is Float64 && variable.dimensions.is_empty() {
+        // Array outputs need an explicit element count at read time and are
+        // not part of the scalar recorder yet.
+        outputs.push((variable.value_reference, variable.name))
+      }
+    }
+  }
+  outputs
+}
+
+///|
 /// Render the whole result as CSV with a header row.
 fn result_csv(
   model : @schema.Fmi2ModelDescription,
   result : @sim.SimulationResult,
 ) -> String {
   let outputs = real_outputs(model)
+  let names : Array[String] = []
+  for output in outputs {
+    names.push(output.1)
+  }
+  result_csv_named(names, result)
+}
+
+///|
+/// Render the result as CSV using explicit output names.
+fn result_csv_named(
+  names : Array[String],
+  result : @sim.SimulationResult,
+) -> String {
   let builder = StringBuilder()
   builder.write_string("time")
-  for output in outputs {
+  for name in names {
     builder.write_string(",")
-    builder.write_string(output.1)
+    builder.write_string(name)
   }
   builder.write_string("\n")
   for row, time in result.times() {
     builder.write_string(csv_double(time))
-    for index = 0; index < outputs.length(); index = index + 1 {
+    for index = 0; index < names.length(); index = index + 1 {
       builder.write_string(",")
       builder.write_string(csv_double(result.series()[index][row]))
     }
@@ -582,9 +614,121 @@ fn run_simulate(
   }
   let directory = ".moonfmi-tmp/run-\{@env.now()}"
   let start_time = options.start_time.unwrap_or(0.0)
-  // Load per the requested interface, then run the matching master.
-  let (model, result, step_size, stop_time, outputs) = if options.interface ==
-    "me" {
+  // Detect the FMI version so the right backend family loads. A failing
+  // probe is fine here: the loader below reports a precise error.
+  let (probe, _probe_report) = @fmi.validate_fmu_bytes(data)
+  let is_fmi3 = match probe {
+    Some(@schema.V3(_)) => true
+    _ => false
+  }
+  let outcome = try {
+    if is_fmi3 {
+      simulate_fmi3(options, data, host~, directory~, start_time~)
+    } else {
+      simulate_fmi2(options, data, host~, directory~, start_time~)
+    }
+  } catch {
+    failure =>
+      match failure {
+        LoadFailed(message) => {
+          println("moonfmi: \{message}")
+          return 1
+        }
+        RunFailed(message) => {
+          println("moonfmi: simulation failed: \{message}")
+          return 1
+        }
+      }
+  }
+  let (names, result, step_size, stop_time) = outcome
+  let csv = result_csv_named(names, result)
+  match options.output {
+    Some(file) => {
+      @fs.write_string_to_file(file, csv) catch {
+        error =>
+          match error {
+            @fs.IOError(message) => {
+              println("moonfmi: cannot write '\{file}': \{message}")
+              return 1
+            }
+          }
+      }
+      if options.json {
+        println(
+          simulate_json(path, start_time, stop_time, step_size, names, result),
+        )
+      } else {
+        println(
+          "simulated \{path}: \{result.steps()} steps from \{start_time} to \{stop_time}, \{names.length()} output(s), CSV written to \{file}",
+        )
+      }
+    }
+    None =>
+      // Without --output the CSV goes to stdout so the result is usable
+      // in pipes; --json replaces it with a summary object.
+      if options.json {
+        println(
+          simulate_json(path, start_time, stop_time, step_size, names, result),
+        )
+      } else {
+        println(csv)
+      }
+  }
+  0
+}
+
+///|
+fn simulate_json(
+  path : String,
+  start_time : Double,
+  stop_time : Double,
+  step_size : Double,
+  names : Array[String],
+  result : @sim.SimulationResult,
+) -> String {
+  let builder = StringBuilder()
+  builder.write_string("{\n  \"file\": ")
+  builder.write_string(json_string(path))
+  builder.write_string(",\n  \"startTime\": ")
+  builder.write_string(csv_double(start_time))
+  builder.write_string(",\n  \"stopTime\": ")
+  builder.write_string(csv_double(stop_time))
+  builder.write_string(",\n  \"stepSize\": ")
+  builder.write_string(csv_double(step_size))
+  builder.write_string(",\n  \"steps\": ")
+  builder.write_string(result.steps().to_string())
+  builder.write_string(",\n  \"samples\": ")
+  builder.write_string(result.times().length().to_string())
+  builder.write_string(",\n  \"outputs\": [")
+  for index, name in names {
+    if index > 0 {
+      builder.write_string(", ")
+    }
+    builder.write_string(json_string(name))
+  }
+  builder.write_string("]\n}")
+  builder.to_string()
+}
+
+///|
+/// Simulation failures, split into load and run so the exit path can
+/// phrase them differently.
+suberror SimulateFailure {
+  LoadFailed(String)
+  RunFailed(String)
+}
+
+///|
+/// Load an FMI 2 FMU per the options and run the matching master.
+/// Returns the output names, the result and the effective step/stop times.
+fn simulate_fmi2(
+  options : SimulateOptions,
+  data : Bytes,
+  host~ : @fmi.HostPlatform,
+  directory~ : String,
+  start_time~ : Double,
+) -> (Array[String], @sim.SimulationResult, Double, Double) raise SimulateFailure {
+  if options.interface == "me" {
     let loaded = match options.platform_override {
       Some(requested) =>
         @native.load_fmi2_me_fmu(
@@ -593,17 +737,11 @@ fn run_simulate(
           temp_directory=directory,
           platform_override=requested,
         ) catch {
-          error => {
-            println("moonfmi: \{error.message()}")
-            return 1
-          }
+          error => raise LoadFailed(error.message())
         }
       None =>
         @native.load_fmi2_me_fmu(data, host~, temp_directory=directory) catch {
-          error => {
-            println("moonfmi: \{error.message()}")
-            return 1
-          }
+          error => raise LoadFailed(error.message())
         }
     }
     let outputs = real_outputs(loaded.model())
@@ -639,14 +777,16 @@ fn run_simulate(
     )
     let result = @sim.run_me_simulation(loaded.instance(), config~) catch {
       error => {
-        println("moonfmi: simulation failed: \{error.message()}")
         loaded.dispose()
-        return 1
+        raise RunFailed(error.message())
       }
     }
-    let model = loaded.model()
+    let names : Array[String] = []
+    for output in outputs {
+      names.push(output.1)
+    }
     loaded.dispose()
-    (model, result, step_size, stop_time, outputs)
+    (names, result, step_size, stop_time)
   } else {
     let loaded = match options.platform_override {
       Some(requested) =>
@@ -656,17 +796,11 @@ fn run_simulate(
           temp_directory=directory,
           platform_override=requested,
         ) catch {
-          error => {
-            println("moonfmi: \{error.message()}")
-            return 1
-          }
+          error => raise LoadFailed(error.message())
         }
       None =>
         @native.load_fmi2_fmu(data, host~, temp_directory=directory) catch {
-          error => {
-            println("moonfmi: \{error.message()}")
-            return 1
-          }
+          error => raise LoadFailed(error.message())
         }
     }
     let outputs = real_outputs(loaded.model())
@@ -699,80 +833,141 @@ fn run_simulate(
     )
     let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
       error => {
-        println("moonfmi: simulation failed: \{error.message()}")
         loaded.dispose()
-        return 1
+        raise RunFailed(error.message())
       }
     }
-    let model = loaded.model()
+    let names : Array[String] = []
+    for output in outputs {
+      names.push(output.1)
+    }
     loaded.dispose()
-    (model, result, step_size, stop_time, outputs)
+    (names, result, step_size, stop_time)
   }
-  let csv = result_csv(model, result)
-  match options.output {
-    Some(file) => {
-      @fs.write_string_to_file(file, csv) catch {
-        error =>
-          match error {
-            @fs.IOError(message) => {
-              println("moonfmi: cannot write '\{file}': \{message}")
-              return 1
-            }
-          }
-      }
-      if options.json {
-        println(
-          simulate_json(path, start_time, stop_time, step_size, outputs, result),
-        )
-      } else {
-        println(
-          "simulated \{path}: \{result.steps()} steps from \{start_time} to \{stop_time}, \{outputs.length()} output(s), CSV written to \{file}",
-        )
-      }
-    }
-    None =>
-      // Without --output the CSV goes to stdout so the result is usable
-      // in pipes; --json replaces it with a summary object.
-      if options.json {
-        println(
-          simulate_json(path, start_time, stop_time, step_size, outputs, result),
-        )
-      } else {
-        println(csv)
-      }
-  }
-  0
 }
 
 ///|
-fn simulate_json(
-  path : String,
-  start_time : Double,
-  stop_time : Double,
-  step_size : Double,
-  outputs : Array[(UInt32, String)],
-  result : @sim.SimulationResult,
-) -> String {
-  let builder = StringBuilder()
-  builder.write_string("{\n  \"file\": ")
-  builder.write_string(json_string(path))
-  builder.write_string(",\n  \"startTime\": ")
-  builder.write_string(csv_double(start_time))
-  builder.write_string(",\n  \"stopTime\": ")
-  builder.write_string(csv_double(stop_time))
-  builder.write_string(",\n  \"stepSize\": ")
-  builder.write_string(csv_double(step_size))
-  builder.write_string(",\n  \"steps\": ")
-  builder.write_string(result.steps().to_string())
-  builder.write_string(",\n  \"samples\": ")
-  builder.write_string(result.times().length().to_string())
-  builder.write_string(",\n  \"outputs\": [")
-  for index, output in outputs {
-    if index > 0 {
-      builder.write_string(", ")
+/// Load an FMI 3 FMU per the options and run the matching master.
+fn simulate_fmi3(
+  options : SimulateOptions,
+  data : Bytes,
+  host~ : @fmi.HostPlatform,
+  directory~ : String,
+  start_time~ : Double,
+) -> (Array[String], @sim.SimulationResult, Double, Double) raise SimulateFailure {
+  if options.interface == "me" {
+    let loaded = match options.platform_override {
+      Some(requested) =>
+        @native.load_fmi3_me_fmu(
+          data,
+          host~,
+          temp_directory=directory,
+          platform_override=requested,
+        ) catch {
+          error => raise LoadFailed(error.message())
+        }
+      None =>
+        @native.load_fmi3_me_fmu(data, host~, temp_directory=directory) catch {
+          error => raise LoadFailed(error.message())
+        }
     }
-    builder.write_string(json_string(output.1))
+    let outputs = real_outputs_fmi3(loaded.model())
+    let references : Array[UInt32] = []
+    for output in outputs {
+      references.push(output.0)
+    }
+    let step_size = match options.step_size {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.step_size.unwrap_or(0.01)
+          None => 0.01
+        }
+    }
+    let stop_time = match options.stop_time {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.stop_time.unwrap_or(1.0)
+          None => 1.0
+        }
+    }
+    let solver = if options.solver == "euler" { @sim.Euler } else { @sim.Rk4 }
+    let config = @sim.MeConfig::new(
+      start_time~,
+      stop_time~,
+      step_size~,
+      record=references,
+      solver~,
+      state_count=loaded.state_count,
+      event_indicator_count=loaded.event_indicator_count,
+    )
+    let result = @sim.run_me_simulation(loaded.instance(), config~) catch {
+      error => {
+        loaded.dispose()
+        raise RunFailed(error.message())
+      }
+    }
+    let names : Array[String] = []
+    for output in outputs {
+      names.push(output.1)
+    }
+    loaded.dispose()
+    (names, result, step_size, stop_time)
+  } else {
+    let loaded = match options.platform_override {
+      Some(requested) =>
+        @native.load_fmi3_fmu(
+          data,
+          host~,
+          temp_directory=directory,
+          platform_override=requested,
+        ) catch {
+          error => raise LoadFailed(error.message())
+        }
+      None =>
+        @native.load_fmi3_fmu(data, host~, temp_directory=directory) catch {
+          error => raise LoadFailed(error.message())
+        }
+    }
+    let outputs = real_outputs_fmi3(loaded.model())
+    let references : Array[UInt32] = []
+    for output in outputs {
+      references.push(output.0)
+    }
+    let step_size = match options.step_size {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.step_size.unwrap_or(0.01)
+          None => 0.01
+        }
+    }
+    let stop_time = match options.stop_time {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.stop_time.unwrap_or(1.0)
+          None => 1.0
+        }
+    }
+    let config = @sim.CsConfig::new(
+      start_time~,
+      stop_time~,
+      step_size~,
+      record=references,
+    )
+    let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
+      error => {
+        loaded.dispose()
+        raise RunFailed(error.message())
+      }
+    }
+    let names : Array[String] = []
+    for output in outputs {
+      names.push(output.1)
+    }
+    loaded.dispose()
+    (names, result, step_size, stop_time)
   }
-  builder.write_string("]\n}")
-  builder.to_string()
 }

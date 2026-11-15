@@ -328,7 +328,7 @@ pub fn Fmi2Library::instantiate(
   if self.closed {
     raise Fmi2ShimRejected(detail="the library has already been unloaded")
   }
-  let sink = { callback: on_log, active: true, }
+  let sink : Fmi2LogSink = { callback: on_log, active: true, }
   let handle = fmi2_instance_new(
     self.shim,
     @utf8.encode(instance_name),
@@ -375,7 +375,7 @@ pub fn Fmi2Library::instantiate_me(
   if self.closed {
     raise Fmi2ShimRejected(detail="the library has already been unloaded")
   }
-  let sink = { callback: on_log, active: true, }
+  let sink : Fmi2LogSink = { callback: on_log, active: true, }
   let handle = fmi2_instance_new(
     self.shim,
     @utf8.encode(instance_name),

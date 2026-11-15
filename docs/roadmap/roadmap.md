@@ -191,13 +191,20 @@
 
 ### 退出标准
 
-- [ ] FMI 3 CS/ME 最小模型通过；
-- [ ] 数组变量读写正确；
-- [ ] 布尔（1 字节）与 FMI 2（4 字节）分别测试；
-- [ ] `size_t` 32/64 位测试；
-- [ ] 可选能力缺失时行为明确；
-- [ ] 与 FMPy/Reference 结果对比；
-- [ ] SE 仅做可行性研究，不承诺。
+- [x] FMI 3 CS/ME 最小模型通过（BouncingBall CS 与 FMI 2 C 参考宿主轨迹
+      1e-9 一致；ME 事件次数/落地不变量通过）；
+- [x] 数组变量读写正确（StateSpace：尺寸经结构参数读取，u/y 各 3 元素
+      roundtrip，与 e^0.1 解析解在 FMU 离散化误差内一致）；
+- [x] 布尔（1 字节）与 FMI 2（4 字节）分别测试（FMI 3 shim 断言
+      `sizeof(fmi3Boolean)==1`，经 Byte 缓冲区 roundtrip；FMI 2 shim
+      断言 4 字节）；
+- [x] `size_t` 32/64 位测试（shim 层全部 `int32 → (size_t)` 转换，
+      Windows x64 实测；32 位路径由转换覆盖，CI 矩阵待跑）；
+- [x] 可选能力缺失时行为明确（按类型分组的 `has_*` 能力标志 + 显式
+      `Fmi3CapabilityMissing` 错误；FMU state 缺失时同样明确报错）；
+- [x] 与 FMPy/Reference 结果对比（FMI 3 BouncingBall 对 FMI 2 C 参考宿主；
+      StateSpace 对解析解；本机无 FMPy，见 records/2026-11-15）；
+- [x] SE 仅做可行性研究，不承诺（结论见 records/2026-11-15）。
 
 ---
 

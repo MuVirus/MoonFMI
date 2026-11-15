@@ -349,3 +349,240 @@ pub fn load_fmi2_me_fmu(
     .reinterpret_as_int(),
   }
 }
+
+///|
+/// A successfully loaded FMI 3 co-simulation FMU.
+pub(all) struct LoadedFmu3 {
+  model : @schema.Fmi3ModelDescription
+  directory : String
+  files : Array[String]
+  library : Fmi3Library
+  instance : Fmi3Instance
+}
+
+///|
+pub fn LoadedFmu3::model(self : LoadedFmu3) -> @schema.Fmi3ModelDescription {
+  self.model
+}
+
+///|
+pub fn LoadedFmu3::instance(self : LoadedFmu3) -> Fmi3Instance {
+  self.instance
+}
+
+///|
+pub fn LoadedFmu3::dispose(self : LoadedFmu3) -> Unit {
+  self.instance.free()
+  Fmi3Library::close(self.library) catch {
+    _ => ()
+  }
+  @fmi.remove_directory_best_effort(self.directory, self.files)
+}
+
+///|
+/// A successfully loaded FMI 3 model-exchange FMU. `state_count` comes
+/// from the `ContinuousStateDerivatives` of the model structure.
+pub(all) struct LoadedFmu3Me {
+  model : @schema.Fmi3ModelDescription
+  directory : String
+  files : Array[String]
+  library : Fmi3Library
+  instance : Fmi3Instance
+  state_count : Int32
+  event_indicator_count : Int32
+}
+
+///|
+pub fn LoadedFmu3Me::model(self : LoadedFmu3Me) -> @schema.Fmi3ModelDescription {
+  self.model
+}
+
+///|
+pub fn LoadedFmu3Me::instance(self : LoadedFmu3Me) -> Fmi3Instance {
+  self.instance
+}
+
+///|
+pub fn LoadedFmu3Me::dispose(self : LoadedFmu3Me) -> Unit {
+  self.instance.free()
+  Fmi3Library::close(self.library) catch {
+    _ => ()
+  }
+  @fmi.remove_directory_best_effort(self.directory, self.files)
+}
+
+///|
+/// Shared FMI 3 loading pipeline: container check, parse + validate,
+/// platform selection, extraction, library open. Returns the typed model,
+/// the open library and the extracted file list.
+fn load_fmi3_common(
+  data : Bytes,
+  host~ : @fmi.HostPlatform,
+  temp_directory~ : String,
+  platform_override? : String,
+  interface_kind~ : @schema.InterfaceKind,
+) -> (@schema.Fmi3ModelDescription, Fmi3Library, String, Array[String]) raise LoaderError {
+  let directory = absolute_directory(temp_directory)
+  let temp_directory = directory
+  if !@fmi.is_zip_archive(data) {
+    raise Rejected(
+      detail="simulation needs a full FMU archive, not a bare modelDescription.xml",
+    )
+  }
+  let archive = @zip.ZipArchive::open(data) catch {
+    error => raise Rejected(detail="cannot open the FMU: \{error.message()}")
+  }
+  let xml_bytes = archive.read("modelDescription.xml") catch {
+    error =>
+      raise Rejected(
+        detail="the FMU does not contain a readable modelDescription.xml: \{error.message()}",
+      )
+  }
+  let (model, report) = @schema.parse_and_validate(xml_bytes)
+  let parsed = match model {
+    Some(@schema.V3(m)) => m
+    Some(@schema.V2(_)) =>
+      raise Rejected(
+        detail="this FMU is FMI 2; the FMI 3 loader requires an FMI 3 model description",
+      )
+    None => {
+      let detail = "the model description is invalid: " + render_report(report)
+      raise Rejected(detail~)
+    }
+  }
+  if !report.is_valid() {
+    let detail = "the model description failed validation: " +
+      render_report(report)
+    raise Rejected(detail~)
+  }
+  let interface = {
+    let mut found : @schema.Fmi3Interface? = None
+    for candidate in parsed.interfaces {
+      if candidate.kind is interface_kind {
+        found = Some(candidate)
+      }
+    }
+    match found {
+      Some(interface) => interface
+      None =>
+        raise Rejected(
+          detail="this FMU does not declare a \{interface_kind.name()} interface",
+        )
+    }
+  }
+  let (platform_dir, binary_name) = @fmi.select_platform(
+    archive.entries().map(fn(e) { e.name() }),
+    @schema.V3,
+    model_identifier=interface.model_identifier,
+    host~,
+    requested=platform_override,
+  ) catch {
+    error => raise Rejected(detail=error.message())
+  }
+  let files = @fmi.extract_fmu_to_directory(archive, temp_directory) catch {
+    error => raise LoadFailed(detail=error.message())
+  }
+  let library_path = temp_directory +
+    "/binaries/" +
+    platform_dir +
+    "/" +
+    binary_name
+  let library = Fmi3Library::open(library_path) catch {
+    error => {
+      @fmi.remove_directory_best_effort(temp_directory, files)
+      raise LoadFailed(
+        detail="loading '\{library_path}' failed: \{error.message()}",
+      )
+    }
+  }
+  (parsed, library, temp_directory, files)
+}
+
+///|
+/// Load an FMI 3 co-simulation FMU from raw bytes. Event mode is enabled
+/// at instantiation; the CS `step` implementation runs the event loop.
+pub fn load_fmi3_fmu(
+  data : Bytes,
+  host~ : @fmi.HostPlatform,
+  temp_directory~ : String,
+  platform_override? : String,
+  logging_on? : Bool,
+  on_log~ : (Fmi3LogMessage) -> Unit = fn(_) {  },
+) -> LoadedFmu3 raise LoaderError {
+  let (parsed, library, temp_directory, files) = load_fmi3_common(
+    data,
+    host~,
+    temp_directory~,
+    platform_override?,
+    interface_kind=@schema.CoSimulation,
+  )
+  let resource_directory = temp_directory + "/resources"
+  let instance = Fmi3Library::instantiate(
+    library,
+    instance_name=parsed.model_name,
+    instantiation_token=parsed.instantiation_token,
+    resource_path=resource_directory,
+    logging_on=logging_on.unwrap_or(true),
+    on_log~,
+  ) catch {
+    error => {
+      Fmi3Library::close(library) catch {
+        _ => ()
+      }
+      @fmi.remove_directory_best_effort(temp_directory, files)
+      raise LoadFailed(detail=error.message())
+    }
+  }
+  { model: parsed, directory: temp_directory, files, library, instance, }
+}
+
+///|
+/// Load an FMI 3 model-exchange FMU from raw bytes.
+pub fn load_fmi3_me_fmu(
+  data : Bytes,
+  host~ : @fmi.HostPlatform,
+  temp_directory~ : String,
+  platform_override? : String,
+  logging_on? : Bool,
+  on_log~ : (Fmi3LogMessage) -> Unit = fn(_) {  },
+) -> LoadedFmu3Me raise LoaderError {
+  let (parsed, library, temp_directory, files) = load_fmi3_common(
+    data,
+    host~,
+    temp_directory~,
+    platform_override?,
+    interface_kind=@schema.ModelExchange,
+  )
+  let state_count = parsed.model_structure.continuous_state_derivatives.length()
+  if state_count == 0 {
+    raise Rejected(
+      detail="the model declares no ContinuousStateDerivatives in its ModelStructure; there is nothing to integrate",
+    )
+  }
+  let resource_directory = temp_directory + "/resources"
+  let instance = Fmi3Library::instantiate_me(
+    library,
+    instance_name=parsed.model_name,
+    instantiation_token=parsed.instantiation_token,
+    resource_path=resource_directory,
+    logging_on=logging_on.unwrap_or(true),
+    on_log~,
+  ) catch {
+    error => {
+      Fmi3Library::close(library) catch {
+        _ => ()
+      }
+      @fmi.remove_directory_best_effort(temp_directory, files)
+      raise LoadFailed(detail=error.message())
+    }
+  }
+  {
+    model: parsed,
+    directory: temp_directory,
+    files,
+    library,
+    instance,
+    state_count,
+    event_indicator_count: parsed.model_structure.event_indicators.length(),
+  }
+}

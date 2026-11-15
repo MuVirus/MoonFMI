@@ -9,7 +9,7 @@ import {
 }
 
 options(
-  "native-stub": [ "dl.c", "fmi2_shim.c" ],
+  "native-stub": [ "dl.c", "fmi2_shim.c", "fmi3_shim.c" ],
 )
 
 supported_targets = "native"
