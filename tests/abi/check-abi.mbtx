@@ -1,6 +1,6 @@
 ---
 import {
-  "moonbitlang/async",
+  "moonbitlang/async@0.22.9",
   "moonbitlang/async@0.22.9/fs",
   "moonbitlang/async@0.22.9/process",
   "moonbitlang/async@0.22.9/shell",
