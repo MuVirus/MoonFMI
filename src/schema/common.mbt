@@ -268,3 +268,27 @@ pub extend InterfaceKind with Eq::{not_equal, equal}
 
 ///|
 pub extend InterfaceKind with @debug.Debug::{to_repr}
+
+///|
+/// Public constructor for unit definitions exported through tooling APIs
+/// (e.g. the source exporter); every exponent defaults to absent.
+pub fn BaseUnit::of(
+  kg~ : Int32 = 0,
+  m~ : Int32 = 0,
+  s~ : Int32 = 0,
+  a~ : Int32 = 0,
+  kelvin~ : Int32 = 0,
+  mol~ : Int32 = 0,
+  cd~ : Int32 = 0,
+  rad~ : Int32 = 0,
+  factor~ : Double = 1.0,
+  offset~ : Double = 0.0,
+) -> BaseUnit {
+  { kg, m, s, a, kelvin, mol, cd, rad, factor, offset, }
+}
+
+///|
+/// Public constructor for a unit without display units (tooling APIs).
+pub fn UnitDef::simple(name~ : String, base~ : BaseUnit) -> UnitDef {
+  { name, base_unit: Some(base), display_units: [], }
+}

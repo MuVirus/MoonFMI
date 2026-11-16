@@ -3,32 +3,217 @@ package "MuVirus/MoonFMI/src/export"
 
 import {
   "MuVirus/MoonFMI/src/schema",
-  "MuVirus/MoonFMI/src/zip",
   "moonbitlang/core/debug",
 }
 
 // Values
+pub fn array_passthrough_example_ir() -> ModelIr
+
+pub fn build_description_xml(ModelIr) -> String
+
+pub fn c_identifier(String) -> String
+
+pub fn c_member(String) -> String
+
+pub fn c_member_of(String) -> String
+
+pub fn c_vr_macro(String) -> String
+
+pub fn dahlquist_example_ir() -> ModelIr
+
+pub fn export_source_fmu(ModelIr, ExportOptions) -> ExportResult raise ExportError
+
+pub fn generate_cmake(ModelIr, @schema.FmiVersion) -> String
+
+pub fn generate_fmi2_entry(ModelIr) -> String
+
+pub fn generate_fmi2_header(ModelIr) -> String
+
+pub fn generate_fmi3_entry(ModelIr) -> String
+
+pub fn generate_fmi3_header(ModelIr) -> String
+
+pub fn generate_model_c(ModelIr) -> String
+
+pub fn generate_model_header(ModelIr) -> String
+
+pub fn generated_c_source_names(ModelIr) -> Array[String]
+
+pub fn ir_sha256_hex(String) -> String
+
+pub fn model_description_xml(ModelIr, @schema.FmiVersion) -> String raise ExportError
 
 // Errors
+pub(all) suberror ExportError {
+  Failed(@schema.Diagnostic)
+}
+pub fn ExportError::diagnostic(Self) -> @schema.Diagnostic
+pub fn ExportError::message(Self) -> String
 
 // Types and methods
-pub struct ExportRequest {
-  version : @schema.FmiVersion
-  archive : @zip.ZipArchive
-  target : ExportTarget
+pub struct ExportOptions {
+  fmi_version : @schema.FmiVersion
+  output_dir : String?
+  write_fmu : Bool
 }
-pub fn ExportRequest::source(@schema.FmiVersion) -> Self
+pub fn ExportOptions::new(fmi_version~ : @schema.FmiVersion, output_dir? : String?, write_fmu? : Bool) -> Self
+
+pub struct ExportResult {
+  output_dir : String
+  files : Array[(String, Bytes)]
+  fmu_path : String?
+  sha256 : String?
+  diagnostics : Array[@schema.Diagnostic]
+}
 
 #derive(Eq, @debug.Debug)
-pub(all) enum ExportTarget {
-  Source
-  Wasm
-  Native
+pub(all) enum IrDataType {
+  Float64
+  Float32
+  Int32
+  Int64
+  UInt64
+  Boolean
+  Str
 }
-pub fn ExportTarget::all() -> Array[Self]
-pub fn ExportTarget::equal(Self, Self) -> Bool
-pub fn ExportTarget::not_equal(Self, Self) -> Bool
-pub fn ExportTarget::to_repr(Self) -> @debug.Repr
+pub fn IrDataType::c_type(Self) -> String
+pub fn IrDataType::equal(Self, Self) -> Bool
+pub fn IrDataType::name(Self) -> String
+pub fn IrDataType::not_equal(Self, Self) -> Bool
+pub fn IrDataType::to_repr(Self) -> @debug.Repr
+
+pub struct IrDefaultExperiment {
+  start_time : Double
+  stop_time : Double
+  step_size : Double?
+  tolerance : Double?
+}
+pub fn IrDefaultExperiment::new(start_time~ : Double, stop_time~ : Double, step_size? : Double?, tolerance? : Double?) -> Self
+
+pub(all) enum IrEquation {
+  Derivative(String, IrExpr)
+  Output(String, IrExpr)
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum IrExpr {
+  Const(Double)
+  Time
+  Var(String)
+  Add(IrExpr, IrExpr)
+  Sub(IrExpr, IrExpr)
+  Mul(IrExpr, IrExpr)
+  Div(IrExpr, IrExpr)
+  Neg(IrExpr)
+  Call(String, Array[IrExpr])
+}
+pub fn IrExpr::add(Self, Self) -> Self
+pub fn IrExpr::allowed_calls() -> Array[String]
+pub fn IrExpr::c(Double) -> Self
+pub fn IrExpr::call(String, Array[Self]) -> Self
+pub fn IrExpr::div(Self, Self) -> Self
+pub fn IrExpr::equal(Self, Self) -> Bool
+pub fn IrExpr::mul(Self, Self) -> Self
+pub fn IrExpr::neg(Self) -> Self
+pub fn IrExpr::not_equal(Self, Self) -> Bool
+pub fn IrExpr::sub(Self, Self) -> Self
+pub fn IrExpr::to_repr(Self) -> @debug.Repr
+pub fn IrExpr::v(String) -> Self
+
+pub struct IrInterface {
+  kind : @schema.InterfaceKind
+  model_identifier : String
+}
+
+pub struct IrLogCategory {
+  name : String
+  description : String?
+}
+
+#derive(Eq, @debug.Debug)
+pub(all) enum IrValue {
+  Real(Double)
+  Int(Int64)
+  Bool(Bool)
+  Str(String)
+  RealArray(Array[Double])
+  IntArray(Array[Int64])
+}
+pub fn IrValue::equal(Self, Self) -> Bool
+pub fn IrValue::not_equal(Self, Self) -> Bool
+pub fn IrValue::to_repr(Self) -> @debug.Repr
+
+pub struct IrVariable {
+  name : String
+  data_type : IrDataType
+  causality : @schema.Causality
+  mut variability : @schema.Variability
+  mut initial : @schema.Initial?
+  mut start : IrValue?
+  mut unit : String?
+  display_unit : String?
+  quantity : String?
+  mut description : String?
+  min : Double?
+  max : Double?
+  mut nominal : Double?
+  dimensions : Array[UInt32]
+}
+pub fn IrVariable::new(name~ : String, data_type~ : IrDataType, causality~ : @schema.Causality, initial? : @schema.Initial, unit? : String, display_unit? : String, quantity? : String, min? : Double, max? : Double) -> Self
+
+pub struct ModelIr {
+  model_name : String
+  description : String?
+  model_version : String?
+  guid : String?
+  interfaces : Array[IrInterface]
+  variables : Array[IrVariable]
+  equations : Array[IrEquation]
+  units : Array[@schema.UnitDef]
+  log_categories : Array[IrLogCategory]
+  default_experiment : IrDefaultExperiment?
+  generation_tool : String
+}
+pub fn ModelIr::add_boolean_input(Self, name~ : String, start~ : Bool, description? : String) -> IrVariable
+pub fn ModelIr::add_derivative(Self, state~ : String, expr~ : IrExpr) -> Unit
+pub fn ModelIr::add_int_input(Self, name~ : String, start~ : Int64, description? : String) -> IrVariable
+pub fn ModelIr::add_int_parameter(Self, name~ : String, start~ : Int64, description? : String) -> IrVariable
+pub fn ModelIr::add_interface(Self, kind~ : @schema.InterfaceKind, model_identifier~ : String) -> Unit
+pub fn ModelIr::add_log_category(Self, name~ : String, description~ : String) -> Unit
+pub fn ModelIr::add_output_equation(Self, output~ : String, expr~ : IrExpr) -> Unit
+pub fn ModelIr::add_real_input(Self, name~ : String, start~ : Double, unit? : String, description? : String) -> IrVariable
+pub fn ModelIr::add_real_input_array(Self, name~ : String, size~ : UInt32, start~ : Array[Double], description? : String) -> IrVariable
+pub fn ModelIr::add_real_local(Self, name~ : String, start~ : Double, description? : String) -> IrVariable
+pub fn ModelIr::add_real_output(Self, name~ : String, unit? : String, description? : String) -> IrVariable
+pub fn ModelIr::add_real_output_array(Self, name~ : String, size~ : UInt32, description? : String) -> IrVariable
+pub fn ModelIr::add_real_parameter(Self, name~ : String, start~ : Double, unit? : String, description? : String) -> IrVariable
+pub fn ModelIr::add_real_state(Self, name~ : String, start~ : Double, unit? : String, description? : String, nominal? : Double) -> IrVariable
+pub fn ModelIr::add_string_output(Self, name~ : String, start~ : String, description? : String) -> IrVariable
+pub fn ModelIr::add_unit(Self, @schema.UnitDef) -> Unit
+pub fn ModelIr::add_variable(Self, IrVariable) -> Unit
+pub fn ModelIr::check(Self) -> Array[@schema.Diagnostic]
+pub fn ModelIr::derived_guid(Self) -> String
+pub fn ModelIr::guid_value(Self) -> String
+pub fn ModelIr::has_derivative_equation(Self, String) -> Bool
+pub fn ModelIr::has_output_equation(Self, String) -> Bool
+pub fn ModelIr::index_of(Self, String) -> Int32?
+pub fn ModelIr::new(model_name~ : String, generation_tool~ : String, description? : String, model_version? : String, guid? : String, default_experiment? : IrDefaultExperiment) -> Self
+pub fn ModelIr::output_equation_names(Self) -> Array[String]
+pub fn ModelIr::signature(Self) -> String
+pub fn ModelIr::state_names(Self) -> Array[String]
+pub fn ModelIr::value_reference(Self, String) -> UInt32?
+
+pub struct XmlWriter {
+  mut indent : Int32
+  buf : StringBuilder
+}
+pub fn XmlWriter::close(Self, String) -> Unit
+pub fn XmlWriter::element(Self, String) -> Unit
+pub fn XmlWriter::escape(String) -> String
+pub fn XmlWriter::line(Self, String) -> Unit
+pub fn XmlWriter::new() -> Self
+pub fn XmlWriter::open(Self, String) -> Unit
+pub fn XmlWriter::to_string(Self) -> String
 
 // Type aliases
 

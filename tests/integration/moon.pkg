@@ -1,6 +1,7 @@
 import {
   "MuVirus/MoonFMI/src/backend/native" @native_backend,
   "MuVirus/MoonFMI/src/cli",
+  "MuVirus/MoonFMI/src/export",
   "MuVirus/MoonFMI/src/fmi",
   "MuVirus/MoonFMI/src/schema",
   "MuVirus/MoonFMI/src/sim",

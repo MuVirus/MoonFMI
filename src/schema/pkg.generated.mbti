@@ -79,6 +79,7 @@ pub struct BaseUnit {
   offset : Double
 }
 pub fn BaseUnit::default() -> Self
+pub fn BaseUnit::of(kg? : Int32, m? : Int32, s? : Int32, a? : Int32, kelvin? : Int32, mol? : Int32, cd? : Int32, rad? : Int32, factor? : Double, offset? : Double) -> Self
 
 #derive(Eq, @debug.Debug)
 pub(all) enum Causality {
@@ -597,6 +598,7 @@ pub struct UnitDef {
   base_unit : BaseUnit?
   display_units : Array[DisplayUnit]
 }
+pub fn UnitDef::simple(name~ : String, base~ : BaseUnit) -> Self
 
 pub struct ValidationReport {
   mut diagnostics : Array[Diagnostic]

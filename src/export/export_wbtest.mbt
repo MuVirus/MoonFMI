@@ -1,7 +1,90 @@
 ///|
-test "source export starts with an empty archive" {
-  let request = ExportRequest::source(@schema.FmiVersion::V3)
-  assert_eq(request.version, @schema.FmiVersion::V3)
-  assert_eq(request.archive.entry_count(), 0)
-  assert_eq(request.target, ExportTarget::Source)
+test "model description generation is deterministic and version tagged" {
+  let ir = dahlquist_ir()
+  let xml_a = model_description_xml(ir, @schema.FmiVersion::V2)
+  let xml_b = model_description_xml(ir, @schema.FmiVersion::V2)
+  assert_eq(xml_a, xml_b)
+  // FMI 2 roots carry guid, FMI 3 roots carry instantiationToken.
+  assert_true(xml_a.contains("fmiVersion=\"2.0\""))
+  assert_true(xml_a.contains("guid=\"{"))
+  let xml3 = model_description_xml(ir, @schema.FmiVersion::V3)
+  assert_true(xml3.contains("instantiationToken=\"{"))
+  assert_true(xml3.contains("<ContinuousStateDerivative"))
+}
+
+///|
+test "derived guid is stable and uuid shaped" {
+  let ir = dahlquist_ir()
+  let guid_a = ir.derived_guid()
+  let guid_b = ir.derived_guid()
+  assert_eq(guid_a, guid_b)
+  assert_eq(guid_a.length(), 36)
+  // Changing the IR changes the identity.
+  let other = dahlquist_ir()
+  other.variables[0].start = Some(IrValue::Real(2.5))
+  assert_true(other.derived_guid() != guid_a)
+}
+
+///|
+test "ir check reports unknown equation targets" {
+  let ir = dahlquist_ir()
+  assert_eq(ir.check().length(), 0)
+  let broken = dahlquist_ir()
+  broken.add_derivative(state="missing", expr=IrExpr::Const(1.0))
+  let diagnostics = broken.check()
+  assert_true(diagnostics.length() > 0)
+  assert_true(diagnostics[0].code == "EX-010")
+}
+
+///|
+/// Shared fixture (lives in ir.mbt as the public example builder):
+/// `x' = -k*x, y = x` with k parameter, one state, one output.
+pub fn dahlquist_ir() -> ModelIr {
+  dahlquist_example_ir()
+}
+
+///|
+test "units are written for both schema versions" {
+  let ir = dahlquist_example_ir()
+  ir.units.push(
+    @schema.UnitDef::simple(
+      name="1/s",
+      base=@schema.BaseUnit::of(s=1, factor=-1.0),
+    ),
+  )
+  match ir.index_of("k") {
+    Some(index) => ir.variables[index].unit = Some("1/s")
+    None => abort("k must exist")
+  }
+  let xml = model_description_xml(ir, @schema.FmiVersion::V2)
+  assert_true(xml.contains("<UnitDefinitions>"))
+  assert_true(xml.contains("<Unit name=\"1/s\">"))
+  assert_true(xml.contains("<BaseUnit s=\"1\" factor=\"-1\""))
+  assert_true(xml.contains("unit=\"1/s\""))
+  let xml3 = model_description_xml(ir, @schema.FmiVersion::V3)
+  assert_true(xml3.contains("<UnitDefinitions>"))
+}
+
+///|
+test "fmi 3 arrays emit dimension elements and fmi 2 rejects them" {
+  let ir = array_passthrough_example_ir()
+  let xml3 = model_description_xml(ir, @schema.FmiVersion::V3)
+  assert_true(xml3.contains("<Float64 name=\"u\" valueReference=\"0\""))
+  assert_true(xml3.contains("start=\"1 2 3\""))
+  assert_true(xml3.contains("<Dimension start=\"3\"/>"))
+  assert_true(xml3.contains("<Float64 name=\"y\" valueReference=\"1\""))
+  // FMI 2 has no dimensions: the export must refuse the model instead of
+  // emitting invalid XML.
+  let outcome : Result[ExportResult, ExportError] = Ok(
+    export_source_fmu(
+      ir,
+      ExportOptions::new(fmi_version=@schema.FmiVersion::V2, write_fmu=false),
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  match outcome {
+    Ok(_) => abort("FMI 2 export must reject arrays")
+    Err(error) => assert_true(error.message().contains("dimension"))
+  }
 }

@@ -5,9 +5,19 @@
  * code under test. Resident set size alone is misleading, because both the
  * Windows heap and glibc keep freed blocks mapped; trimming first makes the
  * number reflect live allocations instead of peak churn.
+ *
+ * `moonfmi_test_run_command` lets the source-FMU export tests invoke the
+ * external C compiler (roadmap P6 / E-06) without pulling a process module
+ * into the test package; the command string is fully built by the caller.
  */
 
 #include <stdint.h>
+#include <stdlib.h>
+
+int64_t moonfmi_test_run_command(const char *command) {
+  int status = system(command);
+  return (int64_t)status;
+}
 
 #ifdef _WIN32
 #include <malloc.h>
@@ -42,7 +52,6 @@ int64_t moonfmi_test_resident_bytes(void) {
     fclose(file);
     return -1;
   }
-  fclose(file);
   return (int64_t)resident * (int64_t)sysconf(_SC_PAGESIZE);
 }
 #endif
