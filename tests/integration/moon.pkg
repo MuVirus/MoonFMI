@@ -18,6 +18,7 @@ supported_targets = "native"
 options(
   "native-stub": [ "support.c" ],
   targets: {
+    "bench_wbtest.mbt": [ "not", "debug" ],
     "perf_budget_debug.mbt": [ "debug" ],
     "perf_budget_release.mbt": [ "not", "debug" ],
     "perf_validate_debug_wbtest.mbt": [ "debug" ],

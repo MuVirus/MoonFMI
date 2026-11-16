@@ -65,6 +65,11 @@ FMI 3.0.2，覆盖联合仿真 Co-Simulation 与模型交换 Model Exchange）�
 - 每次运行只支持单个 FMU；多 FMU 耦合（连接、代数环）属于后续工作
   （见 `docs/design/master-algorithm.md` §8 路线图）。
 - FMI 3 Scheduled Execution 目前仅有可行性说明文档，尚未实现。
+- 源码 FMU 导出器只支持受限的显式模型（连续状态、直通输出、参数/输入）——
+  它不是 Modelica 编译器；数组方程暂不生成（FMI 3 下数组可按值读写）。
+- WebAssembly 后端为**实验性**：最小 CS 组件与 LS-WASM 打包已验证
+  （见 `tests/fmu-wasm/README.md`），完整 LS-WASM world 与浏览器宿主
+  属于后续工作；`simulate --backend wasm` 目前固定退出码 4。
 - `package` 的输出由 MoonFMI 自己的读取器校验；建议再用 FMPy
   （`python -m fmpy <file>.fmu`）做一次外部校验。
 

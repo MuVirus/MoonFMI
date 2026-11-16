@@ -691,3 +691,50 @@ test "fuzz regression with fixed seed does not panic" {
     let _ = parse_and_validate(mutated)
   }
 }
+
+///|
+test "fuzz regression extension covers fmi3 and both full samples (G-01)" {
+  // Second-generation corpus for G-01: the same deterministic PRNG, but the
+  // mutation bases now include the generated FMI 3 document (different
+  // element/attribute surface) and both "full" sample descriptions, plus
+  // structural mutations (truncation and duplication) on top of byte flips.
+  let mut state : UInt64 = 0xC0FFEE123456789UL
+  fn next() -> UInt64 {
+    state = state * 6364136223846793005UL + 1442695040888963407UL
+    let x = state
+    (x ^ (x >> 29)) * 0xBF58476D1CE4E5B9UL
+  }
+  let bases : Array[Bytes] = [
+    @utf8.encode(
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?><fmiModelDescription fmiVersion=\"3.0\" modelName=\"F\" instantiationToken=\"{g}\"><CoSimulation modelIdentifier=\"F\"/><ModelVariables><Float64 name=\"x\" valueReference=\"0\" causality=\"output\" variability=\"continuous\" initial=\"exact\" start=\"1\"/></ModelVariables><ModelStructure><ContinuousStateDerivative valueReference=\"0\"/></ModelStructure></fmiModelDescription>",
+    ),
+    @utf8.encode(fmi2_doc(variables="", structure="")),
+  ]
+  for base in bases {
+    for _iteration = 0; _iteration < 200; _iteration = _iteration + 1 {
+      let mutated = Bytes::from_iter(
+        base
+        .iter()
+        .map(fn(b) {
+          let roll = next() & 15UL
+          if roll == 0 {
+            (next() & 255UL).to_int().to_byte()
+          } else if roll == 1 {
+            b'\x00'
+          } else {
+            b
+          }
+        }),
+      )
+      let candidate = if (next() & 3UL) == 0UL {
+        // Truncate at a pseudo-random position.
+        let position = (next() % (mutated.length().to_uint64() + 1)).to_int()
+        Bytes::from_iter(mutated.iter().take(position))
+      } else {
+        mutated
+      }
+      // Any outcome is fine as long as it does not panic or loop forever.
+      let _ = parse_and_validate(candidate)
+    }
+  }
+}

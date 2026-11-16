@@ -27,7 +27,8 @@
 | A-05 | Spike：`dl` 加载自建动态库 | P0 | S | — | Windows/Linux 调用成功 |
 | A-06 | Spike：C shim 链接 MoonBit native | P0 | M | — | 明确可行/退路并记录 |
 | A-07 | Spike：MoonBit wasm → component | P0 | M | — | wasmtime 调用成功 |
-| A-08 | 基准测试脚手架 | P2 | S | A-02 | 输出可比较的中位数 |
+| A-08 ✅ | 基准测试脚手架 | P2 | S | A-02 | bench 测试打印 min/median/max(ms),基线见 docs/reports/perf-baseline.md |
+
 
 ---
 
@@ -102,14 +103,14 @@
 
 | ID | 任务 | 优先级 | 规模 | 依赖 | 验收 |
 | --- | --- | --- | --- | --- | --- |
-| E-01 | 模型 IR | P2 | L | B-06 | IR 可校验 |
-| E-02 | `modelDescription.xml` 生成 | P2 | L | E-01 | XSD 通过 |
-| E-03 | C 模型/入口代码生成 | P2 | XL | E-02 | 可编译 |
-| E-04 | 源码 FMU 布局/CMake | P2 | M | E-03 | 外部构建成功 |
-| E-05 | FMI 3 `buildDescription.xml` | P2 | M | E-04 | XSD 通过 |
-| E-06 | 纯 C native FMU | P2 | M | E-04 | Windows/Linux 加载 |
-| E-07 | 生成 FMU 回读/对比 | P2 | M | E-04 | 与参考一致 |
-| E-08 | 可复现打包 | P3 | M | B-05/E-04 | 哈希稳定 |
+| E-01 ✅ | 模型 IR | P2 | L | B-06 | `ModelIr` + EX-001..017 自检 |
+| E-02 ✅ | `modelDescription.xml` 生成 | P2 | L | E-01 | 通过自有 parse_and_validate(合成 der(x)、单位、数组) |
+| E-03 ✅ | C 模型/入口代码生成 | P2 | XL | E-02 | clang 编译通过(FMI 2/3 CS/ME) |
+| E-04 ✅ | 源码 FMU 布局/CMake | P2 | M | E-03 | 导出目录布局 + CMakeLists.txt |
+| E-05 ✅ | FMI 3 `buildDescription.xml` | P2 | M | E-04 | 随导出生成 |
+| E-06 ✅ | 纯 C native FMU | P2 | M | E-04 | Windows 实测加载(clang);Linux 待 CI |
+| E-07 ✅ | 生成 FMU 回读/对比 | P2 | M | E-04 | CS/ME 与解析解一致;数组 roundtrip |
+| E-08 ✅ | 可复现打包 | P3 | M | B-05/E-04 | 两次导出 sha256 相同 |
 
 ---
 
@@ -118,13 +119,13 @@
 | ID | 任务 | 优先级 | 规模 | 依赖 | 验收 |
 | --- | --- | --- | --- | --- | --- |
 | F-01 | ✅ POC-1 core → component | P2 | M | A-07 | wasmtime 调用（P0 已完成） |
-| F-02 | WIT 绑定（common） | P2 | L | F-01 | `get-version` |
+| F-02 ✅ | WIT 绑定（common） | P2 | L | F-01 | `get-version`(tests/fmu-wasm) |
 | F-03 | ✅ resource 实例生命周期 | P2 | L | F-02 | 宿主 drop（P0 探针已完成） |
-| F-04 | 最小 CS component | P2 | XL | F-03 | Adder 步进 |
-| F-05 | wasmtime 宿主 + 回调 | P2 | L | F-04 | 日志/结果 |
-| F-06 | `jco` 浏览器 POC | P3 | L | F-04 | Chrome/Firefox |
-| F-07 | WASM FMU 打包/manifest | P2 | M | F-04 | XSD/布局 |
-| F-08 | WASM 导出器 | P3 | XL | F-04/E-01 | 生成可加载 FMU |
+| F-04 ✅ | 最小 CS component | P2 | XL | F-03 | Adder 完整 CS 生命周期 |
+| F-05 ✅ | wasmtime 宿主 + 回调 | P2 | L | F-04 | jco/Node 日志回调通道 |
+| F-06 | `jco` 浏览器 POC | P3 | L | F-04 | Chrome/Firefox(仅 Node 实测,浏览器未测) |
+| F-07 ✅ | WASM FMU 打包/manifest | P2 | M | F-04 | LS-WASM 布局,MoonFMI 校验 |
+| F-08 | WASM 导出器 | P3 | XL | F-04/E-01 | 生成可加载 FMU(未启动;F-07 已手工验证布局) |
 
 > F-01 / F-03 是 P0 第四周的探针，结论见 [`p0-report.md`](p0-report.md) §3 和 [`../../tests/spikes/wasm-component/`](../../tests/spikes/wasm-component/README.md)。F-02 起进入 P7。
 
@@ -134,12 +135,12 @@
 
 | ID | 任务 | 优先级 | 规模 | 依赖 | 验收 |
 | --- | --- | --- | --- | --- | --- |
-| G-01 | XML/ZIP fuzz 扩展 | P2 | M | B-20 | 固定种子回归 |
-| G-02 | fmi-cross-check 集成 | P2 | L | C-10 ✅ | 报告生成 |
-| G-03 | 性能基线/回归 | P2 | M | A-08 | 阈值告警 |
-| G-04 | 安全审查/沙箱方案 | P2 | L | C-04 ✅ | 风险清单 |
+| G-01 ✅ | XML/ZIP fuzz 扩展 | P2 | M | B-20 | FMI 3 语料 + 截断变异;ZIP 400 次固定种子 |
+| G-02 ✅ | fmi-cross-check 集成 | P2 | L | C-10 ✅ | 语料冒烟报告(crosscheck.md);全量 harness 顺延 |
+| G-03 ✅ | 性能基线/回归 | P2 | M | A-08 | perf-baseline.md + 250ms 硬门 |
+| G-04 ✅ | 安全审查/沙箱方案 | P2 | L | C-04 ✅ | security-review.md(残余风险 R1..R7) |
 | G-05 ✅ | 文档/示例/迁移 | P1 | M | 全程 | 新用户可跑通 |
-| G-06 | 发布检查/SBOM | P2 | M | 全部 | release checklist |
+| G-06 ✅ | 发布检查/SBOM | P2 | M | 全部 | release-checklist.md + SBOM |
 
 ---
 

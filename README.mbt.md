@@ -67,6 +67,14 @@ checks the local environment.
   future work (see `docs/design/master-algorithm.md` §8 of the roadmap).
 - FMI 3 Scheduled Execution is a documented feasibility note only, not
   implemented.
+- The source-FMU exporter emits restricted explicit models (continuous
+  states, feedthrough outputs, parameters/inputs) — it is not a Modelica
+  compiler; array equations are not generated yet (arrays roundtrip as
+  values on FMI 3).
+- The WebAssembly backend is **experimental**: a minimal CS component and
+  LS-WASM packaging are verified (see `tests/fmu-wasm/README.md`), but the
+  full LS-WASM world and browser hosts are future work; `simulate
+  --backend wasm` intentionally exits with code 4.
 - `package` output is verified by MoonFMI's own reader; validating with
   FMPy (`python -m fmpy <file>.fmu`) is recommended as an external check.
 

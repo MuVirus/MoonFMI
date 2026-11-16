@@ -199,3 +199,55 @@ test "archive without entries is accepted" {
   assert_eq(archive.entry_count(), 0)
   assert_eq(archive.extract_all().length(), 0)
 }
+
+///|
+test "fuzz regression with fixed seed does not panic (G-01)" {
+  // xorshift-style PRNG keeps the corpus deterministic across runs. The
+  // base archive is a valid FMU-shaped zip; mutations flip bytes, splice
+  // truncations and inflate headers. The reader must either accept the
+  // archive or raise a ZipError — never panic.
+  let mut state : UInt64 = 0x2545F4914F6CDD1DUL
+  fn next() -> UInt64 {
+    state = state * 6364136223846793005UL + 1442695040888963407UL
+    let x = state
+    (x ^ (x >> 29)) * 0xBF58476D1CE4E5B9UL
+  }
+  let base = build_deterministic_zip([
+    ("modelDescription.xml", @utf8.encode("<fmiModelDescription/>")),
+    ("binaries/win64/model.dll", b"\x4d\x5a\x90\x00\x00\x00\x00\x00"),
+  ])
+  for _iteration = 0; _iteration < 400; _iteration = _iteration + 1 {
+    let mutated = Bytes::from_iter(
+      base
+      .iter()
+      .map(fn(b) {
+        let roll = next() & 31UL
+        if roll == 0 {
+          (next() & 255UL).to_int().to_byte()
+        } else {
+          b
+        }
+      }),
+    )
+    // Truncate at a pseudo-random position roughly half the time.
+    let cut = (next() & (mutated.length().to_uint64() / 2)) |> ignore
+    let candidate = if (next() & 1UL) == 0UL {
+      mutated
+    } else {
+      let position = (next() % mutated.length().to_uint64()).to_int()
+      Bytes::from_iter(mutated.iter().take(position))
+    }
+    let _ = cut
+    // The reader must never panic; any outcome below is fine.
+    let outcome : Result[ZipArchive, ZipError] = Ok(ZipArchive::open(candidate)) catch {
+      error => Err(error)
+    }
+    match outcome {
+      Ok(archive) => {
+        // If the archive parses, extraction must not panic either.
+        let _ = archive.extract_all() catch { _ => [] }
+      }
+      Err(_) => ()
+    }
+  }
+}

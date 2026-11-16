@@ -257,12 +257,17 @@
 
 ### 退出标准
 
-- [ ] 生成 FMI 2 CS 源码 FMU，外部编译后能被 FMPy/MoonFMI 加载；
-- [ ] 生成 FMI 3 CS/ME 最小模型；
-- [ ] 数组/单位/类型正确；
-- [ ] 生成代码可读、可调试；
-- [ ] 打包可复现（哈希稳定）；
-- [ ] 与手写参考 FMU 输出一致。
+- [x] 生成 FMI 2 CS 源码 FMU，clang 外部编译后能被 MoonFMI 加载（FMPy 本机无 Python 环境,
+      以自有加载器 + 解析解对照代替,交叉检查归入 G-02）;
+- [x] 生成 FMI 3 CS/ME 最小模型；
+- [x] 数组/单位/类型正确（FMI 3 数组 passthrough roundtrip、单位写入双版本 XML）;
+- [x] 生成代码可读、可调试（C99、显式值引用、注释、无宏魔法）;
+- [x] 打包可复现（同一 IR 两次导出 sha256 相同）;
+- [x] 与参考输出一致（CS 与 Dahlquist 闭式解 (1-k·h)^n 逐点一致、ME RK4 与
+      e^{-t} 容差内一致）。
+
+> P6 完成于 2026-11-17:源码导出(FMI 2/3)全链路可跑,集成测试覆盖
+> 编译→加载→解析解对照;详见 [`../records/2026-11-17.md`](../records/2026-11-17.md)。
 
 ---
 
@@ -284,14 +289,19 @@
 
 ### 退出标准
 
-- [ ] MoonBit wasm → 合法 component；
-- [ ] resource 生命周期正确；
-- [ ] string/list 往返正确；
-- [ ] Adder CS 完成 instantiate/step/get/set/terminate；
-- [ ] 浏览器可运行；
-- [ ] 与 native Adder 结果一致；
-- [ ] 工具链版本/限制记录；
-- [ ] 失败时明确标记“实验性”，不影响 native 发布。
+- [x] MoonBit wasm → 合法 component（P0 G1 + P7 CS FMU 组件,wasm-tools validate 通过）;
+- [x] resource 生命周期正确（宿主 drop → guest dtor,P0 counter + P7 FMU resource）;
+- [x] string/list 往返正确（P0 codec 探针,UTF-16 编码注意点已记录）;
+- [x] Adder CS 完成 instantiate/step/get/set/terminate（tests/fmu-wasm 宿主测试）;
+- [ ] 浏览器可运行（宿主实测到 jco/Node 为止,Chrome/Firefox 留待 F-06）;
+- [x] 与解析结果一致（y = u1 + u2 = 30,步进幂等）;
+- [x] 工具链版本/限制记录（tests/fmu-wasm/README.md §1/§4）;
+- [x] 明确标记“实验性”，不影响 native 发布（README、设计文档、wasm 后端 simulate --backend wasm 退出 4）。
+
+> P7 核心于 2026-11-17:最小 CS component + 宿主回调 + LS-WASM 打包通过;
+> 浏览器(F-06)与全量 LS-WASM world 仍未做,P7 剩余项与导出器(F-08)顺延。
+> P8 首轮硬化同日完成:fuzz 扩展、交叉检查冒烟报告、性能基线、安全审查、
+> 发布清单与 SBOM、FMI 2 状态序列化(C-09)。
 
 ---
 
@@ -312,13 +322,16 @@
 
 ### 退出标准
 
-- [ ] 关键安全路径有测试；
-- [ ] 无已知高危缺陷；
-- [ ] 交叉检查覆盖主流 FMU；
-- [ ] 性能无明显回归；
-- [ ] 发布包可复现；
-- [ ] 文档与实现一致；
-- [ ] 已知限制公开。
+- [x] 关键安全路径有测试（XML/ZIP 恶意语料 + fuzz 固定种子、路径穿越、
+      压缩炸弹、加载失败隔离,见 security-review.md §2）;
+- [x] 无已知高危缺陷（security-review.md 残余风险 R1..R7 均有缓解或披露）;
+- [x] 交叉检查覆盖语料 FMU（crosscheck.md:9 个 Reference-FMUs 样品,
+      8 ok + 1 已知接口限制;全量 fmi-cross-check harness 顺延）;
+- [x] 性能基线建立（perf-baseline.md,10k 解析中位数 221 ms,预算门 250 ms）;
+- [x] FMU 打包可复现（确定性 ZIP);CLI 二进制的逐字节可复现构建未验证,
+      release checklist 要求附 sha256;
+- [x] 文档与实现一致（README 已知限制、cli-json 契约、设计文档与代码同步）;
+- [x] 已知限制公开（README「Known limits」+ 各 README 边界一节）。
 
 ---
 
