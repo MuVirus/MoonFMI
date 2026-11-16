@@ -47,6 +47,12 @@ jobs:
       - name: Show toolchain versions
         run: moon version --all
 
+      # A fresh runner ships with an empty mooncakes index; without this,
+      # `moon run` cannot resolve even version-pinned registry dependencies
+      # ("module was not found in the registry").
+      - name: Update the mooncakes registry index
+        run: moon update
+
       - name: Fetch and verify test FMUs
         run: moon run tests/data/fetch-fmus.mbtx --target native
 
