@@ -7,3 +7,8 @@ target
 tests/data/.cache/
 tests/abi/.cache/
 tests/spikes/*/.cache/
+
+.pi/
+.zcode/
+
+.moonfmi-tmp/

@@ -21,8 +21,6 @@ struct MockMe {
   mut initial_done : Bool
   mut settles : Int32
   mut reinits : Int32
-  mut completed_calls : Int32
-  mut nominals_calls : Int32
   mut finished : Bool
 }
 
@@ -46,8 +44,6 @@ fn MockMe::make(
     initial_done: false,
     settles: 0,
     reinits: 0,
-    completed_calls: 0,
-    nominals_calls: 0,
     finished: false,
   }
 }
@@ -98,11 +94,10 @@ impl @fmi.MeInstance for MockMe with fn get_event_indicators(self, indicators) {
 
 ///|
 impl @fmi.MeInstance for MockMe with fn get_nominals_of_continuous_states(
-  self,
+  _self,
   nominals,
 ) {
   nominals[0] = 1.0
-  self.nominals_calls += 1
 }
 
 ///|
@@ -175,11 +170,10 @@ impl @fmi.MeInstance for MockMe with fn enter_continuous_time_mode(self) {
 
 ///|
 impl @fmi.MeInstance for MockMe with fn completed_integrator_step(
-  self,
+  _self,
   no_set_fmu_state_prior~,
 ) {
   let _ = no_set_fmu_state_prior
-  self.completed_calls += 1
   (false, false)
 }
 

@@ -1,0 +1,207 @@
+---
+import {
+  "moonbitlang/async",
+  "moonbitlang/async@0.22.9/fs",
+  "moonbitlang/core/env",
+  "moonbitlang/core/string"
+}
+---
+
+// Dependency-direction checker for MoonFMI, the MoonBit counterpart of the
+// retired tools/check-deps.mjs. Run from the repository root:
+//
+//   moon run tools/check-deps.mbtx --target native
+//
+// The self-test that used to run behind `--self-test` is now an ordinary
+// test block: `moon test tools/check-deps.mbtx --target native`.
+
+///|
+// The dependency direction from docs/design/architecture.md section 3.1.
+// Keep this table in sync with the document.
+let allowed : Array[(String, Array[String])] = [
+  ("src/zip", []),
+  ("src/xml", []),
+  ("src/schema", ["src/xml"]),
+  ("src/fmi", ["src/schema", "src/zip"]),
+  ("src/backend/native", ["src/fmi", "src/schema", "src/zip"]),
+  ("src/backend/wasm", ["src/fmi"]),
+  ("src/sim", ["src/fmi"]),
+  ("src/export", ["src/schema", "src/zip"]),
+  (
+    "src/cli",
+    [
+      "src/zip",
+      "src/xml",
+      "src/schema",
+      "src/fmi",
+      "src/backend/native",
+      "src/backend/wasm",
+      "src/sim",
+      "src/export",
+    ],
+  ),
+]
+
+///|
+let target_rules : Array[(String, String)] = [
+  ("src/backend/native", "native"),
+  ("src/backend/wasm", "wasm"),
+  ("src/cli", "native"),
+]
+
+///|
+// Static regexes built from patterns this file owns; `unsafe_from_string`
+// only skips the parse-failure plumbing a fixed pattern cannot hit.
+fn import_regex() -> @string.Regex {
+  @string.Regex::unsafe_from_string("\"MuVirus/MoonFMI/(src/[^\"]+)\"")
+}
+
+///|
+// The native regex engine rejects `\s`-style classes, so whitespace is
+// spelled out as an explicit bracket class; moon.pkg files use spaces/tabs.
+fn supported_targets_regex(target : String) -> @string.Regex {
+  @string.Regex::unsafe_from_string(
+    "supported_targets[ \t]*=[ \t]*\"\{target}\"",
+  )
+}
+
+///|
+fn supported_targets_directive_regex() -> @string.Regex {
+  @string.Regex::unsafe_from_string("supported_targets[ \t]*=")
+}
+
+///|
+// Every `MuVirus/MoonFMI/src/...` import path in a moon.pkg file. moon.pkg
+// is moonpkg-syntax text, so this works on the raw file like the .mjs
+// version's regex did.
+fn scan_project_imports(text : String) -> Array[String] {
+  let result : Array[String] = []
+  for matched in import_regex().find(text) {
+    match matched.group(1) {
+      Some(path) => result.push(path.to_owned())
+      None => ()
+    }
+  }
+  result
+}
+
+///|
+fn supported_targets_matches(text : String, target : String) -> Bool {
+  supported_targets_regex(target).find(text).next() is Some(_)
+}
+
+///|
+fn has_supported_targets_directive(text : String) -> Bool {
+  supported_targets_directive_regex().find(text).next() is Some(_)
+}
+
+///|
+async fn read_package_config(dir : String) -> String? raise {
+  let path = "\{dir}/moon.pkg"
+  if !@fs.exists(path) {
+    return None
+  }
+  let file = @fs.open(path, mode=ReadOnly)
+  let content = file.read_all().text()
+  file.close()
+  Some(content)
+}
+
+///|
+fn check_graph(graph : Map[String, Array[String]]) -> Array[String] {
+  let allowed_map : Map[String, Array[String]] = Map([])
+  for entry in allowed {
+    allowed_map[entry.0] = entry.1
+  }
+  let errors : Array[String] = []
+  for from, deps in graph {
+    match allowed_map.get(from) {
+      None =>
+        errors.push("\{from}: unknown package (add it to tools/check-deps.mbtx)")
+      Some(permitted) =>
+        for dep in deps {
+          if !permitted.iter().any(fn(p) { p == dep }) {
+            let rendered = if permitted.length() == 0 {
+              "(none)"
+            } else {
+              let buf = StringBuilder()
+              for index, p in permitted {
+                if index > 0 {
+                  buf.write_string(", ")
+                }
+                buf.write_string(p)
+              }
+              buf.to_string()
+            }
+            errors.push(
+              "\{from} imports \{dep}, but the allowed directions are: \{rendered}",
+            )
+          }
+        }
+    }
+  }
+  errors
+}
+
+///|
+test "self test: reverse dependency is detected" {
+  let bogus : Map[String, Array[String]] = Map([])
+  for entry in allowed {
+    bogus[entry.0] = entry.1
+  }
+  bogus["src/zip"] = ["src/schema"]
+  let errors = check_graph(bogus)
+  let hit = errors.iter().any(
+    fn(line) { line.contains("src/zip imports src/schema") },
+  )
+  assert_true(hit)
+}
+
+///|
+async fn main raise {
+  let graph : Map[String, Array[String]] = Map([])
+  let mut target_error = false
+  for entry in allowed {
+    let dir = entry.0
+    match read_package_config(dir) {
+      None => graph[dir] = []
+      Some(config) => {
+        graph[dir] = scan_project_imports(config)
+        for rule in target_rules {
+          if dir == rule.0 && !supported_targets_matches(config, rule.1) {
+            println(
+              "\{dir}: moon.pkg must contain supported_targets = \"\{rule.1}\"",
+            )
+            target_error = true
+          }
+        }
+        let mut is_target_dir = false
+        for rule in target_rules {
+          if dir == rule.0 {
+            is_target_dir = true
+          }
+        }
+        if !is_target_dir && has_supported_targets_directive(config) {
+          println(
+            "\{dir}: core packages must stay target-neutral; do not set supported_targets here",
+          )
+          target_error = true
+        }
+      }
+    }
+  }
+
+  let errors = check_graph(graph)
+  if errors.length() > 0 {
+    println("Dependency check failed:")
+    for error in errors {
+      println("  \{error}")
+    }
+    @env.exit(1)
+  }
+  if target_error {
+    @env.exit(1)
+  }
+
+  println("dependency check passed (\{graph.length()} packages)")
+}

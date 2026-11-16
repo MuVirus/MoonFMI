@@ -458,7 +458,9 @@ fn load_fmi3_common(
   let interface = {
     let mut found : @schema.Fmi3Interface? = None
     for candidate in parsed.interfaces {
-      if candidate.kind is interface_kind {
+      // `is interface_kind` here would bind a fresh pattern variable and
+      // match every candidate; compare the values instead.
+      if candidate.kind == interface_kind {
         found = Some(candidate)
       }
     }

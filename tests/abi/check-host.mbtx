@@ -1,0 +1,174 @@
+---
+import {
+  "moonbitlang/async",
+  "moonbitlang/async@0.22.9/fs",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json"
+}
+---
+
+// Compare the C reference host output with the checked-in baseline. This is
+// the MoonBit counterpart of the retired tests/abi/check-host.mjs. Run from
+// the repository root:
+//
+//   moon run tests/abi/check-host.mbtx --target native [path-to-output.json]
+
+///|
+let default_output = "tests/abi/.cache/fmi2-host.json"
+
+///|
+let default_baseline = "tests/abi/baselines/fmi2-bouncingball.json"
+
+///|
+fn fail(msg : String) -> Unit {
+  println("ERROR: \{msg}")
+  @env.exit(1)
+}
+
+///|
+// The caller may pass an output path as the first argument that is not this
+// script's own path. Under `moon run`, args()[0] is the compiled binary
+// itself, so scanning starts at index 1.
+fn output_path() -> String {
+  let all = @env.args()
+  for index = 1; index < all.length(); index = index + 1 {
+    let arg = all[index]
+    if !arg.has_suffix(".mbtx") {
+      return arg
+    }
+  }
+  default_output
+}
+
+///|
+async fn read_json(path : String) -> @json.Json raise {
+  let file = @fs.open(path, mode=ReadOnly)
+  let content = file.read_all().text()
+  file.close()
+  @json.parse(content)
+}
+
+///|
+// |a - b| within a 1e-9 relative tolerance, matching the .mjs version.
+fn close_enough(a : Double, b : Double) -> Bool {
+  let a_abs = if a < 0.0 {
+    -a
+  } else {
+    a
+  }
+  let b_abs = if b < 0.0 {
+    -b
+  } else {
+    b
+  }
+  let scale = if a_abs > b_abs {
+    a_abs
+  } else {
+    b_abs
+  }
+  let tolerance_scale = if scale > 1.0 {
+    scale
+  } else {
+    1.0
+  }
+  let delta = a - b
+  let delta_abs = if delta < 0.0 {
+    -delta
+  } else {
+    delta
+  }
+  delta_abs <= 0.000000001 * tolerance_scale
+}
+
+///|
+fn sample_value(sample : @json.Json, index : Int) -> Double? {
+  match sample {
+    Array(items) =>
+      match items.get(index) {
+        Some(Number(value, ..)) => Some(value)
+        _ => None
+      }
+    _ => None
+  }
+}
+
+///|
+// The sample matrix lives under the root object's `samples` field.
+fn samples_of(
+  root : @json.Json,
+  label : String,
+  differences : Array[String],
+) -> Array[@json.Json] {
+  match root {
+    Object(fields) =>
+      match fields.get("samples") {
+        Some(Array(items)) => items
+        Some(_) => {
+          differences.push("\{label} samples is not an array")
+          []
+        }
+        None => {
+          differences.push("\{label} has no samples array")
+          []
+        }
+      }
+    _ => {
+      differences.push("\{label} has no samples array")
+      []
+    }
+  }
+}
+
+///|
+async fn main raise {
+  let output_path = output_path()
+  if !@fs.exists(output_path) {
+    fail("reference host output not found: \{output_path}")
+  }
+  let actual = read_json(output_path)
+  let expected = read_json(default_baseline)
+
+  let differences : Array[String] = []
+  let actual_samples = samples_of(actual, "output", differences)
+  let expected_samples = samples_of(expected, "baseline", differences)
+
+  if differences.length() == 0 {
+    if actual_samples.length() != expected_samples.length() {
+      differences.push(
+        "expected \{expected_samples.length()} samples, got \{actual_samples.length()}",
+      )
+    } else {
+      for index = 0; index < expected_samples.length(); index = index + 1 {
+        let labels = ["time", "h", "v"]
+        for field = 0; field < 3; field = field + 1 {
+          let expected_value = sample_value(expected_samples[index], field)
+          let actual_value = sample_value(actual_samples[index], field)
+          match (expected_value, actual_value) {
+            (Some(e), Some(a)) =>
+              if !close_enough(a, e) {
+                differences.push(
+                  "sample \{index}: \{labels[field]} \{a} != \{e}",
+                )
+              }
+            _ =>
+              differences.push(
+                "sample \{index}: \{labels[field]} is not a number",
+              )
+          }
+        }
+      }
+    }
+  }
+
+  if differences.length() > 0 {
+    println("the C reference host no longer matches the baseline:")
+    for difference in differences {
+      println("  \{difference}")
+    }
+    @env.exit(1)
+  }
+
+  println(
+    "reference host matches the baseline: \{expected_samples.length()} samples",
+  )
+}

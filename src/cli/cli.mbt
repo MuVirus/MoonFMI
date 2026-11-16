@@ -479,7 +479,7 @@ fn platform_directories(data : Bytes) -> Array[String] {
   for entry in archive.entries() {
     let name = entry.name()
     if name.has_prefix("binaries/") {
-      let rest = name.substring(start=9)
+      let rest = name[9:]
       // Manual scan for the first '/' (String has no indexOf here).
       let mut slash = -1
       for index, ch in rest {
@@ -489,7 +489,7 @@ fn platform_directories(data : Bytes) -> Array[String] {
         }
       }
       if slash > 0 {
-        let directory = rest.substring(end=slash)
+        let directory = rest[:slash].to_owned()
         let mut seen = false
         for existing in found {
           if existing == directory {
@@ -814,20 +814,6 @@ fn real_outputs_fmi3(
 }
 
 ///|
-/// Render the whole result as CSV with a header row.
-fn result_csv(
-  model : @schema.Fmi2ModelDescription,
-  result : @sim.SimulationResult,
-) -> String {
-  let outputs = real_outputs(model)
-  let names : Array[String] = []
-  for output in outputs {
-    names.push(output.1)
-  }
-  result_csv_named(names, result)
-}
-
-///|
 /// Render the result as CSV using explicit output names.
 fn result_csv_named(
   names : Array[String],
@@ -1007,7 +993,7 @@ fn simulate_json(
 ///|
 /// Simulation failures, split so the exit path can phrase them (and the
 /// exit code) differently: 4 unsupported, 1 load, 5 run, 6 timeout.
-suberror SimulateFailure {
+priv suberror SimulateFailure {
   Unsupported(String)
   LoadFailed(String)
   RunFailed(String)

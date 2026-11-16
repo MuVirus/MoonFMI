@@ -1,0 +1,135 @@
+---
+import {
+  "moonbitlang/async",
+  "moonbitlang/async@0.22.9/fs",
+  "moonbitlang/async@0.22.9/process",
+  "moonbitlang/async@0.22.9/shell",
+  "moonbitlang/core/env",
+  "hustcer/fzip@0.8.8"
+}
+---
+
+// Runs the independent C reference host against the BouncingBall FMU and
+// writes its JSON output; tests/abi/check-host.mbtx compares that file with
+// the checked-in baseline. This is the MoonBit counterpart of the retired
+// tests/abi/run-fmi2-host.sh and run-fmi2-host.ps1 (one script for both
+// platforms; the FMU is unpacked with fzip instead of unzip.exe or .NET).
+// Run from the repository root:
+//
+//   moon run tests/abi/run-fmi2-host.mbtx --target native [path-to-output]
+
+///|
+// Generic so a failure can stand in for any expression type; `@env.exit`
+// never returns.
+fn[T] fail(msg : String) -> T {
+  println("ERROR: \{msg}")
+  @env.exit(1)
+}
+
+///|
+fn is_windows() -> Bool {
+  @env.get_env_var("OS") == Some("Windows_NT")
+}
+
+///|
+// args()[0] is the compiled binary itself under `moon run`; the first
+// following argument overrides the default output path.
+fn output_path() -> String {
+  let all = @env.args()
+  for index = 1; index < all.length(); index = index + 1 {
+    let arg = all[index]
+    if !arg.has_suffix(".mbtx") {
+      return arg
+    }
+  }
+  "tests/abi/.cache/fmi2-host.json"
+}
+
+///|
+// A `file:///` URI for the resources directory, matching what the shell
+// versions passed to the C host.
+async fn resource_uri(work : String) -> String raise {
+  let absolute = @fs.realpath(work)
+  let path = if is_windows() {
+    let normalized = absolute.replace_all(old="\\", new="/")
+    "file:///\{normalized}"
+  } else {
+    "file://\{absolute}"
+  }
+  if path.has_suffix("/") {
+    path
+  } else {
+    "\{path}/"
+  }
+}
+
+///|
+async fn write_bytes(path : String, content : Bytes) -> Unit raise {
+  @fs.write_file(path, content)
+}
+
+///|
+async fn main raise {
+  let output = output_path()
+  let fmu_path = "tests/data/.cache/fmi2/BouncingBall.fmu"
+  if !@fs.exists(fmu_path) {
+    fail("missing \{fmu_path}; run `moon run tests/data/fetch-fmus.mbtx --target native` first")
+  }
+  let cache = "tests/abi/.cache"
+  let host_exe = if is_windows() {
+    "\{cache}/fmi2_host.exe"
+  } else {
+    "\{cache}/fmi2_host"
+  }
+  if !@fs.exists(host_exe) {
+    fail("missing \{host_exe}; run `moon run tests/abi/build-fixture.mbtx --target native` first")
+  }
+
+  let work = "\{cache}/fmu/BouncingBall"
+  let platform_dir = if is_windows() {
+    "binaries/win64"
+  } else {
+    "binaries/linux64"
+  }
+  let binary_name = if is_windows() {
+    "\{platform_dir}/BouncingBall.dll"
+  } else {
+    "\{platform_dir}/BouncingBall.so"
+  }
+
+  let fmu_file = @fs.open(fmu_path, mode=ReadOnly)
+  let fmu_bytes = fmu_file.read_all().binary()
+  fmu_file.close()
+  let files = @fzip.unzip_sync(
+    fmu_bytes.to_fixedarray(),
+    opts={ verify_checksum: true },
+  ) catch {
+    @fzip.FzipError(code~, message~) =>
+      fail("cannot unpack the FMU: \{code} \{message}")
+  }
+
+  let mut binary_bytes : Bytes? = None
+  for entry in files {
+    if entry.0 == binary_name {
+      binary_bytes = Some(Bytes::from_iter(entry.1.iter()))
+    }
+  }
+  match binary_bytes {
+    None => fail("the FMU does not contain \{binary_name}")
+    Some(bytes) => {
+      let binary_target = "\{work}/\{binary_name}"
+      @fs.mkdir("\{work}/\{platform_dir}", recursive=true, allow_exist=true)
+      write_bytes(binary_target, bytes)
+    }
+  }
+  @fs.mkdir("\{work}/resources", recursive=true, allow_exist=true)
+
+  let uri = resource_uri("\{work}/resources")
+  let host_output = @shell.Cmd::Cmd(host_exe, ["\{work}/\{binary_name}", uri]).output()
+  if host_output.exit_code() != 0 {
+    fail("the reference host failed with exit code \{host_output.exit_code()}")
+  }
+
+  @fs.write_file(output, "\{host_output.stdout().trim().to_owned()}\n")
+  println("wrote \{output}")
+}

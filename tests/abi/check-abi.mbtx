@@ -1,0 +1,215 @@
+---
+import {
+  "moonbitlang/async",
+  "moonbitlang/async@0.22.9/fs",
+  "moonbitlang/async@0.22.9/process",
+  "moonbitlang/async@0.22.9/shell",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json"
+}
+---
+
+// Compare the ABI that the FMI headers produce on this machine with the
+// checked-in baseline for the same platform. This is the MoonBit counterpart
+// of the retired tests/abi/check-abi.mjs. Run from the repository root:
+//
+//   moon run tests/abi/check-abi.mbtx --target native [path-to-probe]
+
+///|
+fn fail(msg : String) -> Unit {
+  println("ERROR: \{msg}")
+  @env.exit(1)
+}
+
+///|
+fn is_windows() -> Bool {
+  @env.get_env_var("OS") == Some("Windows_NT")
+}
+
+///|
+// args()[0] is the compiled binary itself under `moon run`; the first
+// following argument overrides the default probe path.
+fn probe_path() -> String {
+  let suffix = if is_windows() {
+    "tests/abi/.cache/probe.exe"
+  } else {
+    "tests/abi/.cache/probe"
+  }
+  let all = @env.args()
+  for index = 1; index < all.length(); index = index + 1 {
+    let arg = all[index]
+    if !arg.has_suffix(".mbtx") {
+      return arg
+    }
+  }
+  suffix
+}
+
+///|
+fn render(value : @json.Json) -> String {
+  match value {
+    Null => "null"
+    True => "true"
+    False => "false"
+    Number(v, ..) => "\{v}"
+    String(s) => "\"\{s}\""
+    Array(_) => "[...]"
+    Object(_) => "{...}"
+  }
+}
+
+///|
+// Deep difference walk with index-based container comparison, mirroring the
+// .mjs version: JSON arrays behave like objects keyed by index.
+fn walk(
+  path : String,
+  expected : @json.Json,
+  actual : @json.Json,
+  differences : Array[String],
+) -> Unit {
+  match (expected, actual) {
+    (Object(expected_fields), Object(actual_fields)) =>
+      walk_container(path, object_pairs(expected_fields), object_pairs(actual_fields), differences)
+    (Array(expected_items), Array(actual_items)) => {
+      let pairs : Array[(String, @json.Json)] = []
+      for index = 0; index < expected_items.length(); index = index + 1 {
+        pairs.push(("\{index}", expected_items[index]))
+      }
+      let actual_pairs : Array[(String, @json.Json)] = []
+      for index = 0; index < actual_items.length(); index = index + 1 {
+        actual_pairs.push(("\{index}", actual_items[index]))
+      }
+      walk_container(path, pairs, actual_pairs, differences)
+    }
+    (Object(_), _) =>
+      differences.push(
+        "\{path}: expected an object, got \{render(actual)}",
+      )
+    (Array(_), _) =>
+      differences.push("\{path}: expected an array, got \{render(actual)}")
+    (_, Object(_)) =>
+      differences.push(
+        "\{path}: expected \{render(expected)}, got an object",
+      )
+    (_, Array(_)) =>
+      differences.push("\{path}: expected \{render(expected)}, got an array")
+    (True, True) => ()
+    (False, False) => ()
+    (Null, Null) => ()
+    (Number(e, ..), Number(a, ..)) =>
+      if e != a {
+        differences.push(
+          "\{path}: expected \{render(expected)}, got \{render(actual)}",
+        )
+      }
+    (String(e), String(a)) =>
+      if e != a {
+        differences.push(
+          "\{path}: expected \{render(expected)}, got \{render(actual)}",
+        )
+      }
+    (_, _) =>
+      differences.push(
+        "\{path}: expected \{render(expected)}, got \{render(actual)}",
+      )
+  }
+}
+
+///|
+fn object_pairs(fields : Map[String, @json.Json]) -> Array[(String, @json.Json)] {
+  let pairs : Array[(String, @json.Json)] = []
+  for key, value in fields {
+    pairs.push((key, value))
+  }
+  pairs
+}
+
+///|
+fn walk_container(
+  path : String,
+  expected : Array[(String, @json.Json)],
+  actual : Array[(String, @json.Json)],
+  differences : Array[String],
+) -> Unit {
+  let actual_map : Map[String, @json.Json] = Map([])
+  for pair in actual {
+    actual_map[pair.0] = pair.1
+  }
+  for pair in expected {
+    match actual_map.get(pair.0) {
+      None =>
+        differences.push(
+          "\{path}.\{pair.0}: missing (baseline \{render(pair.1)})",
+        )
+      Some(actual_value) =>
+        walk("\{path}.\{pair.0}", pair.1, actual_value, differences)
+    }
+  }
+  let expected_map : Map[String, @json.Json] = Map([])
+  for pair in expected {
+    expected_map[pair.0] = pair.1
+  }
+  for pair in actual {
+    if !expected_map.contains(pair.0) {
+      differences.push(
+        "\{path}.\{pair.0}: unexpected (actual \{render(pair.1)})",
+      )
+    }
+  }
+}
+
+///|
+async fn run_probe(binary : String, args : Array[String]) -> String raise {
+  let output = @shell.Cmd::Cmd(binary, args).output()
+  if output.exit_code() != 0 {
+    fail("probe failed with exit code \{output.exit_code()}")
+  }
+  output.stdout().trim().to_owned()
+}
+
+///|
+async fn read_json(path : String) -> @json.Json raise {
+  let file = @fs.open(path, mode=ReadOnly)
+  let content = file.read_all().text()
+  file.close()
+  @json.parse(content)
+}
+
+///|
+async fn main raise {
+  let binary = probe_path()
+  if !@fs.exists(binary) {
+    println("ABI probe not found: \{binary}")
+    println("run: moon run tests/abi/build-fixture.mbtx --target native")
+    @env.exit(1)
+  }
+
+  let baseline_name = run_probe(binary, ["--header"])
+  let baseline_path = "tests/abi/baselines/\{baseline_name}"
+  if !@fs.exists(baseline_path) {
+    println("no baseline for this platform: \{baseline_path}")
+    println("generate one with:")
+    println("  \{binary} > tests/abi/baselines/\{baseline_name}")
+    @env.exit(1)
+  }
+
+  let actual_text = run_probe(binary, [])
+  let actual = @json.parse(actual_text)
+  let expected = read_json(baseline_path)
+
+  let differences : Array[String] = []
+  walk("abi", expected, actual, differences)
+
+  if differences.length() > 0 {
+    println("ABI baseline mismatch (\{baseline_name}):")
+    for difference in differences {
+      println("  \{difference}")
+    }
+    println("")
+    println("If the change is intended and the headers were really updated,")
+    println("regenerate \{baseline_path} and review the diff of every field.")
+    @env.exit(1)
+  }
+
+  println("ABI baseline matches: \{baseline_name}")
+}

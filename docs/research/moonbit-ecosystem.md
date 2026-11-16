@@ -476,16 +476,22 @@ import {
 
 ### 13.1 已在用的第三方依赖
 
-版本号对照 mooncakes 的模块接口（`https://mooncakes.io/api/v0/modules/<用户>/<模块>`）逐个查过，下面四个都已经是最新发布版本，没有可升级项。
+版本号对照 mooncakes 的模块接口（`https://mooncakes.io/api/v0/modules/<用户>/<模块>`）逐个查过，下面五个都已经是最新发布版本，没有可升级项。
 
 | 依赖 | 锁定版本 | mooncakes 最新 | 许可证 | 用在哪 | 备注 |
 | --- | --- | --- | --- | --- | --- |
 | `Milky2018/xml` | 0.6.1 | 0.6.1 | Apache-2.0 | `src/xml` | 无传递依赖；pull 模式；位置信息完整 |
 | `hustcer/fzip` | 0.8.8 | 0.8.8 | Apache-2.0 | `src/zip` | 无传递依赖；只用来解压，安全策略自写 |
+| `moonbitlang/async` | 0.22.9 | 0.22.9 | Apache-2.0 | `scripts/check.mbtx`（frontmatter 锁定，不进 `moon.mod`） | 官方异步运行时；门禁脚本靠它的 `@process` 派生工具链子进程（仅 native 后端），2026-11-10 发布，Windows 走 IOCP 实现 |
 | `moonbitlang/x` | 0.5.7 | 0.5.7 | Apache-2.0 | `src/xml`（`encoding`）、native 后端与集成测试（`fs`） | 官方实验包，接口可能变 |
 | `tonyfettes/c` | 0.8.0 | 0.8.0 | Apache-2.0 | `src/backend/native`、集成测试 | 传递依赖 `tonyfettes/nat@0.1.2` |
 
 `moonbitlang/core` 随工具链发布，不在 `moon.mod` 里，版本由 `moon` 的版本固定。
+
+**2026-11-15 评估：`moonbitlang/async` 进入 `scripts/check.mbtx`。** 背景：`scripts/check.sh`/`check.ps1` 两份门禁脚本需要手工保持同步，改用 MoonBit 单文件脚本（`.mbtx`，moonc v0.10.19 起格式改进、语言服务支持）统一为一份。选型过程：`.mbtx` 只能通过 `moonbitlang/async` 的 `@process` 派生子进程（wasm 后端没有该包，必须 `--target native`），core 无进程 API，`tonyfettes/dl` 装不上（见 §13.2），无替代品。版本经 mooncakes API 核实为最新（0.22.9，未 yanked），Apache-2.0，官方维护。frontmatter 逐包锁 `@0.22.9`，因脚本模式的无版本导入会解析到"本地索引最新"，违反锁版纪律。该依赖只服务于开发者/CI 工具脚本，不进产品代码路径，`moon.mod` 不受影响。实测（Windows 11、moon 0.1.20261104）：子进程/退出码/stdin 继承、文件 IO、目录遍历全部通过，依赖缓存后脚本启动约 1 秒。
+
+**2026-11-15 追记：阶段 1 完成，node 从工具链中移除。** tools/check-deps.mbtx、tests/abi/{check-abi,check-host,build-fixture,run-fmi2-host}.mbtx、tests/data/fetch-fmus.mbtx 全部落位，check.sh/check.ps1 与全部 .mjs/.sh/.ps1 辅助脚本删除（validate-xsd.ps1 保留——它用 .NET 的 XSD 引擎做独立交叉验证，转成 MoonBit 会失去独立性）。fetch-fmus 内置了自实现的 SHA-256（core 无 crypto 包），9 个 FMU 的 manifest 哈希作为黄金向量逐字节校验通过；解压改用项目已有的 hustcer/fzip。网络备注（2026-11-16 补跑验证时）：本机 DNS 把 release-assets.githubusercontent.com 解析成 127.0.0.1/::1（污染），导致任何客户端的 GitHub release 资产下载都在 302 跳转后"连接被拒"；github.com 本体与 gitee/gitcode/mooncakes 可达。恢复手段是 curl --resolve 钉住真实 IP（185.199.108-111.133）下载后交给 fetch-fmus.mbtx 校验解压——bundle 的 SHA-256 使任何下载渠道都安全。CI 在 GitHub 托管 runner 上不受此影响。
+注意事项：native 正则引擎不支持 s 类简写（unsafe_from_string 直接 panic），脚本一律用显式字符类 [ 	]；@env.args()[0] 是编译出的可执行文件自身路径，解析用户参数从下标 1 开始。
 
 ### 13.2 计划需要、但生态里没有（或不能用）的能力
 

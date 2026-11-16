@@ -1,0 +1,214 @@
+---
+import {
+  "moonbitlang/async@0.22.9",
+  "moonbitlang/async@0.22.9/fs",
+  "moonbitlang/async@0.22.9/process",
+  "moonbitlang/async@0.22.9/shell",
+  "moonbitlang/core/env"
+}
+---
+
+// One-shot quality gate for MoonFMI, replacing scripts/check.sh and
+// scripts/check.ps1. Run it from the repository root:
+//
+//   moon run scripts/check.mbtx --target native
+//
+// The native target is required: the script spawns the toolchain through
+// moonbitlang/async's process module, which only exists on native. Every
+// helper invoked here is itself a MoonBit script (tools/check-deps.mbtx,
+// tests/abi/*.mbtx), so the gate needs only moon, clang and — for the
+// optional XSD cross-check — a PowerShell.
+//
+// Semantics inherited from the shell versions:
+//   - every step aborts the run with a nonzero exit code on failure
+//     (the `set -euo pipefail` behaviour), except the optional XSD step;
+//   - the .mbti interfaces are snapshotted before anything can regenerate
+//     them, because `moon check` also refreshes pkg.generated.mbti — a later
+//     snapshot would silently hide a manual edit or a stale interface.
+
+///|
+let integration_package = "MuVirus/MoonFMI/tests/integration"
+
+///|
+// Generic so a failure can stand in for any expression type; `@env.exit`
+// never returns.
+fn[T] fail(msg : String) -> T {
+  println("ERROR: \{msg}")
+  @env.exit(1)
+}
+
+///|
+// The async runtime buffers println output until the event loop turns over.
+// Awaiting one tiny I/O op flushes pending lines before a child process
+// takes over the console, keeping banners above their step output.
+async fn tick() -> Bool raise {
+  @fs.exists(".")
+}
+
+///|
+fn quote_cmd(cmd : String, args : Array[String]) -> String {
+  let buf = StringBuilder()
+  buf.write_string(cmd)
+  for arg in args {
+    buf.write_string(" ")
+    buf.write_string(arg)
+  }
+  buf.to_string()
+}
+
+///|
+// Run a command with inherited stdio and abort on a nonzero exit, mirroring
+// `set -e`.
+async fn run_step(name : String, cmd : String, args : Array[String]) -> Unit raise {
+  println("== \{name} ==")
+  let _ = tick()
+  let code = @shell.Cmd::Cmd(cmd, args).status()
+  if code != 0 {
+    fail("\{quote_cmd(cmd, args)} failed with exit code \{code}")
+  }
+}
+
+///|
+// Run one of the repository's MoonBit helper scripts.
+async fn run_script_step(name : String, script : String) -> Unit raise {
+  run_step(name, "moon", ["run", script, "--target", "native"])
+}
+
+///|
+// Probe whether a tool is invokable; missing commands surface as spawn
+// errors, which count as absent.
+async fn probe(cmd : String, args : Array[String]) -> Bool {
+  let outcome = try Some(@shell.Cmd::Cmd(cmd, args).output()) catch { _ => None }
+  match outcome {
+    Some(output) => output.exit_code() == 0
+    None => false
+  }
+}
+
+///|
+// First PowerShell flavour on PATH, used only by the optional XSD
+// cross-check: pwsh (PowerShell 7+) is preferred, the stock Windows
+// PowerShell 5.1 also runs the validator.
+async fn find_pwsh() -> Option[String] raise {
+  for candidate in ["pwsh", "pwsh.exe", "powershell", "powershell.exe"] {
+    if probe(candidate, ["-NoProfile", "-Command", "exit 0"]) {
+      return Some(candidate)
+    }
+  }
+  None
+}
+
+///|
+// Collect path -> content for every pkg.generated.mbti under the repository,
+// skipping build outputs and hidden directories.
+async fn snapshot_mbti(dir : String, map : Map[String, String]) -> Unit raise {
+  let handle = @fs.opendir(dir)
+  while handle.next() is Some(entry) {
+    if entry.name.has_prefix(".") {
+      continue
+    }
+    let child = "\{dir}/\{entry.name}"
+    if entry.is_dir {
+      if entry.name != "_build" && entry.name != ".mooncakes" && entry.name != "node_modules" {
+        snapshot_mbti(child, map)
+      }
+    } else if entry.name == "pkg.generated.mbti" {
+      let file = @fs.open(child, mode=ReadOnly)
+      let content = file.read_all().text()
+      file.close()
+      map[child] = content
+    }
+  }
+  handle.close()
+}
+
+///|
+async fn restore_mbti(map : Map[String, String]) -> Unit raise {
+  for path, content in map {
+    @fs.write_file(path, content, create_mode=TruncateExisting)
+  }
+}
+
+///|
+async fn check_public_interface(initial : Map[String, String]) -> Unit raise {
+  println("== public interface ==")
+
+  // Regenerate from scratch so the comparison covers files that moon info
+  // would create, rename or drop.
+  for path, _ in initial {
+    @fs.remove(path)
+  }
+  let code = @shell.Cmd::Cmd("moon", ["info"]).status()
+  if code != 0 {
+    restore_mbti(initial)
+    fail("moon info failed; restored the previous .mbti files")
+  }
+
+  let regenerated : Map[String, String] = Map([])
+  snapshot_mbti(".", regenerated)
+  if regenerated.length() != initial.length() {
+    restore_mbti(initial)
+    fail("pkg.generated.mbti set changed; review the regenerated files and commit them")
+  }
+  for path, content in initial {
+    match regenerated.get(path) {
+      None => {
+        restore_mbti(initial)
+        fail("pkg.generated.mbti was removed during regeneration: \{path}")
+      }
+      Some(now) =>
+        if now != content {
+          restore_mbti(initial)
+          fail("pkg.generated.mbti was stale or hand-edited: \{path}; review the regenerated files and commit them")
+        }
+    }
+  }
+}
+
+///|
+async fn main raise {
+  // Snapshot the interfaces before anything can regenerate them.
+  let initial : Map[String, String] = Map([])
+  snapshot_mbti(".", initial)
+
+  run_step("MoonBit version", "moon", ["version", "--all"])
+  run_script_step("dependency direction", "tools/check-deps.mbtx")
+  run_step("formatting", "moon", ["fmt", "--check"])
+  run_step("check: native", "moon", ["check", "--target", "native", "--deny-warn"])
+  run_step("check: wasm", "moon", ["check", "--target", "wasm", "--deny-warn"])
+
+  run_script_step("native test fixtures", "tests/abi/build-fixture.mbtx")
+  run_script_step("ABI baseline", "tests/abi/check-abi.mbtx")
+  run_script_step("FMI 2 reference host", "tests/abi/run-fmi2-host.mbtx")
+  run_script_step(
+    "comparing the FMI 2 reference host output",
+    "tests/abi/check-host.mbtx",
+  )
+
+  run_step("test: native", "moon", ["test", "--target", "native", "--deny-warn"])
+  run_step(
+    "test: native (release integration)",
+    "moon",
+    ["test", "--target", "native", "--release", "--deny-warn", "-p", integration_package],
+  )
+  run_step("test: wasm", "moon", ["test", "--target", "wasm", "--deny-warn"])
+
+  check_public_interface(initial)
+
+  println("== XSD cross-check (optional) ==")
+  match find_pwsh() {
+    Some(p) => {
+      let _ = tick()
+      let code = @shell.Cmd::Cmd(
+        p,
+        ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "tests/data/validate-xsd.ps1"],
+      ).status()
+      if code != 0 {
+        println("warning: XSD cross-check failed; this is optional for P0.")
+      }
+    }
+    None => println("skipped: no PowerShell validator found")
+  }
+
+  println("all checks passed")
+}

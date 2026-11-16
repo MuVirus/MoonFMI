@@ -382,3 +382,22 @@ pub impl @fmi.MeInstance for Fmi3Instance with fn finish(self) {
       raise @fmi.FmiCall(operation="fmi3Terminate", detail=error.message())
   }
 }
+
+// Trait methods are no longer promoted implicitly; declare the promotions
+// explicitly so `Fmi3Instance` keeps its regular methods. The overlapping
+// names (read_real, finish, write_real) are promoted once from the
+// co-simulation trait: both impls delegate to the same concrete methods.
+
+///|
+pub extend Fmi3Instance with @fmi.CsInstance::{
+  read_real,
+  finish,
+  step,
+  write_real,
+}
+
+///|
+pub extend Fmi3Instance with @fmi.MeInstance::{
+  get_derivatives,
+  new_discrete_states,
+}

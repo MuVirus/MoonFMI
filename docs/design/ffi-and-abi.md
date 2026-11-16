@@ -476,7 +476,7 @@ typedef char moonfmi_assert_logger_is_first[
 | `tests/abi/baselines/x86_64-windows.json` | MSVC 下的 FMI 2 + FMI 3 类型尺寸、回调字段偏移、枚举值 |
 | `tests/abi/baselines/x86_64-linux.json` | 同一份清单在 Linux/clang 下的结果 |
 
-两份文件内容目前完全相同，但分开保存：它们记录的是“这个平台实际是什么”，不是“我们认为应该相同”。`node tests/abi/check-abi.mjs` 逐字段比较，差异会打印成可读的行，`scripts/check.ps1` 和 `check.sh` 都会调用它。
+两份文件内容目前完全相同，但分开保存：它们记录的是“这个平台实际是什么”，不是“我们认为应该相同”。`tests/abi/check-abi.mbtx` 逐字段比较，差异会打印成可读的行，`scripts/check.mbtx` 会调用它。
 
 FMI 3 的 `fmi3Boolean` 在这些平台上实测 1 字节、`fmi3ValueReference` 4 字节，与 FMI 2 的 4 字节布尔形成对照。FMI 3 的 shim 还没写，但尺寸基线已经就位。
 
@@ -536,7 +536,7 @@ tests/abi/fmi2_host.c         独立的 C 宿主，只用官方头文件
   → 加载 BouncingBall.fmu 里的 DLL/SO
   → 300 步 × 10 ms，每 0.5 s 采样 (time, h, v)
   → tests/abi/baselines/fmi2-bouncingball.json
-  → node tests/abi/check-host.mjs 逐样本比较（相对误差 1e-9）
+  → tests/abi/check-host.mbtx 逐样本比较（相对误差 1e-9）
 ```
 
 MoonBit 侧跑同一个模型，把六组采样和同一份基准逐个比较（时间误差 1e-9，变量误差 1e-12），见 `tests/integration/fmi2_wbtest.mbt`。C 宿主和 MoonBit 后端是两条独立路径，结果一致才说明 shim 没有读错位置。

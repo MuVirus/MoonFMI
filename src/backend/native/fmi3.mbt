@@ -296,16 +296,6 @@ extern "C" fn fmi3_get_float32_as_double(
 
 ///|
 #borrow(references, values)
-extern "C" fn fmi3_set_float32_from_double(
-  handle : @c.Pointer[Unit],
-  references : FixedArray[UInt32],
-  values : FixedArray[Double],
-  n_references : Int32,
-  n_values : Int32,
-) -> Int32 = "moonfmi_fmi3_set_float32_from_double"
-
-///|
-#borrow(references, values)
 extern "C" fn fmi3_get_float64(
   handle : @c.Pointer[Unit],
   references : FixedArray[UInt32],
@@ -356,16 +346,6 @@ extern "C" fn fmi3_get_uint8_as_int32(
 
 ///|
 #borrow(references, values)
-extern "C" fn fmi3_set_uint8_from_int32(
-  handle : @c.Pointer[Unit],
-  references : FixedArray[UInt32],
-  values : FixedArray[Int32],
-  n_references : Int32,
-  n_values : Int32,
-) -> Int32 = "moonfmi_fmi3_set_uint8_from_int32"
-
-///|
-#borrow(references, values)
 extern "C" fn fmi3_get_int16_as_int32(
   handle : @c.Pointer[Unit],
   references : FixedArray[UInt32],
@@ -376,16 +356,6 @@ extern "C" fn fmi3_get_int16_as_int32(
 
 ///|
 #borrow(references, values)
-extern "C" fn fmi3_set_int16_from_int32(
-  handle : @c.Pointer[Unit],
-  references : FixedArray[UInt32],
-  values : FixedArray[Int32],
-  n_references : Int32,
-  n_values : Int32,
-) -> Int32 = "moonfmi_fmi3_set_int16_from_int32"
-
-///|
-#borrow(references, values)
 extern "C" fn fmi3_get_uint16_as_int32(
   handle : @c.Pointer[Unit],
   references : FixedArray[UInt32],
@@ -393,16 +363,6 @@ extern "C" fn fmi3_get_uint16_as_int32(
   n_references : Int32,
   n_values : Int32,
 ) -> Int32 = "moonfmi_fmi3_get_uint16_as_int32"
-
-///|
-#borrow(references, values)
-extern "C" fn fmi3_set_uint16_from_int32(
-  handle : @c.Pointer[Unit],
-  references : FixedArray[UInt32],
-  values : FixedArray[Int32],
-  n_references : Int32,
-  n_values : Int32,
-) -> Int32 = "moonfmi_fmi3_set_uint16_from_int32"
 
 ///|
 #borrow(references, values)
@@ -436,16 +396,6 @@ extern "C" fn fmi3_get_uint32(
 
 ///|
 #borrow(references, values)
-extern "C" fn fmi3_set_uint32(
-  handle : @c.Pointer[Unit],
-  references : FixedArray[UInt32],
-  values : FixedArray[UInt32],
-  n_references : Int32,
-  n_values : Int32,
-) -> Int32 = "moonfmi_fmi3_set_uint32"
-
-///|
-#borrow(references, values)
 extern "C" fn fmi3_get_int64(
   handle : @c.Pointer[Unit],
   references : FixedArray[UInt32],
@@ -453,16 +403,6 @@ extern "C" fn fmi3_get_int64(
   n_references : Int32,
   n_values : Int32,
 ) -> Int32 = "moonfmi_fmi3_get_int64"
-
-///|
-#borrow(references, values)
-extern "C" fn fmi3_set_int64(
-  handle : @c.Pointer[Unit],
-  references : FixedArray[UInt32],
-  values : FixedArray[Int64],
-  n_references : Int32,
-  n_values : Int32,
-) -> Int32 = "moonfmi_fmi3_set_int64"
 
 ///|
 #borrow(references, values)

@@ -1,0 +1,516 @@
+---
+import {
+  "moonbitlang/async",
+  "moonbitlang/async@0.22.9/fs",
+  "moonbitlang/async@0.22.9/http",
+  "moonbitlang/core/env",
+  "moonbitlang/core/json",
+  "hustcer/fzip@0.8.8"
+}
+---
+
+// Download and verify the P0 test FMUs. This is the MoonBit counterpart of
+// the retired tests/data/fetch-fmus.mjs: the bundle is fetched over HTTPS,
+// checked byte-for-byte against tests/data/manifest.json, and unpacked with
+// fzip (no tar/unzip/node involved). The FMU files are deliberately not
+// stored in git; this script keeps a local cache under tests/data/.cache.
+// Run from the repository root:
+//
+//   moon run tests/data/fetch-fmus.mbtx --target native               # download if needed, then verify
+//   moon run tests/data/fetch-fmus.mbtx --target native -- --offline  # never download; verify cache only
+//   moon run tests/data/fetch-fmus.mbtx --target native -- --force    # discard cache and download again
+//   moon run tests/data/fetch-fmus.mbtx --target native -- --list     # print sample ids
+
+///|
+// Generic so a failure can stand in for any expression type; `@env.exit`
+// never returns.
+fn[T] fail(msg : String) -> T {
+  println("ERROR: \{msg}")
+  @env.exit(1)
+}
+
+///|
+let cache_dir = "tests/data/.cache"
+
+///|
+// ------------------------------------------------------------- SHA-256 ---
+// Self-contained FIPS 180-4 implementation; the manifest hashes double as
+// golden vectors, because every verified file exercises the full pipeline.
+
+///|
+fn sha256_rotr(x : UInt32, n : Int) -> UInt32 {
+  (x >> n) | (x << (32 - n))
+}
+
+///|
+let sha256_k : FixedArray[UInt32] = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+  0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+  0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+  0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+  0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+  0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+  0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+  0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]
+
+///|
+fn sha256_nibble_hex(v : UInt32) -> Char {
+  let digits = "0123456789abcdef"
+  let index = (v & 0xF).reinterpret_as_int()
+  match digits.get_char(index) {
+    Some(c) => c
+    None => '?'
+  }
+}
+
+///|
+fn sha256_word_hex(v : UInt32) -> String {
+  let buf = StringBuilder()
+  for shift = 28; shift >= 0; shift = shift - 4 {
+    buf.write_char(sha256_nibble_hex(v >> shift))
+  }
+  buf.to_string()
+}
+
+///|
+fn sha256(data : FixedArray[Byte]) -> String {
+  let mut h0 : UInt32 = 0x6a09e667
+  let mut h1 : UInt32 = 0xbb67ae85
+  let mut h2 : UInt32 = 0x3c6ef372
+  let mut h3 : UInt32 = 0xa54ff53a
+  let mut h4 : UInt32 = 0x510e527f
+  let mut h5 : UInt32 = 0x9b05688c
+  let mut h6 : UInt32 = 0x1f83d9ab
+  let mut h7 : UInt32 = 0x5be0cd19
+  let length = data.length()
+  // Padded message: original bytes, the 0x80 marker, zero padding up to a
+  // 56 mod 64 boundary, then the 64-bit big-endian bit count.
+  let zero_padding = (55 - length % 64 + 64) % 64
+  let padded_length = length + 1 + zero_padding + 8
+  let padded : FixedArray[Byte] = FixedArray::make(padded_length, b'\x00')
+  for index = 0; index < length; index = index + 1 {
+    padded[index] = data[index]
+  }
+  padded[length] = b'\x80'
+  let bits = length.to_int64() * 8L
+  for offset = 0; offset < 8; offset = offset + 1 {
+    let shift = 56 - offset * 8
+    padded[padded_length - 8 + offset] = (bits >> shift).to_byte()
+  }
+
+  for base = 0; base < padded_length; base = base + 64 {
+    let w : FixedArray[UInt32] = FixedArray::make(64, 0U)
+    for t = 0; t < 16; t = t + 1 {
+      let at = base + t * 4
+      w[t] = (padded[at].to_uint() << 24)
+        | (padded[at + 1].to_uint() << 16)
+        | (padded[at + 2].to_uint() << 8)
+        | padded[at + 3].to_uint()
+    }
+    for t = 16; t < 64; t = t + 1 {
+      let s0 = sha256_rotr(w[t - 15], 7) ^ sha256_rotr(w[t - 15], 18) ^ (w[t - 15] >> 3)
+      let s1 = sha256_rotr(w[t - 2], 17) ^ sha256_rotr(w[t - 2], 19) ^ (w[t - 2] >> 10)
+      w[t] = w[t - 16] + s0 + w[t - 7] + s1
+    }
+    let mut a = h0
+    let mut b = h1
+    let mut c = h2
+    let mut d = h3
+    let mut e = h4
+    let mut f = h5
+    let mut g = h6
+    let mut h = h7
+    for t = 0; t < 64; t = t + 1 {
+      let s1 = sha256_rotr(e, 6) ^ sha256_rotr(e, 11) ^ sha256_rotr(e, 25)
+      let ch = (e & f) ^ (e.lnot() & g)
+      let temp1 = h + s1 + ch + sha256_k[t] + w[t]
+      let s0 = sha256_rotr(a, 2) ^ sha256_rotr(a, 13) ^ sha256_rotr(a, 22)
+      let maj = (a & b) ^ (a & c) ^ (b & c)
+      let temp2 = s0 + maj
+      h = g
+      g = f
+      f = e
+      e = d + temp1
+      d = c
+      c = b
+      b = a
+      a = temp1 + temp2
+    }
+    h0 = h0 + a
+    h1 = h1 + b
+    h2 = h2 + c
+    h3 = h3 + d
+    h4 = h4 + e
+    h5 = h5 + f
+    h6 = h6 + g
+    h7 = h7 + h
+  }
+  let digest = sha256_word_hex(h0) +
+    sha256_word_hex(h1) +
+    sha256_word_hex(h2) +
+    sha256_word_hex(h3) +
+    sha256_word_hex(h4) +
+    sha256_word_hex(h5) +
+    sha256_word_hex(h6) +
+    sha256_word_hex(h7)
+  digest
+}
+
+///|
+// ---------------------------------------------------------- manifest -----
+
+///|
+struct Sample {
+  id : String
+  archive_path : String
+  cache_path : String
+  bytes : Int
+  sha256 : String
+  fmi_version : String
+  interfaces : Array[String]
+}
+
+///|
+fn json_string(value : @json.Json?) -> String? {
+  match value {
+    Some(String(s)) => Some(s)
+    _ => None
+  }
+}
+
+///|
+fn json_int(value : @json.Json?) -> Int? {
+  match value {
+    Some(Number(v, ..)) => Some(v.to_int())
+    _ => None
+  }
+}
+
+///|
+fn parse_sample(value : @json.Json) -> Sample {
+  match value {
+    Object(fields) => {
+      let id = match json_string(fields.get("id")) {
+        Some(s) => s
+        None => fail("manifest sample is missing id")
+      }
+      let archive_path = match json_string(fields.get("archivePath")) {
+        Some(s) => s
+        None => fail("manifest sample \{id} is missing archivePath")
+      }
+      let cache_path = match json_string(fields.get("cachePath")) {
+        Some(s) => s
+        None => fail("manifest sample \{id} is missing cachePath")
+      }
+      let bytes = match json_int(fields.get("bytes")) {
+        Some(n) => n
+        None => fail("manifest sample \{id} is missing bytes")
+      }
+      let sha256 = match json_string(fields.get("sha256")) {
+        Some(s) => s
+        None => fail("manifest sample \{id} is missing sha256")
+      }
+      let fmi_version = match json_string(fields.get("fmiVersion")) {
+        Some(s) => s
+        None => fail("manifest sample \{id} is missing fmiVersion")
+      }
+      let interfaces : Array[String] = match fields.get("interfaces") {
+        Some(Array(items)) => {
+          let result : Array[String] = []
+          for item in items {
+            match item {
+              String(s) => result.push(s)
+              _ => fail("manifest sample \{id} has a non-string interface")
+            }
+          }
+          result
+        }
+        _ => fail("manifest sample \{id} is missing interfaces")
+      }
+      {
+        id,
+        archive_path,
+        cache_path,
+        bytes,
+        sha256,
+        fmi_version,
+        interfaces,
+      }
+    }
+    _ => fail("manifest samples must be objects")
+  }
+}
+
+///|
+fn manifest_string_field(fields : Map[String, @json.Json], name : String) -> String {
+  match json_string(fields.get(name)) {
+    Some(s) => s
+    None => fail("manifest bundle is missing \{name}")
+  }
+}
+
+///|
+async fn read_manifest() -> (String, Int, String, Array[Sample]) raise {
+  let file = @fs.open("tests/data/manifest.json", mode=ReadOnly)
+  let content = file.read_all().text()
+  file.close()
+  match @json.parse(content) {
+    Object(fields) => {
+      let bundle = match fields.get("bundle") {
+        Some(Object(bundle_fields)) => bundle_fields
+        _ => fail("manifest is missing the bundle object")
+      }
+      let url = manifest_string_field(bundle, "url")
+      let bytes = match json_int(bundle.get("bytes")) {
+        Some(n) => n
+        None => fail("manifest bundle is missing bytes")
+      }
+      let sha256 = manifest_string_field(bundle, "sha256")
+      let samples : Array[Sample] = match fields.get("samples") {
+        Some(Array(items)) => {
+          let parsed : Array[Sample] = []
+          for item in items {
+            parsed.push(parse_sample(item))
+          }
+          parsed
+        }
+        _ => fail("manifest is missing the samples array")
+      }
+      (url, bytes, sha256, samples)
+    }
+    _ => fail("manifest root must be an object")
+  }
+}
+
+///|
+// ---------------------------------------------------------- helpers ------
+
+///|
+fn is_windows() -> Bool {
+  @env.get_env_var("OS") == Some("Windows_NT")
+}
+
+///|
+fn has_flag(names : Array[String], flag : String) -> Bool {
+  // args()[0] is the compiled binary itself under `moon run`.
+  for index = 1; index < names.length(); index = index + 1 {
+    if names[index] == flag {
+      return true
+    }
+  }
+  false
+}
+
+///|
+async fn read_file_bytes(path : String) -> Bytes? raise {
+  if !@fs.exists(path) {
+    return None
+  }
+  let file = @fs.open(path, mode=ReadOnly)
+  let content = file.read_all().binary()
+  file.close()
+  Some(content)
+}
+
+///|
+fn verify_bytes(
+  path : String,
+  content : Bytes?,
+  expected_hash : String,
+  expected_bytes : Int,
+) -> String? {
+  match content {
+    None => Some("missing: \{path}")
+    Some(data) => {
+      let actual = data.length()
+      if actual != expected_bytes {
+        return Some(
+          "size mismatch: \{path} (expected \{expected_bytes}, got \{actual})",
+        )
+      }
+      let hash = sha256(data.to_fixedarray())
+      if hash != expected_hash {
+        return Some(
+          "sha256 mismatch: \{path} (expected \{expected_hash}, got \{hash})",
+        )
+      }
+      None
+    }
+  }
+}
+
+///|
+async fn download(url : String) -> Bytes raise {
+  println("downloading \{url}")
+  let mut current = url
+  for _hop = 0; _hop < 5; _hop = _hop + 1 {
+    let (response, body) = @http.get(current)
+    let code = response.code
+    if code == 301 || code == 302 || code == 303 || code == 307 || code == 308 {
+      match response.headers.get(CaseInsensitiveString("location")) {
+        Some(location) => {
+          current = location
+          continue
+        }
+        None => fail("download failed: redirect without a location header")
+      }
+    }
+    if code != 200 {
+      fail("download failed: HTTP \{code} \{response.reason}")
+    }
+    let data = body.binary()
+    println("downloaded \{data.length()} bytes")
+    return data
+  }
+  fail("download failed: too many redirects")
+}
+
+///|
+async fn extract_samples(
+  archive : Bytes,
+  samples : Array[Sample],
+) -> Unit raise {
+  let files = @fzip.unzip_sync(
+    archive.to_fixedarray(),
+    opts={ verify_checksum: true },
+  ) catch {
+    @fzip.FzipError(code~, message~) =>
+      fail("cannot unpack the bundle: \{code} \{message}")
+  }
+  for sample in samples {
+    let mut content : FixedArray[Byte]? = None
+    for entry in files {
+      if entry.0 == sample.archive_path {
+        content = Some(entry.1)
+      }
+    }
+    match content {
+      None =>
+        fail("the bundle does not contain \{sample.archive_path} for \{sample.id}")
+      Some(bytes) => {
+        let destination = "\{cache_dir}/\{sample.cache_path}"
+        let directory = parent_directory(destination)
+        @fs.mkdir(directory, recursive=true, allow_exist=true)
+        @fs.write_file(destination, Bytes::from_iter(bytes.iter()))
+      }
+    }
+  }
+}
+
+///|
+fn parent_directory(path : String) -> String {
+  let mut at = -1
+  for index, ch in path {
+    if ch == '/' {
+      at = index
+    }
+  }
+  if at <= 0 {
+    "."
+  } else {
+    path[:at].to_owned()
+  }
+}
+
+///|
+async fn main raise {
+  let (url, bundle_bytes, bundle_sha256, samples) = read_manifest()
+
+  if has_flag(@env.args(), "--list") {
+    for sample in samples {
+      let interfaces = StringBuilder()
+      for index, name in sample.interfaces {
+        if index > 0 {
+          interfaces.write_string(",")
+        }
+        interfaces.write_string(name)
+      }
+      println(
+        "\{sample.id}\t\{sample.fmi_version}\t\{interfaces.to_string()}\t\{sample.archive_path}",
+      )
+    }
+    return
+  }
+
+  @fs.mkdir(cache_dir, recursive=true, allow_exist=true)
+
+  let force = has_flag(@env.args(), "--force")
+  if force {
+    for sample in samples {
+      @fs.remove("\{cache_dir}/\{sample.cache_path}", allow_missing=true)
+    }
+  }
+
+  let offline = has_flag(@env.args(), "--offline")
+
+  let errors : Array[String] = []
+  for sample in samples {
+    let path = "\{cache_dir}/\{sample.cache_path}"
+    let content = try read_file_bytes(path) catch { _ => None }
+    match verify_bytes(path, content, sample.sha256, sample.bytes) {
+      Some(error) => errors.push(error)
+      None => ()
+    }
+  }
+
+  if errors.length() == 0 {
+    println("all \{samples.length()} test FMUs are present and verified")
+    return
+  }
+
+  if offline {
+    println("cache is incomplete or corrupt:")
+    for error in errors {
+      println("  \{error}")
+    }
+    println("run without --offline to download the samples")
+    @env.exit(1)
+  }
+
+  let archive_path = "\{cache_dir}/Reference-FMUs.zip"
+  let archive = try read_file_bytes(archive_path) catch { _ => None }
+  let archive_error = verify_bytes(archive_path, archive, bundle_sha256, bundle_bytes)
+  let valid_archive = match archive_error {
+    None => archive
+    Some(problem) => {
+      if archive is Some(_) {
+        println("cached archive is invalid (\{problem}); downloading again")
+      }
+      let downloaded = download(url)
+      @fs.write_file(archive_path, downloaded)
+      let hash = sha256(downloaded.to_fixedarray())
+      if hash != bundle_sha256 {
+        @fs.remove(archive_path, allow_missing=true)
+        fail("bundle sha256 mismatch: expected \{bundle_sha256}, got \{hash}")
+      }
+      Some(downloaded)
+    }
+  }
+
+  match valid_archive {
+    Some(data) => extract_samples(data, samples)
+    None => fail("bundle archive is unavailable")
+  }
+
+  let final_errors : Array[String] = []
+  for sample in samples {
+    let path = "\{cache_dir}/\{sample.cache_path}"
+    let content = try read_file_bytes(path) catch { _ => None }
+    match verify_bytes(path, content, sample.sha256, sample.bytes) {
+      Some(error) => final_errors.push(error)
+      None => ()
+    }
+  }
+  if final_errors.length() > 0 {
+    for error in final_errors {
+      println("  \{error}")
+    }
+    fail("one or more test FMUs failed verification")
+  }
+
+  println("all \{samples.length()} test FMUs are present and verified")
+}

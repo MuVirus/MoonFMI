@@ -44,7 +44,7 @@ test "unreadable file exits with code 3" {
 /// (5 and 6 need a running FMU; those paths are covered by the integration
 /// suite), so the matrix here pins the pure mappings.
 test "exit code matrix" {
-  let missing : (String) -> Bytes raise ReadError = fn(_path) {
+  let missing : (String) -> Bytes raise ReadError = _path => {
     raise ReadError::Failed("no such file")
   }
   // 0 success paths

@@ -51,21 +51,10 @@ jobs:
         run: moon version --all
 
       - name: Fetch and verify test FMUs
-        shell: bash
-        run: |
-          if [ "${RUNNER_OS}" = "Linux" ] && ! command -v unzip >/dev/null 2>&1; then
-            sudo apt-get update && sudo apt-get install -y unzip
-          fi
-          node tests/data/fetch-fmus.mjs
+        run: moon run tests/data/fetch-fmus.mbtx --target native
 
-      - name: Run local check script (Linux)
-        if: runner.os == 'Linux'
-        run: bash scripts/check.sh
-
-      - name: Run local check script (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+      - name: Run the quality gate
+        run: moon run scripts/check.mbtx --target native
 
       - name: Reject a dirty tree
         shell: bash

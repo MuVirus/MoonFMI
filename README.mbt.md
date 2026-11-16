@@ -1,5 +1,7 @@
 # MuVirus/MoonFMI
 
+English | [简体中文](README_ZH.md)
+
 An experimental MoonBit interface to FMI-compliant FMUs (FMI 2.0.4 and
 FMI 3.0.2, Co-Simulation and Model Exchange).
 
@@ -18,7 +20,7 @@ FMI 3.0.2, Co-Simulation and Model Exchange).
    checksums verified against `tests/data/manifest.json`):
 
    ```bash
-   node tests/data/fetch-fmus.mjs
+   moon run tests/data/fetch-fmus.mbtx --target native
    ```
 
 3. Validate, inspect, simulate — the three everyday commands:

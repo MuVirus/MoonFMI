@@ -270,8 +270,8 @@
 - 触发：首次 push/PR 时出现环境差异（路径、工具版本、下载缓存、行结尾）；
 - 影响：中——"CI 能拦住错误"尚未由远端证明，合并前可能需要一两轮修补；
 - 缓解：首跑后记录实际耗时与失败点；把工具版本和缓存策略固定下来；
-- 应急：先用本地 `scripts/check.ps1` / `check.sh` 作为门禁，CI 修复不阻塞功能开发；
-- 关联：[`../../.github/workflows/ci.yml`](../../.github/workflows/ci.yml)、[`../../scripts/check.ps1`](../../scripts/check.ps1)。
+- 应急：先用本地 `scripts/check.mbtx` 作为门禁，CI 修复不阻塞功能开发；
+- 关联：[`../../.github/workflows/ci.yml`](../../.github/workflows/ci.yml)、[`../../scripts/check.mbtx`](../../scripts/check.mbtx)。
 
 ---
 

@@ -89,7 +89,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | P0 C 参考宿主 | ✅ 完成 | BouncingBall 300 步、6 个采样点，作为 MoonBit 后端的对照答案 |
 | P0 FMI 2 CS 端到端 | ✅ 完成 | MoonBit 加载真实 FMU，与 C 宿主逐点一致（1e-9 时间 / 1e-12 变量） |
 | P0 真实 FMU 集成 | ✅ 部分完成 | 5 个 FMU 打开并解析；`7z` 逐文件对比待补 |
-| 9 包骨架与依赖检查 | ✅ 完成 | `src/`、`tools/check-deps.mjs`；native 45 / wasm 30 个测试通过（含集成测试） |
+| 9 包骨架与依赖检查 | ✅ 完成 | `src/`、`tools/check-deps.mbtx`；native 45 / wasm 30 个测试通过（含集成测试） |
 | Windows + Linux CI | 🟡 已配置，待首跑 | `.github/workflows/ci.yml` |
 | 真实 FMU 测试语料 | ✅ 完成 | 8 个 Reference-FMUs v0.0.42，清单 + SHA-256 + 离线缓存 |
 | 官方 XSD 对照 | ✅ 完成（可选） | 5 个样品，5/5 按预期；不实现 XSD 引擎 |

@@ -1,0 +1,170 @@
+---
+import {
+  "moonbitlang/async",
+  "moonbitlang/async@0.22.9/fs",
+  "moonbitlang/async@0.22.9/process",
+  "moonbitlang/async@0.22.9/shell",
+  "moonbitlang/core/env"
+}
+---
+
+// Build the native test fixtures with clang. This is the MoonBit
+// counterpart of the retired tests/abi/build-fixture.sh and
+// build-fixture.ps1 (one script for both platforms). Run from the
+// repository root:
+//
+//   moon run tests/abi/build-fixture.mbtx --target native
+
+///|
+// Generic so a failure can stand in for any expression type (e.g. the
+// clang lookup above); `@env.exit` never returns.
+fn[T] fail(msg : String) -> T {
+  println("ERROR: \{msg}")
+  @env.exit(1)
+}
+
+///|
+fn is_windows() -> Bool {
+  @env.get_env_var("OS") == Some("Windows_NT")
+}
+
+///|
+async fn probe_tool(cmd : String, args : Array[String]) -> Bool {
+  let outcome = try Some(@shell.Cmd::Cmd(cmd, args).output()) catch { _ => None }
+  match outcome {
+    Some(output) => output.exit_code() == 0
+    None => false
+  }
+}
+
+///|
+// Find clang on PATH; on Windows the MoonBit toolchain ships one under
+// ~/.moon/bin that the .ps1 version also fell back to.
+async fn find_clang() -> String raise {
+  if probe_tool("clang", ["--version"]) {
+    return "clang"
+  }
+  if is_windows() {
+    match @env.get_env_var("USERPROFILE") {
+      Some(home) => {
+        let fallback = "\{home}\\.moon\\bin\\clang.exe"
+        if @fs.exists(fallback) {
+          return fallback
+        }
+      }
+      None => ()
+    }
+  }
+  fail("clang was not found; install the MoonBit toolchain or put clang on PATH")
+}
+
+///|
+async fn compile(
+  clang : String,
+  args : Array[String],
+  artifact : String,
+) -> Unit raise {
+  let code = @shell.Cmd::Cmd(clang, args).status()
+  if code != 0 {
+    fail("building \{artifact} failed with exit code \{code}")
+  }
+  println("built \{artifact}")
+}
+
+///|
+async fn main raise {
+  let clang = find_clang()
+  let cache = "tests/abi/.cache"
+  @fs.mkdir(cache, recursive=true, allow_exist=true)
+  let dependency = if is_windows() {
+    "\{cache}/libmoonfmi_dependency.dll"
+  } else {
+    "\{cache}/libmoonfmi_dependency.so"
+  }
+  // The broken library must stay broken: the dependency is not shipped
+  // with it, so remove any stale copy first.
+  @fs.remove(dependency, allow_missing=true)
+
+  if is_windows() {
+    compile(
+      clang,
+      ["-shared", "-O2", "tests/abi/fixture.c", "-o", "\{cache}/libmoonfmi_fixture.dll"],
+      "\{cache}/libmoonfmi_fixture.dll",
+    )
+    compile(
+      clang,
+      [
+        "-shared",
+        "-O2",
+        "tests/abi/dependency.c",
+        "-Wl,/implib:\{cache}/moonfmi_dependency.lib",
+        "-o",
+        dependency,
+      ],
+      dependency,
+    )
+    compile(
+      clang,
+      ["-shared", "-O2", "tests/abi/broken.c", "\{cache}/moonfmi_dependency.lib", "-o", "\{cache}/libmoonfmi_broken.dll"],
+      "\{cache}/libmoonfmi_broken.dll (dependency intentionally absent)",
+    )
+    @fs.remove(dependency, allow_missing=true)
+    compile(
+      clang,
+      ["-O2", "tests/abi/probe.c", "-o", "\{cache}/probe.exe"],
+      "\{cache}/probe.exe",
+    )
+    compile(
+      clang,
+      ["-shared", "-O2", "tests/abi/logging_fmu.c", "-o", "\{cache}/libmoonfmi_logging_fmu.dll"],
+      "\{cache}/libmoonfmi_logging_fmu.dll",
+    )
+    compile(
+      clang,
+      ["-O2", "tests/abi/fmi2_host.c", "-o", "\{cache}/fmi2_host.exe"],
+      "\{cache}/fmi2_host.exe",
+    )
+  } else {
+    compile(
+      clang,
+      ["-shared", "-fPIC", "-O2", "tests/abi/fixture.c", "-o", "\{cache}/libmoonfmi_fixture.so"],
+      "\{cache}/libmoonfmi_fixture.so",
+    )
+    compile(
+      clang,
+      ["-shared", "-fPIC", "-O2", "tests/abi/dependency.c", "-o", dependency],
+      dependency,
+    )
+    compile(
+      clang,
+      [
+        "-shared",
+        "-fPIC",
+        "-O2",
+        "tests/abi/broken.c",
+        "-L\{cache}",
+        "-lmoonfmi_dependency",
+        "-Wl,-rpath,$ORIGIN",
+        "-o",
+        "\{cache}/libmoonfmi_broken.so",
+      ],
+      "\{cache}/libmoonfmi_broken.so (dependency intentionally absent)",
+    )
+    @fs.remove(dependency, allow_missing=true)
+    compile(
+      clang,
+      ["-O2", "tests/abi/probe.c", "-o", "\{cache}/probe"],
+      "\{cache}/probe",
+    )
+    compile(
+      clang,
+      ["-shared", "-fPIC", "-O2", "tests/abi/logging_fmu.c", "-pthread", "-o", "\{cache}/libmoonfmi_logging_fmu.so"],
+      "\{cache}/libmoonfmi_logging_fmu.so",
+    )
+    compile(
+      clang,
+      ["-O2", "tests/abi/fmi2_host.c", "-o", "\{cache}/fmi2_host"],
+      "\{cache}/fmi2_host",
+    )
+  }
+}
