@@ -906,8 +906,11 @@ MOONFMI_FMI3_VALUE_GROUP(int32, int32_t, get_int32, set_int32)
 MOONFMI_FMI3_VALUE_GROUP(uint32, uint32_t, get_uint32, set_uint32)
 MOONFMI_FMI3_VALUE_GROUP(int64, int64_t, get_int64, set_int64)
 MOONFMI_FMI3_VALUE_GROUP(uint64, uint64_t, get_uint64, set_uint64)
-/* fmi3Boolean is a 1-byte bool; the MoonBit side passes a Byte buffer. */
-MOONFMI_FMI3_VALUE_GROUP(boolean, uint8_t, get_boolean, set_boolean)
+/* fmi3Boolean is a 1-byte bool; the MoonBit side passes a Byte buffer.
+   The cast must use the official type, not uint8_t: on Linux fmi3Boolean
+   is `_Bool`, a distinct type from `unsigned char`, and GCC 14 rejects
+   the incompatible pointer type. */
+MOONFMI_FMI3_VALUE_GROUP(boolean, fmi3Boolean, get_boolean, set_boolean)
 
 /* Float32/Int8/UInt8/Int16/UInt16 have no MoonBit counterparts, so the shim
    converts them: Float32 widens to double (exact), the small integers

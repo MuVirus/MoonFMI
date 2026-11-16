@@ -105,6 +105,9 @@ fn run_doctor(argv : Array[String], skip : Int32) -> Int32 {
     detail: cwd,
     required: true,
   })
+  // A fresh checkout has no .moonfmi-tmp yet, and dir_creatable uses the
+  // non-recursive create_dir, so the parent must exist first.
+  @fs.create_dir(".moonfmi-tmp") catch { _ => () }
   let temp_dir = ".moonfmi-tmp/doctor-\{@env.now()}"
   let temp_ok = dir_creatable(temp_dir)
   if temp_ok {
