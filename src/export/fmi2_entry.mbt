@@ -537,21 +537,12 @@ pub fn generate_fmi2_entry(ir : ModelIr) -> String {
     }
     None => ()
   }
-  // Optional capabilities: explicit fmi2Error stubs ------------------------------
-  for
-    stub in [
-      "MOONFMI_EXPORT fmi2Status fmi2GetRealOutputDerivatives(fmi2Component c, const fmi2ValueReference vrs[], size_t nvr, const fmi2Integer order[], fmi2Real derivatives[]) { (void)c; (void)vrs; (void)nvr; (void)order; (void)derivatives; return fmi2Error; }",
-      "MOONFMI_EXPORT fmi2Status fmi2SetRealInputDerivatives(fmi2Component c, const fmi2ValueReference vrs[], size_t nvr, const fmi2Integer order[], const fmi2Real value[]) { (void)c; (void)vrs; (void)nvr; (void)order; (void)value; return fmi2Error; }",
-      "MOONFMI_EXPORT fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* FMUstate) { (void)c; (void)FMUstate; return fmi2Error; }",
-      "MOONFMI_EXPORT fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate FMUstate) { (void)c; (void)FMUstate; return fmi2Error; }",
-      "MOONFMI_EXPORT fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* FMUstate) { (void)c; (void)FMUstate; return fmi2Error; }",
-      "MOONFMI_EXPORT fmi2Status fmi2SerializeFMUstate(fmi2Component c, fmi2FMUstate FMUstate, fmi2Byte serializedState[], size_t size) { (void)c; (void)FMUstate; (void)serializedState; (void)size; return fmi2Error; }",
-      "MOONFMI_EXPORT fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte serializedState[], size_t size, fmi2FMUstate* FMUstate) { (void)c; (void)serializedState; (void)size; (void)FMUstate; return fmi2Error; }",
-      "MOONFMI_EXPORT fmi2Status fmi2GetDirectionalDerivative(fmi2Component c, const fmi2ValueReference vUnknown[], size_t nUnknown, const fmi2ValueReference vKnown[], size_t nKnown, const fmi2Real dvKnown[], fmi2Real dvUnknown[]) { (void)c; (void)vUnknown; (void)nUnknown; (void)vKnown; (void)nKnown; (void)dvKnown; (void)dvUnknown; return fmi2Error; }",
-    ] {
-    writer.line(stub)
-    writer.line("")
-  }
+  // Optional capabilities: not exported at all. The XML declares
+  // canGetAndSetFMUstate/canSerializeFMUstate/providesDirectionalDerivative
+  // as false, and per FMI 2 the corresponding symbols may be absent when a
+  // capability is false — hosts resolve them optionally. Exporting stub
+  // functions that return fmi2Error would make symbol-presence checks
+  // (MoonFMI's shim) believe the capability exists.
   writer.to_string()
 }
 

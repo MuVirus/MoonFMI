@@ -137,8 +137,19 @@ typedef struct moonfmi_fmi2_library {
   fmi2NewDiscreteStatesTYPE *new_discrete_states;
   fmi2EnterContinuousTimeModeTYPE *enter_continuous_time_mode;
   fmi2CompletedIntegratorStepTYPE *completed_integrator_step;
+  /* FMU state group; optional per FMI 2, resolved by symbol presence. */
+  fmi2GetFMUstateTYPE *get_fmu_state;
+  fmi2SetFMUstateTYPE *set_fmu_state;
+  fmi2FreeFMUstateTYPE *free_fmu_state;
+  fmi2SerializeFMUstateTYPE *serialize_fmu_state;
+  fmi2DeSerializeFMUstateTYPE *deserialize_fmu_state;
+  /* Non-standard size query exported by some FMUs (Reference-FMUs);
+     standard FMI 2 has no size probe. */
+  fmi2SerializedFMUstateSizeTYPE *serialized_fmu_state_size;
   int32_t has_co_simulation;
   int32_t has_model_exchange;
+  int32_t has_fmu_state;
+  int32_t has_serialized_fmu_state;
   /* Retired instances keep their context alive until the library is released,
      so a callback from a buggy FMU cannot touch freed memory. */
   struct moonfmi_fmi2_instance *retired;
@@ -245,6 +256,29 @@ moonfmi_fmi2_library_new(void *handle) {
                            (void *)&library->enter_continuous_time_mode) &&
       moonfmi_resolve_into(handle, "fmi2CompletedIntegratorStep",
                            (void *)&library->completed_integrator_step);
+  /* The FMU state group is optional per FMI 2 (declared through
+     canGetAndSetFMUstate / canSerializeFMUstate). Missing symbols stay
+     NULL and the capability flags stay 0, so a state call reports an
+     explicit capability error instead of crashing. */
+  library->get_fmu_state = moonfmi_resolve(handle, "fmi2GetFMUstate");
+  library->set_fmu_state = moonfmi_resolve(handle, "fmi2SetFMUstate");
+  library->free_fmu_state = moonfmi_resolve(handle, "fmi2FreeFMUstate");
+  library->has_fmu_state =
+      (library->get_fmu_state != NULL && library->set_fmu_state != NULL &&
+       library->free_fmu_state != NULL)
+          ? 1
+          : 0;
+  library->serialize_fmu_state =
+      moonfmi_resolve(handle, "fmi2SerializeFMUstate");
+  library->serialized_fmu_state_size =
+      moonfmi_resolve(handle, "fmi2SerializedFMUstateSize");
+  library->deserialize_fmu_state =
+      moonfmi_resolve(handle, "fmi2DeSerializeFMUstate");
+  library->has_serialized_fmu_state =
+      (library->serialize_fmu_state != NULL &&
+       library->deserialize_fmu_state != NULL)
+          ? 1
+          : 0;
   if (!library->has_co_simulation && !library->has_model_exchange) {
     moonfmi_set_error(
         "the shared library exports neither fmi2DoStep nor a complete "
@@ -690,5 +724,122 @@ moonfmi_fmi2_completed_integrator_step(void *handle,
       no_set_fmu_state_prior ? fmi2True : fmi2False, &enter, &terminate);
   *enter_event_mode = (int32_t)enter;
   *terminate_simulation = (int32_t)terminate;
+  return (int32_t)status;
+}
+
+/* ---------------------------------------------------------------------------
+ * FMU state group (optional per FMI 2). Capability bits:
+ *   1 = Get/Set/Free FMUstate, 2 = Serialize/DeSerialize FMUstate.
+ * A missing group reports the capability error at the MoonBit layer.
+ * ------------------------------------------------------------------------- */
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_library_fmu_state_support(void *library_handle) {
+  moonfmi_fmi2_library *library = (moonfmi_fmi2_library *)library_handle;
+  if (library == NULL) {
+    return 0;
+  }
+  int32_t flags = 0;
+  if (library->has_fmu_state) {
+    flags |= 1;
+  }
+  if (library->has_serialized_fmu_state) {
+    flags |= 2;
+  }
+  return flags;
+}
+
+MOONBIT_FFI_EXPORT
+void *
+moonfmi_fmi2_get_fmu_state(void *handle, int32_t *status_out) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    *status_out = (int32_t)fmi2Error;
+    return NULL;
+  }
+  void *state = NULL;
+  *status_out = (int32_t)instance->library->get_fmu_state(
+      instance->component, &state);
+  return state;
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_set_fmu_state(void *handle, void *state) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->set_fmu_state(instance->component, state);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_free_fmu_state(void *handle, void *state) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->free_fmu_state(instance->component,
+                                                    &state);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_serialize_fmu_state(void *handle,
+                                 void *state,
+                                 uint8_t *buffer,
+                                 int32_t size,
+                                 int32_t *written_out) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || size < 0) {
+    return (int32_t)fmi2Error;
+  }
+  size_t needed = (size_t)size;
+  fmi2Status status = instance->library->serialize_fmu_state(
+      instance->component, state, (fmi2Byte *)buffer, needed);
+  /* FMI 2 has no size query; a too-small buffer fails, so report the
+     requested size as "written" only on success. */
+  if (status == fmi2OK) {
+    *written_out = size;
+  }
+  return (int32_t)status;
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_deserialize_fmu_state(void *handle,
+                                   const uint8_t *buffer,
+                                   int32_t size,
+                                   void **state_out) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || size < 0) {
+    return (int32_t)fmi2Error;
+  }
+  void *state = NULL;
+  fmi2Status status = instance->library->deserialize_fmu_state(
+      instance->component, (const fmi2Byte *)buffer, (size_t)size, &state);
+  if (status == fmi2OK) {
+    *state_out = state;
+  }
+  return (int32_t)status;
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_serialized_fmu_state_size(void *handle,
+                                       void *state,
+                                       int32_t *size_out) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || instance->library->serialized_fmu_state_size == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  size_t size = 0;
+  fmi2Status status = instance->library->serialized_fmu_state_size(
+      instance->component, state, &size);
+  if (status == fmi2OK) {
+    *size_out = (int32_t)size;
+  }
   return (int32_t)status;
 }

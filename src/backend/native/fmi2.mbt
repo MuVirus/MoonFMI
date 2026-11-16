@@ -21,6 +21,8 @@ pub(all) suberror Fmi2Error {
   Fmi2InstanceFreed(operation~ : String)
   Fmi2StatusFailed(operation~ : String, status~ : @fmi.FmiStatus)
   Fmi2InstancesAlive(count~ : Int32)
+  // The FMU does not declare the capability the call needs.
+  Fmi2CapabilityMissing(operation~ : String, capability~ : String)
 }
 
 ///|
@@ -36,6 +38,8 @@ pub fn Fmi2Error::message(self : Fmi2Error) -> String {
       "cannot call " + operation + " on a released FMI instance"
     Fmi2StatusFailed(operation~, status~) =>
       operation + " failed with status " + status.name()
+    Fmi2CapabilityMissing(operation~, capability~) =>
+      operation + " is not available: the FMU does not declare " + capability
     Fmi2InstancesAlive(count~) =>
       "the library still owns " +
       count.to_string() +
@@ -776,4 +780,230 @@ pub fn Fmi2Instance::completed_integrator_step(
   )
   me_fail(status, "fmi2CompletedIntegratorStep")
   (out_flag(enter), out_flag(terminate))
+}
+
+///|
+/// Capability bits reported by `moonfmi_fmi2_library_fmu_state_support`.
+const FMU_STATE_FLAG : Int32 = 1
+
+///|
+const FMU_STATE_SERIALIZED_FLAG : Int32 = 2
+
+///|
+extern "C" fn fmi2_library_fmu_state_support(
+  library : @c.Pointer[Unit],
+) -> Int32 = "moonfmi_fmi2_library_fmu_state_support"
+
+///|
+#borrow(status_out)
+extern "C" fn fmi2_get_fmu_state(
+  handle : @c.Pointer[Unit],
+  status_out : FixedArray[Int32],
+) -> @c.Pointer[Unit] = "moonfmi_fmi2_get_fmu_state"
+
+///|
+extern "C" fn fmi2_set_fmu_state(
+  handle : @c.Pointer[Unit],
+  state : @c.Pointer[Unit],
+) -> Int32 = "moonfmi_fmi2_set_fmu_state"
+
+///|
+extern "C" fn fmi2_free_fmu_state(
+  handle : @c.Pointer[Unit],
+  state : @c.Pointer[Unit],
+) -> Int32 = "moonfmi_fmi2_free_fmu_state"
+
+///|
+#borrow(buffer, written_out)
+#borrow(handle, state, buffer, written_out)
+extern "C" fn fmi2_serialize_fmu_state(
+  handle : @c.Pointer[Unit],
+  state : @c.Pointer[Unit],
+  buffer : FixedArray[Byte],
+  size : Int32,
+  written_out : FixedArray[Int32],
+) -> Int32 = "moonfmi_fmi2_serialize_fmu_state"
+
+///|
+#borrow(buffer, state_out)
+extern "C" fn fmi2_deserialize_fmu_state(
+  handle : @c.Pointer[Unit],
+  buffer : FixedArray[Byte],
+  size : Int32,
+  state_out : FixedArray[@c.Pointer[Unit]],
+) -> Int32 = "moonfmi_fmi2_deserialize_fmu_state"
+
+///|
+/// Whether the FMU exports the `fmi2*FMUstate` group (canGetAndSetFMUstate).
+pub fn Fmi2Instance::supports_fmu_state(self : Fmi2Instance) -> Bool {
+  (fmi2_library_fmu_state_support(self.library.shim) & FMU_STATE_FLAG) != 0
+}
+
+///|
+/// Whether the FMU also exports the byte-level serialize pair.
+pub fn Fmi2Instance::supports_serialized_fmu_state(self : Fmi2Instance) -> Bool {
+  let flags = fmi2_library_fmu_state_support(self.library.shim)
+  (flags & FMU_STATE_SERIALIZED_FLAG) != 0
+}
+
+///|
+fn Fmi2Instance::require_fmu_state(
+  self : Fmi2Instance,
+  operation~ : String,
+) -> Unit raise Fmi2Error {
+  self.ensure_live(operation)
+  if !self.supports_fmu_state() {
+    raise Fmi2CapabilityMissing(operation~, capability="canGetAndSetFMUstate")
+  }
+}
+
+///|
+/// Captures the FMU state (`fmi2GetFMUstate`). The state must be released
+/// with `free_fmu_state`. Raises `Fmi2CapabilityMissing` when the FMU does
+/// not declare canGetAndSetFMUstate.
+pub fn Fmi2Instance::get_fmu_state(
+  self : Fmi2Instance,
+) -> @c.Pointer[Unit] raise Fmi2Error {
+  self.require_fmu_state(operation="fmi2GetFMUstate")
+  let status_out : FixedArray[Int32] = FixedArray::make(1, 0)
+  let state = fmi2_get_fmu_state(self.handle, status_out)
+  fail_on_failure(@fmi.FmiStatus::from_int32(status_out[0]), "fmi2GetFMUstate")
+  state
+}
+
+///|
+/// Restores a previously captured FMU state (`fmi2SetFMUstate`).
+pub fn Fmi2Instance::set_fmu_state(
+  self : Fmi2Instance,
+  state : @c.Pointer[Unit],
+) -> Unit raise Fmi2Error {
+  self.require_fmu_state(operation="fmi2SetFMUstate")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_set_fmu_state(self.handle, state),
+  )
+  fail_on_failure(status, "fmi2SetFMUstate")
+}
+
+///|
+/// Releases a captured FMU state (`fmi2FreeFMUstate`).
+pub fn Fmi2Instance::free_fmu_state(
+  self : Fmi2Instance,
+  state : @c.Pointer[Unit],
+) -> Unit raise Fmi2Error {
+  self.require_fmu_state(operation="fmi2FreeFMUstate")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_free_fmu_state(self.handle, state),
+  )
+  fail_on_failure(status, "fmi2FreeFMUstate")
+}
+
+///|
+/// Restores a state from serialized bytes (`fmi2DeSerializeFMUstate`).
+pub fn Fmi2Instance::deserialize_fmu_state(
+  self : Fmi2Instance,
+  buffer : FixedArray[Byte],
+) -> @c.Pointer[Unit] raise Fmi2Error {
+  self.ensure_live("fmi2DeSerializeFMUstate")
+  if !self.supports_serialized_fmu_state() {
+    raise Fmi2CapabilityMissing(
+      operation="fmi2DeSerializeFMUstate",
+      capability="canSerializeFMUstate",
+    )
+  }
+  let state_out : FixedArray[@c.Pointer[Unit]] = FixedArray::make(
+    1,
+    @c.Pointer::null(),
+  )
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_deserialize_fmu_state(self.handle, buffer, buffer.length(), state_out),
+  )
+  fail_on_failure(status, "fmi2DeSerializeFMUstate")
+  state_out[0]
+}
+
+///|
+#borrow(state, size_out)
+extern "C" fn fmi2_serialized_fmu_state_size(
+  handle : @c.Pointer[Unit],
+  state : @c.Pointer[Unit],
+  size_out : FixedArray[Int32],
+) -> Int32 = "moonfmi_fmi2_serialized_fmu_state_size"
+
+///|
+/// Whether the FMU exports a serialized-state size query. Standard FMI 2
+/// has none; Reference-FMUs ship a non-standard
+/// `fmi2SerializedFMUstateSize` which we use when present.
+pub fn Fmi2Instance::supports_serialized_state_size(
+  self : Fmi2Instance,
+) -> Bool {
+  let flags = fmi2_library_fmu_state_support(self.library.shim)
+  (flags & FMU_STATE_SERIALIZED_FLAG) != 0
+}
+
+///|
+/// Serializes a captured FMU state into fresh bytes
+/// (`fmi2SerializeFMUstate`). The buffer is sized via the FMU's size query
+/// when it exports one; otherwise the call grows the buffer until the FMU
+/// accepts it.
+pub fn Fmi2Instance::serialize_fmu_state(
+  self : Fmi2Instance,
+  state : @c.Pointer[Unit],
+) -> FixedArray[Byte] raise Fmi2Error {
+  self.ensure_live("fmi2SerializeFMUstate")
+  if !self.supports_serialized_fmu_state() {
+    raise Fmi2CapabilityMissing(
+      operation="fmi2SerializeFMUstate",
+      capability="canSerializeFMUstate",
+    )
+  }
+  let size_out : FixedArray[Int32] = FixedArray::make(1, 0)
+  if @fmi.FmiStatus::from_int32(
+      fmi2_serialized_fmu_state_size(self.handle, state, size_out),
+    )
+    is Ok {
+    let buffer : FixedArray[Byte] = FixedArray::make(size_out[0], b'\x00')
+    ignore(self.serialize_into(state, buffer))
+    return buffer
+  }
+  // No size query: grow until the FMU accepts the buffer.
+  let mut size = 256
+  while size <= 65536 {
+    let buffer : FixedArray[Byte] = FixedArray::make(size, b'\x00')
+    let outcome : Result[Int32, Fmi2Error] = Ok(
+      self.serialize_into(state, buffer),
+    ) catch {
+      error => Err(error)
+    }
+    match outcome {
+      Ok(_) => return buffer
+      Err(_) => {
+        size = size * 4
+        continue
+      }
+    }
+  }
+  raise Fmi2StatusFailed(
+    operation="fmi2SerializeFMUstate",
+    status=@fmi.FmiStatus::Error,
+  )
+}
+
+///|
+fn Fmi2Instance::serialize_into(
+  self : Fmi2Instance,
+  state : @c.Pointer[Unit],
+  buffer : FixedArray[Byte],
+) -> Int32 raise Fmi2Error {
+  let written_out : FixedArray[Int32] = FixedArray::make(1, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_serialize_fmu_state(
+      self.handle,
+      state,
+      buffer,
+      buffer.length(),
+      written_out,
+    ),
+  )
+  fail_on_failure(status, "fmi2SerializeFMUstate")
+  written_out[0]
 }

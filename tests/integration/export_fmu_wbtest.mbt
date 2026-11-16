@@ -370,7 +370,9 @@ test "wasm fmu packaging layout validates (F-07)" {
   // toolchain has not run.
   let data = @fs.read_file_to_bytes("tests/fmu-wasm/.cache/MoonfmiAdder.fmu") catch {
     _ => {
-      println("SKIP: tests/fmu-wasm/.cache/MoonfmiAdder.fmu not built; run node tests/fmu-wasm/run.mjs package")
+      println(
+        "SKIP: tests/fmu-wasm/.cache/MoonfmiAdder.fmu not built; run node tests/fmu-wasm/run.mjs package",
+      )
       return
     }
   }
@@ -379,15 +381,144 @@ test "wasm fmu packaging layout validates (F-07)" {
   }
   assert_true(archive.contains("modelDescription.xml"))
   assert_true(archive.contains("binaries/wasm32-wasip2/MoonfmiAdder.wasm"))
-  assert_true(
-    archive.contains("extra/org.modelica.fmi-ls-wasm/manifest.xml"),
-  )
+  assert_true(archive.contains("extra/org.modelica.fmi-ls-wasm/manifest.xml"))
   // The generated model description must pass MoonFMI's own parser and
   // semantic rules, exactly like a native FMU.
   let xml = archive.read("modelDescription.xml")
   let (_, report) = @schema.parse_and_validate(xml)
   assert_eq(report.error_count(), 0)
   if report.error_count() > 0 {
-    abort("wasm fmu model description failed: \{report.diagnostics[0].render()}")
+    abort(
+      "wasm fmu model description failed: \{report.diagnostics[0].render()}",
+    )
   }
+}
+
+///|
+/// C-09: FMI 2 FMU state save/restore against the real Dahlquist FMU
+/// (canGetAndSetFMUstate="true", canSerializeFMUstate="true"), plus the
+/// explicit capability-missing error on the exported FMU (which declares
+/// canGetAndSetFMUstate="false").
+test "fmi2 fmu state roundtrip and capability missing" {
+  let data = @fs.read_file_to_bytes(fmu_path("fmi2/Dahlquist.fmu")) catch {
+    error => abort("reading Dahlquist failed: " + io_message(error))
+  }
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let directory = absolute_path(".moonfmi-tmp/fmu-state-\{@env.now()}")
+  let platform = host()
+  let loaded = @native_backend.load_fmi2_fmu(
+    data,
+    host=platform,
+    temp_directory=directory,
+  ) catch {
+    error => abort("loading Dahlquist failed: " + error.message())
+  }
+  let instance = loaded.instance()
+  assert_true(instance.supports_fmu_state(), msg="Dahlquist supports fmu state")
+  assert_true(
+    instance.supports_serialized_fmu_state(),
+    msg="Dahlquist supports serialized fmu state",
+  )
+  instance.setup_experiment(start_time=0.0) catch {
+    error => abort("setup failed: " + error.message())
+  }
+  instance.initialize() catch {
+    error => abort("init failed: " + error.message())
+  }
+  // Three steps of 0.1: x = 0.9^3.
+  for t in 0..<3 {
+    instance.step(t.to_double() * 0.1, 0.1) catch {
+      error => abort("step failed: " + error.message())
+    }
+  }
+  let captured = instance.get_fmu_state() catch {
+    error => abort("get state failed: " + error.message())
+  }
+  let before_restore = instance.read_real(1U) catch {
+    error => abort("read failed: " + error.message())
+  }
+  let expected = 0.9 * 0.9 * 0.9
+  assert_true(
+    (before_restore - expected).abs() <= 0.000000000001,
+    msg="x after 3 steps = \{before_restore}",
+  )
+  // Advance further, then rewind to the captured state.
+  instance.step(0.3, 0.1) catch {
+    error => abort("step failed: " + error.message())
+  }
+  instance.step(0.4, 0.1) catch {
+    error => abort("step failed: " + error.message())
+  }
+  instance.set_fmu_state(captured) catch {
+    error => abort("set state failed: " + error.message())
+  }
+  let after_restore = instance.read_real(1U) catch {
+    error => abort("read failed: " + error.message())
+  }
+  assert_true(
+    (after_restore - expected).abs() <= 0.000000000001,
+    msg="rewound x = \{after_restore}, expected \{expected}",
+  )
+  // Byte-level serialization roundtrip; the binding sizes the buffer via
+  // the FMU's size query when present, growing it otherwise.
+  let buffer = instance.serialize_fmu_state(captured) catch {
+    error => abort("serialize failed: " + error.message())
+  }
+  assert_true(buffer.length() > 0, msg="serialized \{buffer.length()} bytes")
+  let restored = instance.deserialize_fmu_state(buffer) catch {
+    error => abort("deserialize failed: " + error.message())
+  }
+  instance.set_fmu_state(restored) catch {
+    error => abort("set restored state failed: " + error.message())
+  }
+  let after_deserialize = instance.read_real(1U) catch {
+    error => abort("read failed: " + error.message())
+  }
+  assert_true(
+    (after_deserialize - expected).abs() <= 0.000000000001,
+    msg="deserialized x = \{after_deserialize}",
+  )
+  instance.free_fmu_state(captured) catch {
+    error => abort("free failed: " + error.message())
+  }
+  instance.free_fmu_state(restored) catch {
+    error => abort("free failed: " + error.message())
+  }
+  loaded.dispose()
+}
+
+///|
+test "exported fmi2 fmu reports missing fmu state capability" {
+  match compiler_probe_skip() {
+    Some(reason) => {
+      println("SKIP: \{reason}")
+      return
+    }
+    None => ()
+  }
+  let (archive, _) = build_source_fmu(@schema.FmiVersion::V2, "fmu-state-cap")
+  let loaded = load_source_fmu(archive, "fmu-state-cap")
+  let instance = loaded.instance()
+  assert_false(
+    instance.supports_fmu_state(),
+    msg="exported FMU has no state group",
+  )
+  let outcome : Result[Unit, @native_backend.Fmi2Error] = try {
+    let state = instance.get_fmu_state()
+    instance.free_fmu_state(state)
+    Ok(())
+  } catch {
+    error => Err(error)
+  }
+  match outcome {
+    Ok(_) => abort("capability-missing call must fail")
+    Err(error) =>
+      assert_true(
+        error.message().contains("canGetAndSetFMUstate"),
+        msg="error names the capability: \{error.message()}",
+      )
+  }
+  loaded.dispose()
 }
