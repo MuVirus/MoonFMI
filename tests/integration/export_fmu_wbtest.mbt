@@ -363,3 +363,31 @@ test "exported fmi3 array passthrough roundtrips u[3]" {
   assert_eq(y.length(), 3)
   loaded.dispose()
 }
+
+///|
+test "wasm fmu packaging layout validates (F-07)" {
+  // Produced by `node tests/fmu-wasm/run.mjs package`; skip when the node
+  // toolchain has not run.
+  let data = @fs.read_file_to_bytes("tests/fmu-wasm/.cache/MoonfmiAdder.fmu") catch {
+    _ => {
+      println("SKIP: tests/fmu-wasm/.cache/MoonfmiAdder.fmu not built; run node tests/fmu-wasm/run.mjs package")
+      return
+    }
+  }
+  let archive = @zip.ZipArchive::open(data) catch {
+    error => abort("wasm fmu is not a valid zip: " + error.message())
+  }
+  assert_true(archive.contains("modelDescription.xml"))
+  assert_true(archive.contains("binaries/wasm32-wasip2/MoonfmiAdder.wasm"))
+  assert_true(
+    archive.contains("extra/org.modelica.fmi-ls-wasm/manifest.xml"),
+  )
+  // The generated model description must pass MoonFMI's own parser and
+  // semantic rules, exactly like a native FMU.
+  let xml = archive.read("modelDescription.xml")
+  let (_, report) = @schema.parse_and_validate(xml)
+  assert_eq(report.error_count(), 0)
+  if report.error_count() > 0 {
+    abort("wasm fmu model description failed: \{report.diagnostics[0].render()}")
+  }
+}

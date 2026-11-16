@@ -1,0 +1,34 @@
+// Minimal CS FMU world for the P7 WASM backend (tasks F-02/F-04/F-05).
+//
+// The `fmu` resource models one FMU instance with the CS lifecycle the
+// LS-WASM profile needs: instantiate (constructor), get/set by value
+// reference, do-step and terminate. `get-version` answers the FMI
+// get-version question at both resource and world level.
+//
+// The `host` import is the callback channel (F-05): the guest forwards log
+// messages to the host instead of printing, which is how FMI logging has to
+// work in a sandboxed component.
+
+package moonfmi:adder@0.1.0;
+
+interface host {
+    log: func(level: u32, message: string);
+}
+
+interface cs {
+    resource fmu {
+        constructor();
+        get-version: func() -> string;
+        set-real: func(vr: u32, value: f64);
+        get-real: func(vr: u32) -> f64;
+        do-step: func(current: f64, step: f64) -> result<_, string>;
+        terminate: func();
+    }
+
+    get-version: func() -> string;
+}
+
+world adder {
+    import host;
+    export cs;
+}

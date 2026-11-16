@@ -1,0 +1,5 @@
+import {
+  "moonfmi/adder/interface/moonfmi/adder/host" @host,
+}
+
+warnings = "-44"

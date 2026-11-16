@@ -1,0 +1,30 @@
+import {
+  "moonfmi/adder/gen/interface/moonfmi/adder/cs" @cs,
+}
+
+warnings = "-44"
+
+pkgtype(kind: "foreign_library")
+
+options(
+  link: {
+    "wasm": {
+      "export-memory-name": "memory",
+      "heap-start-address": 16,
+      "exports": [
+        "mbt_ffi_cabi_realloc:cabi_realloc",
+        "wasmExportConstructorFmu:moonfmi:adder/cs@0.1.0#[constructor]fmu",
+        "wasmExportFmuDtor:moonfmi:adder/cs@0.1.0#[dtor]fmu",
+        "wasmExportGetVersion:moonfmi:adder/cs@0.1.0#get-version",
+        "wasmExportGetVersionPostReturn:cabi_post_moonfmi:adder/cs@0.1.0#get-version",
+        "wasmExportMethodFmuDoStep:moonfmi:adder/cs@0.1.0#[method]fmu.do-step",
+        "wasmExportMethodFmuDoStepPostReturn:cabi_post_moonfmi:adder/cs@0.1.0#[method]fmu.do-step",
+        "wasmExportMethodFmuGetReal:moonfmi:adder/cs@0.1.0#[method]fmu.get-real",
+        "wasmExportMethodFmuGetVersion:moonfmi:adder/cs@0.1.0#[method]fmu.get-version",
+        "wasmExportMethodFmuGetVersionPostReturn:cabi_post_moonfmi:adder/cs@0.1.0#[method]fmu.get-version",
+        "wasmExportMethodFmuSetReal:moonfmi:adder/cs@0.1.0#[method]fmu.set-real",
+        "wasmExportMethodFmuTerminate:moonfmi:adder/cs@0.1.0#[method]fmu.terminate"
+      ],
+    },
+  },
+)
