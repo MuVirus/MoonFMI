@@ -101,6 +101,17 @@ fn build_source_fmu(
   let archive = @zip.build_deterministic_zip(entries) catch {
     error => abort("packaging failed: " + error.message())
   }
+  // Keep a stable copy for external cross-validation (tools/fmpy_compare.py
+  // picks this up; tests that only need the archive ignore it).
+  let stable_dir = ".moonfmi-tmp/export-built"
+  ensure_test_dir(stable_dir)
+  let tag = match version {
+    @schema.FmiVersion::V2 => "fmi2"
+    @schema.FmiVersion::V3 => "fmi3"
+  }
+  @fs.write_bytes_to_file("\{stable_dir}/MoonfmiDahlquist-\{tag}.fmu", archive) catch {
+    _ => ()
+  }
   (archive, result)
 }
 

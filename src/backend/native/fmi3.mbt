@@ -80,6 +80,11 @@ pub struct Fmi3Instance {
   handle : @c.Pointer[Unit]
   sink : Fmi3LogSink
   mut freed : Bool
+  /// Model-description capability declarations. Generated FMUs ship
+  /// fmi3Error stubs so symbol-resolving hosts (FMPy) can load them; the
+  /// capability verdict must come from the model description instead.
+  mut declared_fmu_state : Bool
+  mut declared_serialized : Bool
   /// `fmi3EnterInitializationMode` arguments, stored by
   /// `setup_experiment` and applied by `initialize`.
   mut pending_tolerance : Double?
@@ -619,6 +624,8 @@ fn Fmi3Library::instantiate_common(
     handle,
     sink,
     freed: false,
+    declared_fmu_state: false,
+    declared_serialized: false,
     pending_tolerance: None,
     pending_start: 0.0,
     pending_stop: None,
@@ -1607,7 +1614,25 @@ pub fn Fmi3Instance::set_clock_one(
 ///|
 /// Whether the FMU exports the `fmi3*FMUState` group.
 pub fn Fmi3Instance::supports_fmu_state(self : Fmi3Instance) -> Bool {
-  self.library.has_fmu_state_capability()
+  self.declared_fmu_state && self.library.has_fmu_state_capability()
+}
+
+///|
+/// Records the model description's canGetAndSetFMUstate declaration.
+pub fn Fmi3Instance::declare_fmu_state(
+  self : Fmi3Instance,
+  declared : Bool,
+) -> Unit {
+  self.declared_fmu_state = declared
+}
+
+///|
+/// Records the canSerializeFMUstate declaration.
+pub fn Fmi3Instance::declare_serialized_fmu_state(
+  self : Fmi3Instance,
+  declared : Bool,
+) -> Unit {
+  self.declared_serialized = declared
 }
 
 ///|
@@ -1617,11 +1642,7 @@ pub fn Fmi3Instance::supports_fmu_state(self : Fmi3Instance) -> Bool {
 pub fn Fmi3Instance::get_fmu_state(
   self : Fmi3Instance,
 ) -> @c.Pointer[Unit] raise Fmi3Error {
-  fmi3_require(
-    self.library.has_fmu_state_capability(),
-    "fmi3GetFMUState",
-    "fmi3GetFMUState",
-  )
+  fmi3_require(self.supports_fmu_state(), "fmi3GetFMUState", "fmi3GetFMUState")
   self.ensure_live("fmi3GetFMUState")
   let status_out : FixedArray[Int32] = FixedArray::make(1, 0)
   let state = fmi3_get_fmu_state(self.handle, status_out)
@@ -1638,11 +1659,7 @@ pub fn Fmi3Instance::set_fmu_state(
   self : Fmi3Instance,
   state : @c.Pointer[Unit],
 ) -> Unit raise Fmi3Error {
-  fmi3_require(
-    self.library.has_fmu_state_capability(),
-    "fmi3SetFMUState",
-    "fmi3SetFMUState",
-  )
+  fmi3_require(self.supports_fmu_state(), "fmi3SetFMUState", "fmi3SetFMUState")
   self.ensure_live("fmi3SetFMUState")
   let status = @fmi.FmiStatus::from_int32(
     fmi3_set_fmu_state(self.handle, state),
@@ -1657,7 +1674,7 @@ pub fn Fmi3Instance::free_fmu_state(
   state : @c.Pointer[Unit],
 ) -> Unit raise Fmi3Error {
   fmi3_require(
-    self.library.has_fmu_state_capability(),
+    self.supports_fmu_state(),
     "fmi3FreeFMUState",
     "fmi3FreeFMUState",
   )

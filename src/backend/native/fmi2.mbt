@@ -75,6 +75,12 @@ pub struct Fmi2Instance {
   handle : @c.Pointer[Unit]
   sink : Fmi2LogSink
   mut freed : Bool
+  /// Whether the model description declares canGetAndSetFMUstate. Symbol
+  /// presence alone is not enough: generated FMUs ship fmi2Error stubs so
+  /// hosts like FMPy that resolve every symbol can load them.
+  mut declared_fmu_state : Bool
+  /// Whether the model description declares canSerializeFMUstate.
+  mut declared_serialized : Bool
 }
 
 ///|
@@ -362,7 +368,14 @@ pub fn Fmi2Library::instantiate(
     raise Fmi2InstantiateFailed(instance_name~, detail=fmi2_error_text())
   }
   self.open_instances = self.open_instances + 1
-  { library: self, handle, sink, freed: false, }
+  {
+    library: self,
+    handle,
+    sink,
+    freed: false,
+    declared_fmu_state: false,
+    declared_serialized: false,
+  }
 }
 
 ///|
@@ -409,7 +422,14 @@ pub fn Fmi2Library::instantiate_me(
     raise Fmi2InstantiateFailed(instance_name~, detail=fmi2_error_text())
   }
   self.open_instances = self.open_instances + 1
-  { library: self, handle, sink, freed: false, }
+  {
+    library: self,
+    handle,
+    sink,
+    freed: false,
+    declared_fmu_state: false,
+    declared_serialized: false,
+  }
 }
 
 ///|
@@ -836,14 +856,35 @@ extern "C" fn fmi2_deserialize_fmu_state(
 ///|
 /// Whether the FMU exports the `fmi2*FMUstate` group (canGetAndSetFMUstate).
 pub fn Fmi2Instance::supports_fmu_state(self : Fmi2Instance) -> Bool {
+  self.declared_fmu_state &&
   (fmi2_library_fmu_state_support(self.library.shim) & FMU_STATE_FLAG) != 0
+}
+
+///|
+/// Records the model description's capability declaration (loader-side).
+pub fn Fmi2Instance::declare_fmu_state(
+  self : Fmi2Instance,
+  declared : Bool,
+) -> Unit {
+  self.declared_fmu_state = declared
+}
+
+///|
+/// Records the canSerializeFMUstate declaration (loader-side). The serialize
+/// pair is only usable when both state capture and serialization are
+/// declared.
+pub fn Fmi2Instance::declare_serialized_fmu_state(
+  self : Fmi2Instance,
+  declared : Bool,
+) -> Unit {
+  self.declared_serialized = declared
 }
 
 ///|
 /// Whether the FMU also exports the byte-level serialize pair.
 pub fn Fmi2Instance::supports_serialized_fmu_state(self : Fmi2Instance) -> Bool {
   let flags = fmi2_library_fmu_state_support(self.library.shim)
-  (flags & FMU_STATE_SERIALIZED_FLAG) != 0
+  self.declared_serialized && (flags & FMU_STATE_SERIALIZED_FLAG) != 0
 }
 
 ///|

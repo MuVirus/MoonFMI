@@ -16,10 +16,10 @@ fn fmi2_get_set_function(ir : ModelIr, data_type : IrDataType) -> Array[String] 
   } else {
     []
   }
-  if get_cases.is_empty() && derivative_cases.is_empty() {
-    // No variables of this type: skip the pair entirely.
-    return []
-  }
+  // Pairs are emitted even when the model has no variable of this type:
+  // hosts such as FMPy resolve every fmi2Get*/fmi2Set* symbol when loading,
+  // and a missing symbol aborts instantiation. Unknown references fall into
+  // the switch default and return fmi2Error.
   let (get_name, set_name, buffer) = match data_type {
     IrDataType::Float64 => ("fmi2GetReal", "fmi2SetReal", "fmi2Real")
     IrDataType::Int32 => ("fmi2GetInteger", "fmi2SetInteger", "fmi2Integer")
@@ -537,6 +537,79 @@ pub fn generate_fmi2_entry(ir : ModelIr) -> String {
     }
     None => ()
   }
+  // Directional/input-output derivatives: optional per FMI 2 (declared
+  // providesDirectionalDerivative="false" in the model description). Stubs
+  // keep symbol-resolving hosts (FMPy) loading; the errors are honest.
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2GetRealOutputDerivatives(fmi2Component c, const fmi2ValueReference vrs[], size_t nvr, const fmi2Integer order[], fmi2Real derivatives[]) { (void)c; (void)vrs; (void)nvr; (void)order; (void)derivatives; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2SetRealInputDerivatives(fmi2Component c, const fmi2ValueReference vrs[], size_t nvr, const fmi2Integer order[], const fmi2Real value[]) { (void)c; (void)vrs; (void)nvr; (void)order; (void)value; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2GetDirectionalDerivative(fmi2Component c, const fmi2ValueReference vUnknown[], size_t nUnknown, const fmi2ValueReference vKnown[], size_t nKnown, const fmi2Real dvKnown[], fmi2Real dvUnknown[]) { (void)c; (void)vUnknown; (void)nUnknown; (void)vKnown; (void)nKnown; (void)dvKnown; (void)dvUnknown; return fmi2Error; }",
+  )
+  writer.line("")
+  // FMU-state family: declared as absent in modelDescription.xml
+  // (canGetAndSetFMUstate/canSerializeFMUstate = false). The stubs exist
+  // because hosts such as FMPy resolve every FMI 2 symbol when loading;
+  // MoonFMI decides the capability from the model description
+  // (Fmi2Instance::declare_fmu_state), not from symbol presence.
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2GetFMUstate(fmi2Component c, fmi2FMUstate* FMUstate) { (void)c; (void)FMUstate; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2SetFMUstate(fmi2Component c, fmi2FMUstate FMUstate) { (void)c; (void)FMUstate; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2FreeFMUstate(fmi2Component c, fmi2FMUstate* FMUstate) { (void)c; (void)FMUstate; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2SerializeFMUstate(fmi2Component c, fmi2FMUstate FMUstate, fmi2Byte serializedState[], size_t size) { (void)c; (void)FMUstate; (void)serializedState; (void)size; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2SerializedFMUstateSize(fmi2Component c, fmi2FMUstate FMUstate, size_t* size) { (void)c; (void)FMUstate; (void)size; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2DeSerializeFMUstate(fmi2Component c, const fmi2Byte serializedState[], size_t size, fmi2FMUstate* FMUstate) { (void)c; (void)serializedState; (void)size; (void)FMUstate; return fmi2Error; }",
+  )
+  writer.line("")
+  // Asynchronous-status family: the standard makes these optional (they are
+  // only meaningful for canRunAsynchronuously), but FMPy resolves them
+  // unconditionally when loading a CS FMU, so emit explicit stubs. They are
+  // not capability symbols in MoonFMI's own shim, so their presence cannot
+  // mislead the loader (unlike the FMU-state group).
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2CancelStep(fmi2Component c) { (void)c; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2GetStatus(fmi2Component c, const fmi2StatusKind s, fmi2Status* value) { (void)c; (void)s; (void)value; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2GetRealStatus(fmi2Component c, const fmi2StatusKind s, fmi2Real* value) { (void)c; (void)s; (void)value; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2GetIntegerStatus(fmi2Component c, const fmi2StatusKind s, fmi2Integer* value) { (void)c; (void)s; (void)value; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2GetBooleanStatus(fmi2Component c, const fmi2StatusKind s, fmi2Boolean* value) { (void)c; (void)s; (void)value; return fmi2Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi2Status fmi2GetStringStatus(fmi2Component c, const fmi2StatusKind s, fmi2String* value) { (void)c; (void)s; (void)value; return fmi2Error; }",
+  )
+  writer.line("")
   // Optional capabilities: not exported at all. The XML declares
   // canGetAndSetFMUstate/canSerializeFMUstate/providesDirectionalDerivative
   // as false, and per FMI 2 the corresponding symbols may be absent when a

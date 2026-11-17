@@ -78,6 +78,32 @@ pub fn LoaderError::message(self : LoaderError) -> String {
 }
 
 ///|
+/// The model description's canGetAndSetFMUstate declaration for either
+/// interface (CS or ME); false when neither declares it.
+fn fmi2_declares_fmu_state(model : @schema.Fmi2ModelDescription) -> Bool {
+  for interface in model.interfaces() {
+    if interface.can_get_and_set_fmustate is Some(true) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// The canSerializeFMUstate declaration; the serialize pair is only usable
+/// when the model also declares state capture.
+fn fmi2_declares_serialized_fmu_state(
+  model : @schema.Fmi2ModelDescription,
+) -> Bool {
+  for interface in model.interfaces() {
+    if interface.can_serialize_fmustate is Some(true) {
+      return true
+    }
+  }
+  false
+}
+
+///|
 /// Load an FMI 2 co-simulation FMU from raw bytes.
 ///
 /// - `host` describes the running platform (see `host_platform_name`).
@@ -187,6 +213,10 @@ pub fn load_fmi2_fmu(
       raise LoadFailed(detail=error.message())
     }
   }
+  instance.declare_fmu_state(fmi2_declares_fmu_state(parsed))
+  instance.declare_serialized_fmu_state(
+    fmi2_declares_serialized_fmu_state(parsed),
+  )
   { model: parsed, directory: temp_directory, files, library, instance, }
 }
 
@@ -337,6 +367,10 @@ pub fn load_fmi2_me_fmu(
       raise LoadFailed(detail=error.message())
     }
   }
+  instance.declare_fmu_state(fmi2_declares_fmu_state(parsed))
+  instance.declare_serialized_fmu_state(
+    fmi2_declares_serialized_fmu_state(parsed),
+  )
   {
     model: parsed,
     directory: temp_directory,
@@ -535,6 +569,10 @@ pub fn load_fmi3_fmu(
       raise LoadFailed(detail=error.message())
     }
   }
+  instance.declare_fmu_state(fmi3_declares_fmu_state(parsed))
+  instance.declare_serialized_fmu_state(
+    fmi3_declares_serialized_fmu_state(parsed),
+  )
   { model: parsed, directory: temp_directory, files, library, instance, }
 }
 
@@ -595,6 +633,31 @@ pub fn load_fmi3_me_fmu(
       parsed.model_structure.event_indicators,
     ),
   }
+}
+
+///|
+/// The FMI 3 model description's canGetAndSetFMUstate declaration for the
+/// declared interfaces; false when none declares it.
+fn fmi3_declares_fmu_state(model : @schema.Fmi3ModelDescription) -> Bool {
+  for interface in model.interfaces {
+    if interface.can_get_and_set_fmustate is Some(true) {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// The FMI 3 canSerializeFMUstate declaration.
+fn fmi3_declares_serialized_fmu_state(
+  model : @schema.Fmi3ModelDescription,
+) -> Bool {
+  for interface in model.interfaces {
+    if interface.can_serialize_fmustate is Some(true) {
+      return true
+    }
+  }
+  false
 }
 
 ///|
@@ -807,6 +870,10 @@ pub fn load_fmi3_se_fmu(
       raise LoadFailed(detail=error.message())
     }
   }
+  instance.declare_fmu_state(fmi3_declares_fmu_state(parsed))
+  instance.declare_serialized_fmu_state(
+    fmi3_declares_serialized_fmu_state(parsed),
+  )
   {
     model: parsed,
     directory: temp_directory,

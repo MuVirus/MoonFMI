@@ -339,10 +339,6 @@ fn fmi2_model_description_xml(ir : ModelIr) -> String raise ExportError {
       attrs.write_string(
         xml_bool_attr("completedIntegratorStepNotNeeded", false),
       )
-      attrs.write_string(
-        xml_bool_attr("canHandleVariableCommunicationStepSize", true),
-      )
-      attrs.write_string(xml_bool_attr("canInterpolateInputs", false))
       attrs.write_string(xml_bool_attr("canGetAndSetFMUstate", false))
       attrs.write_string(xml_bool_attr("canSerializeFMUstate", false))
       attrs.write_string(xml_bool_attr("providesDirectionalDerivative", false))
@@ -435,6 +431,16 @@ fn fmi2_model_description_xml(ir : ModelIr) -> String raise ExportError {
       None => ()
     }
   }
+  // RFC: every FMI model declares exactly one independent variable; append
+  // it after the declared/derivative variables so value references stay
+  // stable for the generated code.
+  let mut next_vr = declared_count + states.length()
+  writer.line(
+    "<ScalarVariable name=\"time\" valueReference=\"\{ir_vr(next_vr).to_string()}\" causality=\"independent\" variability=\"continuous\">",
+  )
+  writer.line("  <Real/>")
+  writer.line("</ScalarVariable>")
+  next_vr = next_vr + 1
   writer.close("ModelVariables")
   writer.open("ModelStructure")
   // Outputs: exactly the causality=output variables (MD-040). Derivatives:
@@ -775,6 +781,14 @@ fn fmi3_model_description_xml(ir : ModelIr) -> String {
       None => ()
     }
   }
+  // Exactly one independent variable is required (FMPy and the standard
+  // enforce it); append it after the synthetic derivatives so the declared
+  // value references stay stable.
+  let time_vr = ir_vr(synthetic)
+  writer.line(
+    "<Float64 name=\"time\" valueReference=\"\{time_vr.to_string()}\" causality=\"independent\" variability=\"continuous\"/>",
+  )
+  let _ = time_vr
   writer.close("ModelVariables")
   writer.open("ModelStructure")
   for v in ir.variables {

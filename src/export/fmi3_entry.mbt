@@ -174,10 +174,10 @@ fn fmi3_copy_cases(
 /// Get/Set pair for one FMI 3 value type, including the required-count
 /// helper shared by both.
 fn fmi3_get_set_pair(ir : ModelIr, data_type : IrDataType) -> Array[String] {
+  // Emit every typed pair even when this model has no variable of that
+  // type: FMPy resolves the whole fmi3Get*/fmi3Set* family when loading,
+  // and unknown references are rejected by the switch default.
   let size_cases = fmi3_size_cases(ir, data_type)
-  if size_cases.is_empty() {
-    return []
-  }
   let get_cases = fmi3_copy_cases(ir, data_type, "get")
   let set_cases = fmi3_copy_cases(ir, data_type, "set")
   let suffix = fmi3_type_suffix(data_type)
@@ -270,8 +270,8 @@ fn fmi3_get_set_pair(ir : ModelIr, data_type : IrDataType) -> Array[String] {
 
 ///|
 fn fmi3_type_pairs(ir : ModelIr) -> Array[IrDataType] {
-  let types = []
-  let wanted = [
+  let _ = ir
+  [
     IrDataType::Float64,
     IrDataType::Float32,
     IrDataType::Int32,
@@ -280,13 +280,6 @@ fn fmi3_type_pairs(ir : ModelIr) -> Array[IrDataType] {
     IrDataType::Boolean,
     IrDataType::Str,
   ]
-  for t in wanted {
-    let any = ir.variables.iter().any(fn(v) { v.data_type == t })
-    if any {
-      types.push(t)
-    }
-  }
-  types
 }
 
 ///|
@@ -587,6 +580,19 @@ pub fn generate_fmi3_entry(ir : ModelIr) -> String {
       writer.line(line)
     }
   }
+  // Value types the IR cannot express: FMPy resolves them on load.
+  for
+    pair in [
+      ("fmi3Int8", "Int8"),
+      ("fmi3UInt8", "UInt8"),
+      ("fmi3Int16", "Int16"),
+      ("fmi3UInt16", "UInt16"),
+      ("fmi3UInt32", "UInt32"),
+    ] {
+    for line in fmi3_foreign_pair(pair.0, pair.1) {
+      writer.line(line)
+    }
+  }
   // CS -------------------------------------------------------------------------
   match cs {
     Some(_) => {
@@ -781,6 +787,173 @@ pub fn generate_fmi3_entry(ir : ModelIr) -> String {
     }
     None => ()
   }
+  // Cross-interface stubs: hosts such as FMPy resolve the entire fmi3*
+  // family when loading, so a CS-only (or ME-only) FMU must still export
+  // the other interface's symbols. They return fmi3Error.
+  if cs is Some(_) && me is None {
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3SetTime(fmi3Instance instance, fmi3Float64 time) { (void)instance; (void)time; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3GetNumberOfContinuousStates(fmi3Instance instance, size_t* n) { (void)instance; (void)n; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3GetContinuousStates(fmi3Instance instance, fmi3Float64 states[], size_t n) { (void)instance; (void)states; (void)n; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3SetContinuousStates(fmi3Instance instance, const fmi3Float64 states[], size_t n) { (void)instance; (void)states; (void)n; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3GetContinuousStateDerivatives(fmi3Instance instance, fmi3Float64 derivatives[], size_t n) { (void)instance; (void)derivatives; (void)n; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3GetNumberOfEventIndicators(fmi3Instance instance, size_t* n) { (void)instance; (void)n; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3GetEventIndicators(fmi3Instance instance, fmi3Float64 indicators[], size_t n) { (void)instance; (void)indicators; (void)n; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3GetNominalsOfContinuousStates(fmi3Instance instance, fmi3Float64 nominals[], size_t n) { (void)instance; (void)nominals; (void)n; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3EnterContinuousTimeMode(fmi3Instance instance) { (void)instance; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3CompletedIntegratorStep(fmi3Instance instance, fmi3Boolean noSet, fmi3Boolean* enterEventMode, fmi3Boolean* terminate) { (void)instance; (void)noSet; (void)enterEventMode; (void)terminate; return fmi3Error; }",
+    )
+    writer.line("")
+  }
+  if me is Some(_) && cs is None {
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3DoStep(fmi3Instance instance, fmi3Float64 current, fmi3Float64 step, fmi3Boolean noSet, fmi3Boolean* eventNeeded, fmi3Boolean* terminate, fmi3Boolean* earlyReturn, fmi3Float64* lastSuccessfulTime) { (void)instance; (void)current; (void)step; (void)noSet; (void)eventNeeded; (void)terminate; (void)earlyReturn; (void)lastSuccessfulTime; return fmi3Error; }",
+    )
+    writer.line("")
+    writer.line(
+      "MOONFMI_EXPORT fmi3Status fmi3EnterStepMode(fmi3Instance instance) { (void)instance; return fmi3Error; }",
+    )
+    writer.line("")
+  }
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetOutputDerivatives(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, const fmi3Int32 orders[], fmi3Float64 values[], size_t nValues) { (void)instance; (void)vrs; (void)nvr; (void)orders; (void)values; (void)nValues; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, const fmi3Float64 intervals[]) { (void)instance; (void)vrs; (void)nvr; (void)intervals; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, const fmi3UInt64 counters[], const fmi3UInt64 resolutions[]) { (void)instance; (void)vrs; (void)nvr; (void)counters; (void)resolutions; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SetShiftDecimal(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, const fmi3Float64 shifts[]) { (void)instance; (void)vrs; (void)nvr; (void)shifts; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SetShiftFraction(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, const fmi3UInt64 counters[], const fmi3UInt64 resolutions[]) { (void)instance; (void)vrs; (void)nvr; (void)counters; (void)resolutions; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SerializedFMUStateSize(fmi3Instance instance, fmi3FMUState FMUState, size_t* size) { (void)instance; (void)FMUState; (void)size; return fmi3Error; }",
+  )
+  writer.line("")
+  // Optional families: optional per FMI 3 and declared absent in
+  // modelDescription.xml. The stubs exist because hosts such as FMPy resolve
+  // every fmi3* symbol when loading; MoonFMI decides capabilities from the
+  // model description (Fmi3Instance::declare_fmu_state), not symbol presence.
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetIntervalDecimal(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, fmi3Float64 intervals[], fmi3IntervalQualifier qualifiers[]) { (void)instance; (void)vrs; (void)nvr; (void)intervals; (void)qualifiers; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetIntervalFraction(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, fmi3UInt64 counters[], fmi3UInt64 resolutions[], fmi3IntervalQualifier qualifiers[]) { (void)instance; (void)vrs; (void)nvr; (void)counters; (void)resolutions; (void)qualifiers; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetShiftDecimal(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, fmi3Float64 shifts[]) { (void)instance; (void)vrs; (void)nvr; (void)shifts; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetShiftFraction(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, fmi3UInt64 counters[], fmi3UInt64 resolutions[]) { (void)instance; (void)vrs; (void)nvr; (void)counters; (void)resolutions; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetClock(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, fmi3Clock values[]) { (void)instance; (void)vrs; (void)nvr; (void)values; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SetClock(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, const fmi3Clock values[]) { (void)instance; (void)vrs; (void)nvr; (void)values; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetBinary(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, size_t sizes[], fmi3Binary values[], size_t nValues) { (void)instance; (void)vrs; (void)nvr; (void)sizes; (void)values; (void)nValues; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SetBinary(fmi3Instance instance, const fmi3ValueReference vrs[], size_t nvr, const size_t sizes[], const fmi3Binary values[], size_t nValues) { (void)instance; (void)vrs; (void)nvr; (void)sizes; (void)values; (void)nValues; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetNumberOfVariableDependencies(fmi3Instance instance, fmi3ValueReference vr, size_t* nDependencies) { (void)instance; (void)vr; (void)nDependencies; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetVariableDependencies(fmi3Instance instance, fmi3ValueReference dependent, size_t elementIndices[], fmi3ValueReference independents[], fmi3DependencyKind dependencyKinds[], size_t nDependencies) { (void)instance; (void)dependent; (void)elementIndices; (void)independents; (void)dependencyKinds; (void)nDependencies; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3EvaluateDiscreteStates(fmi3Instance instance) { (void)instance; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3ActivateModelPartition(fmi3Instance instance, fmi3ValueReference clockReference, fmi3Float64 activationTime) { (void)instance; (void)clockReference; (void)activationTime; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Instance fmi3InstantiateScheduledExecution(fmi3String instanceName, fmi3String instantiationToken, fmi3String resourcePath, fmi3Boolean visible, fmi3Boolean loggingOn, fmi3InstanceEnvironment instanceEnvironment, fmi3LogMessageCallback logMessage, fmi3ClockUpdateCallback clockUpdate, fmi3LockPreemptionCallback lockPreemption, fmi3UnlockPreemptionCallback unlockPreemption) { (void)instanceName; (void)instantiationToken; (void)resourcePath; (void)visible; (void)loggingOn; (void)instanceEnvironment; (void)logMessage; (void)clockUpdate; (void)lockPreemption; (void)unlockPreemption; return NULL; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetFMUState(fmi3Instance instance, fmi3FMUState* FMUState) { (void)instance; (void)FMUState; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SetFMUState(fmi3Instance instance, fmi3FMUState FMUState) { (void)instance; (void)FMUState; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3FreeFMUState(fmi3Instance instance, fmi3FMUState* FMUState) { (void)instance; (void)FMUState; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3SerializeFMUState(fmi3Instance instance, fmi3FMUState FMUState, fmi3Byte serializedState[], size_t size) { (void)instance; (void)FMUState; (void)serializedState; (void)size; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3DeserializeFMUState(fmi3Instance instance, const fmi3Byte serializedState[], size_t size, fmi3FMUState* FMUState) { (void)instance; (void)serializedState; (void)size; (void)FMUState; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetSizeOfSerializedFMUState(fmi3Instance instance, fmi3FMUState FMUState, size_t* size) { (void)instance; (void)FMUState; (void)size; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetDirectionalDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 dvKnown[], fmi3Float64 dvUnknown[]) { (void)instance; (void)unknowns; (void)nUnknowns; (void)knowns; (void)nKnowns; (void)dvKnown; (void)dvUnknown; return fmi3Error; }",
+  )
+  writer.line("")
+  writer.line(
+    "MOONFMI_EXPORT fmi3Status fmi3GetAdjointDerivative(fmi3Instance instance, const fmi3ValueReference unknowns[], size_t nUnknowns, const fmi3ValueReference knowns[], size_t nKnowns, const fmi3Float64 dvUnknown[], fmi3Float64 dvKnown[]) { (void)instance; (void)unknowns; (void)nUnknowns; (void)knowns; (void)nKnowns; (void)dvUnknown; (void)dvKnown; return fmi3Error; }",
+  )
+  writer.line("")
   // Optional capabilities: not exported at all. The XML declares
   // canGetAndSetFMUstate/canSerializeFMUstate/providesDirectionalDerivative
   // as false, and per FMI 3 the corresponding symbols may be absent when a
@@ -853,8 +1026,6 @@ pub fn generate_fmi3_header(ir : ModelIr) -> String {
   writer.line("typedef const fmi3Char* fmi3String;")
   writer.line("typedef const unsigned char* fmi3Byte;")
   writer.line("typedef unsigned char fmi3Clock;")
-  writer.line("typedef void* fmi3FMUState;")
-  writer.line("typedef size_t fmi3Size_t;")
   writer.line("")
   writer.line("typedef enum {")
   writer.line("    fmi3OK = 0,")
@@ -874,6 +1045,24 @@ pub fn generate_fmi3_header(ir : ModelIr) -> String {
   writer.line(
     "typedef void (*fmi3LogMessageCallback)(fmi3InstanceEnvironment instanceEnvironment, fmi3Status status, fmi3String category, fmi3String message);",
   )
+  writer.line("typedef void* fmi3FMUState;")
+  writer.line("typedef const unsigned char* fmi3Binary;")
+  writer.line("")
+  writer.line("typedef enum {")
+  writer.line("    fmi3Independent,")
+  writer.line("    fmi3Constant,")
+  writer.line("    fmi3Fixed,")
+  writer.line("    fmi3Tunable,")
+  writer.line("    fmi3Discrete,")
+  writer.line("    fmi3Dependent")
+  writer.line("} fmi3DependencyKind;")
+  writer.line("")
+  writer.line(
+    "typedef void (*fmi3ClockUpdateCallback)(fmi3InstanceEnvironment instanceEnvironment);",
+  )
+  writer.line("typedef void (*fmi3LockPreemptionCallback)(void);")
+  writer.line("typedef void (*fmi3UnlockPreemptionCallback)(void);")
+  writer.line("")
   writer.line("")
   writer.line("typedef void (*fmi3IntermediateUpdateCallback)(")
   writer.line("    fmi3InstanceEnvironment instanceEnvironment,")
@@ -890,4 +1079,26 @@ pub fn generate_fmi3_header(ir : ModelIr) -> String {
   writer.line("")
   writer.line("#endif /* MOONFMI_FMI3_H */")
   writer.to_string()
+}
+
+///|
+/// Typed get/set pair for value types the IR cannot express (Int8…UInt32).
+/// FMPy resolves the whole fmi3Get*/fmi3Set* family on load, so these must
+/// exist even though the model declares no such variables; every reference
+/// is rejected by the switch default.
+fn fmi3_foreign_pair(c_type : String, suffix : String) -> Array[String] {
+  let lines = []
+  lines.push(
+    "static size_t Moonfmi_required_\{suffix}(const fmi3ValueReference vrs[], size_t nvr) { (void)vrs; (void)nvr; return 0; }",
+  )
+  lines.push("")
+  lines.push(
+    "MOONFMI_EXPORT fmi3Status fmi3Get\{suffix}(fmi3Instance instance, const fmi3ValueReference valueReferences[], size_t nValueReferences, \{c_type} values[], size_t nValues) { (void)instance; (void)valueReferences; (void)nValueReferences; (void)values; (void)nValues; return fmi3Error; }",
+  )
+  lines.push("")
+  lines.push(
+    "MOONFMI_EXPORT fmi3Status fmi3Set\{suffix}(fmi3Instance instance, const fmi3ValueReference valueReferences[], size_t nValueReferences, const \{c_type} values[], size_t nValues) { (void)instance; (void)valueReferences; (void)nValueReferences; (void)values; (void)nValues; return fmi3Error; }",
+  )
+  lines.push("")
+  lines
 }
