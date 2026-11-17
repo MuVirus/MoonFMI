@@ -54,7 +54,7 @@ fn bench_row(name~ : String, f~ : () -> UInt64) -> Unit {
 /// budget gates build theirs.
 fn bench_large_model() -> Bytes {
   let count = 10000
-  let builder = StringBuilder(size_hint=count * 120)
+  let builder = StringBuilder(capacity=count * 120)
   builder.write_string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
   builder.write_string(
     "<fmiModelDescription fmiVersion=\"2.0\" modelName=\"Large\" guid=\"{large}\">\n",

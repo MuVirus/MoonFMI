@@ -13,7 +13,7 @@ permissions:
 # `latest` alias — every versioned path (binaries/<version>/..., cores/core-<version>)
 # answers 403, and neither install script documents version selection. Drift is
 # surfaced by the "Show toolchain versions" step instead. The build that was last
-# verified locally is 0.1.20261104 (moonc v0.10.20).
+# verified locally is 0.1.20261117 (moonc v0.10.21).
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

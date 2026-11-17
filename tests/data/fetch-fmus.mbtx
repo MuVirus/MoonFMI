@@ -290,11 +290,6 @@ async fn read_manifest() -> (String, Int, String, Array[Sample]) raise {
 // ---------------------------------------------------------- helpers ------
 
 ///|
-fn is_windows() -> Bool {
-  @env.get_env_var("OS") == Some("Windows_NT")
-}
-
-///|
 fn has_flag(names : Array[String], flag : String) -> Bool {
   // args()[0] is the compiled binary itself under `moon run`.
   for index = 1; index < names.length(); index = index + 1 {

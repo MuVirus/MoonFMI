@@ -3,7 +3,7 @@
 /// through input/output/parameter/local roles and every fourth variable
 /// becomes an output listed in ModelStructure.
 fn generate_large_model(count : Int32) -> String {
-  let builder = StringBuilder(size_hint=count * 120)
+  let builder = StringBuilder(capacity=count * 120)
   builder.write_string("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
   builder.write_string(
     "<fmiModelDescription fmiVersion=\"2.0\" modelName=\"Large\" guid=\"{large}\">\n",
