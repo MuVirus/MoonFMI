@@ -366,7 +366,7 @@ test "exported fmi3 array passthrough roundtrips u[3]" {
   }
   assert_true(
     u[0] == 4.0 && u[1] == 5.0 && u[2] == 6.0,
-    msg="u roundtrip: \{u}",
+    msg="u roundtrip: " + u.map(fn(v) { v.to_string() }).join(","),
   )
   let y = instance.get_float64_values([1U], 3) catch {
     error => abort("get y failed: " + error.message())

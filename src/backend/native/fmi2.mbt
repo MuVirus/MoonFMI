@@ -834,7 +834,6 @@ extern "C" fn fmi2_free_fmu_state(
 ) -> Int32 = "moonfmi_fmi2_free_fmu_state"
 
 ///|
-#borrow(buffer, written_out)
 #borrow(handle, state, buffer, written_out)
 extern "C" fn fmi2_serialize_fmu_state(
   handle : @c.Pointer[Unit],

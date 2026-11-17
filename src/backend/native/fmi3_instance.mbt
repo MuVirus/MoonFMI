@@ -515,3 +515,11 @@ pub impl @fmi.SeInstance for Fmi3Instance with fn finish(self) {
       raise @fmi.FmiCall(operation="fmi3Terminate", detail=error.message())
   }
 }
+
+///|
+pub extend Fmi3Instance with @fmi.SeInstance::{
+  set_clock,
+  activate_partition,
+  get_clock,
+  get_interval,
+}

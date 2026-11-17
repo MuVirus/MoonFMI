@@ -219,6 +219,19 @@ pub impl @fmi.SeInstance for MockSeInstance with fn finish(self) {
 }
 
 ///|
+pub extend MockSeInstance with @fmi.SeInstance::{
+  read_real,
+  set_clock,
+  finish,
+  activate_partition,
+  setup_experiment,
+  initialize,
+  write_real,
+  get_clock,
+  get_interval,
+}
+
+///|
 test "se scheduler orders same-instant activations by priority" {
   // Three clocks due at t=0: two constant (priority 0 and 1) and one
   // countdown that has already expired (priority 2). The mock records the
