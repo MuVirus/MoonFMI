@@ -108,7 +108,7 @@
 | E-03 ✅ | C 模型/入口代码生成 | P2 | XL | E-02 | clang 编译通过(FMI 2/3 CS/ME) |
 | E-04 ✅ | 源码 FMU 布局/CMake | P2 | M | E-03 | 导出目录布局 + CMakeLists.txt |
 | E-05 ✅ | FMI 3 `buildDescription.xml` | P2 | M | E-04 | 随导出生成 |
-| E-06 ✅ | 纯 C native FMU | P2 | M | E-04 | Windows 实测加载(clang);Linux 待 CI |
+| E-06 ✅ | 纯 C native FMU | P2 | M | E-04 | Windows 实测 + Linux CI 首跑通过(clang) |
 | E-07 ✅ | 生成 FMU 回读/对比 | P2 | M | E-04 | CS/ME 与解析解一致;数组 roundtrip |
 | E-08 ✅ | 可复现打包 | P3 | M | B-05/E-04 | 两次导出 sha256 相同 |
 

@@ -125,7 +125,7 @@
 - [x] 缺失平台/符号/依赖时错误可定位（PlatformSelectionError 列出可用目录）；
 - [x] 多实例不串状态（同一库两实例、不同 k、交错步进，轨迹独立，见
       records/2026-11-15）；
-- [x] Windows x64 通过（本机验证；Linux x64 待 CI 首跑确认）；
+- [x] Windows x64 通过（本机验证）；Linux x64 通过（GitHub Actions 首跑，run 44003079369）；
 - [x] 退出码/JSON 输出可用于 CI（simulate 与 validate 共用码表）。
 
 > P2 核心路径完成于 2026-11-07（load → CS 主算法 → CSV/JSON → simulate 命令
@@ -299,8 +299,8 @@
 - [x] 工具链版本/限制记录（tests/fmu-wasm/README.md §1/§4）;
 - [x] 明确标记“实验性”，不影响 native 发布（README、设计文档、wasm 后端 simulate --backend wasm 退出 4）。
 
-> P7 核心于 2026-11-17:最小 CS component + 宿主回调 + LS-WASM 打包通过;
-> 浏览器(F-06)与全量 LS-WASM world 仍未做,P7 剩余项与导出器(F-08)顺延。
+> P7 于 2026-11-17 完成浏览器实测(F-06,Chromium 自动化)与 WASM 导出器(F-08);
+> 全量 LS-WASM world(SE/ME 组件)仍不在范围。
 > P8 首轮硬化同日完成:fuzz 扩展、交叉检查冒烟报告、性能基线、安全审查、
 > 发布清单与 SBOM、FMI 2 状态序列化(C-09)。
 

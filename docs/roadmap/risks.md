@@ -264,13 +264,18 @@
 - 缓解：依赖审计；优先 MIT/Apache/BSD；记录许可证；
 - 应急：替换/自研；隔离动态依赖。
 
-### R-24 · CI 未在托管环境首跑
+### R-24 · CI 未在托管环境首跑（已关闭）
 
-- 现状：`.github/workflows/ci.yml` 已写好，Windows/Linux 检查脚本在本地通过，但 GitHub Actions 还没有实际跑过一次；
-- 触发：首次 push/PR 时出现环境差异（路径、工具版本、下载缓存、行结尾）；
-- 影响：中——"CI 能拦住错误"尚未由远端证明，合并前可能需要一两轮修补；
-- 缓解：首跑后记录实际耗时与失败点；把工具版本和缓存策略固定下来；
-- 应急：先用本地 `scripts/check.mbtx` 作为门禁，CI 修复不阻塞功能开发；
+- 现状：**已关闭（2026-11-17）**。GitHub Actions 对 `4443d7d` 跑通：
+  `check (ubuntu-latest)` 与 `check (windows-latest)` 均 success
+  （run [44003079369](https://github.com/MuVirus/MoonFMI/actions/runs/44003079369)，
+  Ubuntu 约 1.5 分钟、Windows 约 2.7 分钟）。
+- 首跑暴露并修复的问题：导出集成测试硬编码了 `win64/.dll` 与
+  `x86_64-windows`，Linux 上生成的 FMU 找不到 `linux64` 二进制。测试改为按
+  宿主平台推导平台目录、库扩展名和 clang 参数（`-shared` / `-dynamiclib` /
+  `-shared -fPIC`），并在 WSL Ubuntu 22.04 复现验证。
+- 遗留：工具链仍无法固定版本（上游只发布 `latest`），版本漂移由
+  "Show toolchain versions" 步骤观测；升级时按记录排查。
 - 关联：[`../../.github/workflows/ci.yml`](../../.github/workflows/ci.yml)、[`../../scripts/check.mbtx`](../../scripts/check.mbtx)。
 
 ---
@@ -280,7 +285,7 @@
 | 影响 \ 可能性 | 低 | 中 | 高 |
 | --- | --- | --- | --- |
 | 高 | R-02, R-03 | R-09 | R-01, R-11 |
-| 中 | R-16, R-24 | R-04, R-05, R-07, R-10, R-12, R-15, R-19, R-20 | R-06, R-08, R-13, R-14, R-17, R-18 |
+| 中 | R-16 | R-04, R-05, R-07, R-10, R-12, R-15, R-19, R-20 | R-06, R-08, R-13, R-14, R-17, R-18 |
 | 低 | — | R-23 | R-21, R-22 |
 
 ---
