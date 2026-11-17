@@ -1,7 +1,7 @@
 import {
   "moonbitlang/core/debug",
   "moonbitlang/core/string",
-  "MuVirus/MoonFMI/src/xml",
+  "MuVirus/fmi/src/xml",
 }
 
 import {

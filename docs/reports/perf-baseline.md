@@ -2,7 +2,7 @@
 
 > 机器:Windows 11 专业工作站版,x86_64,i7-12650H(clang 23.1.2 / MSVC;MoonBit
 > native release 构建)。数据是 `moon test --target native --release
-> -p MuVirus/MoonFMI/tests/integration -f bench`(整个包跑一次)打印的中位数,
+> -p MuVirus/fmi/tests/integration -f bench`(整个包跑一次)打印的中位数,
 > 2026-11-17 首次记录。
 
 | benchmark | min ms | median ms | max ms | 备注 |
@@ -17,5 +17,5 @@
 复现命令:
 
 ```bash
-moon test --target native --release -p MuVirus/MoonFMI/tests/integration -f bench
+moon test --target native --release -p MuVirus/fmi/tests/integration -f bench
 ```

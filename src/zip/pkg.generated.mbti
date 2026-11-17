@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/MoonFMI/src/zip"
+package "MuVirus/fmi/src/zip"
 
 // Values
 pub fn build_deterministic_zip(Array[(String, Bytes)], options? : ZipWriteOptions) -> Bytes raise ZipWriteError

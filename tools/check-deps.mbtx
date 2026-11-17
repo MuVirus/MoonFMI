@@ -53,7 +53,7 @@ let target_rules : Array[(String, String)] = [
 // Static regexes built from patterns this file owns; `unsafe_from_string`
 // only skips the parse-failure plumbing a fixed pattern cannot hit.
 fn import_regex() -> @string.Regex {
-  @string.Regex::unsafe_from_string("\"MuVirus/MoonFMI/(src/[^\"]+)\"")
+  @string.Regex::unsafe_from_string("\"MuVirus/fmi/(src/[^\"]+)\"")
 }
 
 ///|
@@ -71,7 +71,7 @@ fn supported_targets_directive_regex() -> @string.Regex {
 }
 
 ///|
-// Every `MuVirus/MoonFMI/src/...` import path in a moon.pkg file. moon.pkg
+// Every `MuVirus/fmi/src/...` import path in a moon.pkg file. moon.pkg
 // is moonpkg-syntax text, so this works on the raw file like the .mjs
 // version's regex did.
 fn scan_project_imports(text : String) -> Array[String] {

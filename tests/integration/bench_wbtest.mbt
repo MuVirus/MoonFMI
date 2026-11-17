@@ -3,7 +3,7 @@
 ///
 /// Run with:
 ///
-///     moon test --target native --release -p MuVirus/MoonFMI/tests/integration -f "bench scaffold"
+///     moon test --target native --release -p MuVirus/fmi/tests/integration -f "bench scaffold"
 ///
 /// (Debug builds skip this file via the moon.pkg target filter; release
 /// timing is the only comparable number.) Each benchmark runs one warmup

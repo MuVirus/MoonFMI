@@ -1,94 +1,178 @@
-# MuVirus/MoonFMI
+# MoonFMI
 
 English | [简体中文](README_ZH.md)
 
-An experimental MoonBit interface to FMI-compliant FMUs (FMI 2.0.4 and
-FMI 3.0.2, Co-Simulation and Model Exchange).
+MoonFMI is an experimental MoonBit library and command-line tool (`moonfmi`)
+for FMUs that follow FMI 2.0.4 or 3.0.2. It runs Co-Simulation and Model
+Exchange models natively, handles FMI 3 Scheduled Execution, checks model
+descriptions, builds FMU archives, and exports simple models back to FMU.
 
-## Quickstart (10 minutes)
+The mooncakes module is `MuVirus/fmi`; the repository keeps the `MoonFMI`
+name.
 
-1. Install MoonBit and get the code:
+## What you can do
 
-   ```bash
-   # https://docs.moonbitlang.com covers the toolchain install
-   git clone https://github.com/MuVirus/MoonFMI.git
-   cd MoonFMI
-   moon test --target native   # 110 tests, should all pass
-   ```
+- Check a `modelDescription.xml` against rules MD-001..MD-063 and print a
+  summary (`validate`, `info`).
+- Run a Co-Simulation or Model Exchange simulation with CSV or JSON output,
+  or a Scheduled Execution run for FMI 3 clocks (`simulate`).
+- Build a deterministic `.fmu` from an unpacked directory (`package`).
+- Use the same code as a library: `MuVirus/fmi/src/{fmi,sim,backend/native}`.
 
-2. Download the test FMUs (Reference-FMUs, BSD-2-Clause; one command,
-   checksums verified against `tests/data/manifest.json`):
+## Install
 
-   ```bash
-   moon run tests/data/fetch-fmus.mbtx --target native
-   ```
+Requires the [MoonBit toolchain](https://docs.moonbitlang.com) and a C
+compiler: `moon` builds the bundled native shims.
 
-3. Validate, inspect, simulate — the three everyday commands:
+```bash
+moon add MuVirus/fmi
+```
 
-   ```bash
-   moon run cmd/main --target native -- validate tests/data/.cache/fmi2/BouncingBall.fmu
-   # → 0 error(s), 0 warning(s)
+To work from a checkout instead:
 
-   moon run cmd/main --target native -- info tests/data/.cache/fmi2/BouncingBall.fmu
-   # → modelName: BouncingBall, interfaces, variable types, platforms, sha256
+```bash
+git clone https://github.com/MuVirus/MoonFMI.git
+cd MoonFMI
+moon build --target native
+```
 
-   moon run cmd/main --target native -- simulate tests/data/.cache/fmi2/BouncingBall.fmu \
-       --stop-time 3 --step-size 0.01 --output ball.csv
-   # → 300 steps; ball.csv holds time,h,v
+The built binary lands under `_build/native/release/build/cmd/main/`;
+`moon run cmd/main --target native -- --help` works without a separate
+build.
 
-   moon run cmd/main --target native -- simulate tests/data/.cache/fmi2/VanDerPol.fmu \
-       --interface me --solver rk4 --stop-time 5 --output vdp.csv
-   ```
+## Minimal example
 
-   Everything also works for the FMI 3 FMUs in `tests/data/.cache/fmi3/`
-   (`simulate` auto-detects the version). Add `--json` for machine-readable
-   output — the shapes are versioned contracts, see
-   [docs/cli-json.md](docs/cli-json.md).
+Fetch the Reference-FMUs used by the examples and the tests (BSD-2-Clause;
+checksums are verified against `tests/data/manifest.json`):
 
-4. Build your own FMU from a directory:
+```bash
+moon run tests/data/fetch-fmus.mbtx --target native
+```
 
-   ```bash
-   moon run cmd/main --target native -- package build/MyModel --output MyModel.fmu
-   # deterministic: same input → same bytes (sha256 in the output)
-   ```
+Run the bouncing-ball model for three seconds:
 
-Tip: `moon build --target native` produces the standalone binary under
-`_build/native/release/build/cmd/main/main.exe`; run `moonfmi --help`
-for the full command set and the exit code table. `moonfmi doctor`
-checks the local environment.
+```bash
+moon run cmd/main --target native -- simulate tests/data/.cache/fmi2/BouncingBall.fmu \
+    --stop-time 3 --step-size 0.01 --output ball.csv
+```
+
+`ball.csv` then holds 300 steps of `time,h,v`.
+
+## Usage
+
+Validate and inspect a model description without running it:
+
+```bash
+moon run cmd/main --target native -- validate tests/data/.cache/fmi2/BouncingBall.fmu
+moon run cmd/main --target native -- info tests/data/.cache/fmi2/BouncingBall.fmu
+```
+
+Model Exchange uses the same entry point, and FMI 3 is detected
+automatically:
+
+```bash
+moon run cmd/main --target native -- simulate tests/data/.cache/fmi2/VanDerPol.fmu \
+    --interface me --solver rk4 --stop-time 5 --output vdp.csv
+```
+
+Build a deterministic `.fmu` from an unpacked directory:
+
+```bash
+moon run cmd/main --target native -- package build/MyModel --output MyModel.fmu
+```
+
+`moonfmi doctor` checks the local environment, and `moonfmi --help` lists
+every command and exit code. Add `--json` for machine-readable output; the
+shapes are versioned contracts, documented in
+[`docs/cli-json.md`](docs/cli-json.md).
+
+### Use as a library
+
+The packages under `src/` are ordinary MoonBit packages. Build with
+`--target native` and import only what you need. The example also uses
+`moonbitlang/x/fs` for file helpers; add it with `moon add moonbitlang/x` if
+it is not already a direct dependency.
+
+In `moon.pkg`:
+
+```moonbit nocheck
+import {
+  "MuVirus/fmi/src/backend/native" @native,
+  "MuVirus/fmi/src/fmi" @fmi,
+  "MuVirus/fmi/src/sim" @sim,
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+}
+
+supported_targets = "native"
+```
+
+In a `.mbt` file, run a Co-Simulation model and print the step count:
+
+```moonbit nocheck
+///|
+fn run_ball(fmu_path : String) -> Unit {
+  let data = @fs.read_file_to_bytes(fmu_path) catch {
+    _ => return println("cannot read " + fmu_path)
+  }
+  let host = @fmi.parse_host_platform(@native.host_platform_name()).unwrap()
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let work_dir = ".moonfmi-tmp/run-\{@env.now()}"
+  let loaded = @native.load_fmi2_fmu(data, host~, temp_directory=work_dir) catch {
+    _ => return println("load failed")
+  }
+  let config = @sim.CsConfig::new(
+    start_time=0.0,
+    stop_time=3.0,
+    step_size=0.01,
+    record=[1U, 2U],
+  )
+  let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
+    _ => {
+      loaded.dispose()
+      return println("simulation failed")
+    }
+  }
+  loaded.dispose()
+  println("\{result.steps()} steps, \{result.series().length()} series")
+}
+```
+
+`temp_directory` must be a fresh, empty directory: the loader unpacks the
+whole FMU there so the native library and its resources have real paths.
+`dispose()` releases the instance, unloads the library, and removes the
+directory. FMI 3 uses the same shape through `load_fmi3_fmu`.
 
 ## Known limits
 
-- The model-exchange integrators are fixed-step Euler and classic RK4 only.
-  MoonFMI is **not a general-purpose ME solver**: stiff systems, large DAEs,
-  and adaptive step control are out of scope; use an external solver for
-  those (see `docs/design/master-algorithm.md` §4.1).
-- One FMU per run; coupling multiple FMUs (connections, algebraic loops) is
-  future work (see `docs/design/master-algorithm.md` §8 of the roadmap).
-- FMI 3 Scheduled Execution is supported for fixed/calculated/countdown
-  input clocks, host-triggered clocks and output-clock cascades; there is
-  no real-time guarantee (priority only orders same-instant activations).
+- The Model Exchange integrators are fixed-step Euler and classic RK4 only.
+  MoonFMI is not a general-purpose ME solver: stiff systems, large DAEs, and
+  adaptive step control are out of scope (see
+  [`docs/design/master-algorithm.md`](docs/design/master-algorithm.md)).
+- One FMU per run; coupling several FMUs (connections, algebraic loops) is
+  future work.
+- FMI 3 Scheduled Execution supports fixed, calculated and countdown input
+  clocks, host-triggered clocks, and output-clock cascades, but gives no
+  real-time guarantee: priority only orders activations at the same instant.
 - The source-FMU exporter emits restricted explicit models (continuous
-  states, feedthrough outputs, parameters/inputs) — it is not a Modelica
-  compiler; array equations are not generated yet (arrays roundtrip as
-  values on FMI 3).
-- The WebAssembly backend is **experimental**: a minimal CS component and
-  LS-WASM packaging are verified (see `tests/fmu-wasm/README.md`), but the
-  full LS-WASM world and browser hosts are future work; `simulate
-  --backend wasm` intentionally exits with code 4.
-- `package` output is verified by MoonFMI's own reader; validating with
-  FMPy as an external check: `uv run --with fmpy python tools/fmpy_compare.py
-  --cli <moonfmi>` compares both tools' CS trajectories; results live in
-  `docs/reports/fmpy-comparison.md`.
+  states, feedthrough outputs, parameters and inputs); it is not a Modelica
+  compiler, and array equations are not generated yet.
+- The WebAssembly backend is experimental: a minimal CS component and
+  LS-WASM packaging are verified (see
+  [`tests/fmu-wasm/README.md`](tests/fmu-wasm/README.md)), while the full
+  LS-WASM world and browser import are future work. `simulate --backend
+  wasm` intentionally exits with code 4.
 
-## Layout
+## Documentation
 
-- `src/{xml,zip,schema}` — hardened XML/ZIP readers, typed model
-  descriptions, semantic rules MD-001..MD-063;
-- `src/fmi` — FMU container layer, `CsInstance`/`MeInstance` traits;
-- `src/backend/native` — FMI 2/3 dynamic library bindings (C shims);
-- `src/sim` — CS master algorithm and the ME Euler/RK4 master with event
-  detection;
-- `src/cli` — the `moonfmi` command line (`cmd/main` is the entry);
-- `docs/roadmap` — phased roadmap and backlog; `docs/design` — design
-  documents; `docs/records` — dated implementation logs.
+- [`docs/AGENTS.md`](docs/AGENTS.md) — the documentation map.
+- [`docs/design/architecture.md`](docs/design/architecture.md) — package
+  layout and design decisions.
+- [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md) — phases and open
+  work.
+- [`docs/records/`](docs/records/README.md) — dated logs with commands and
+  evidence.
+
+Licensed under [Apache-2.0](LICENSE).

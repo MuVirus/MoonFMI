@@ -9,13 +9,13 @@
 //   "moonbitlang/x@0.4.6",
 // }
 
-name = "MuVirus/MoonFMI"
+name = "MuVirus/fmi"
 
 version = "0.1.0"
 
-readme = "README.mbt.md"
+readme = "README.md"
 
-repository = "https://github.com/MuVirus/MoonFMI"
+repository = "https://github.com/MuVirus/MoonFMI.git"
 
 license = "Apache-2.0"
 

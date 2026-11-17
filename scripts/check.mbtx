@@ -27,7 +27,7 @@ import {
 //     snapshot would silently hide a manual edit or a stale interface.
 
 ///|
-let integration_package = "MuVirus/MoonFMI/tests/integration"
+let integration_package = "MuVirus/fmi/tests/integration"
 
 ///|
 // Generic so a failure can stand in for any expression type; `@env.exit`

@@ -176,7 +176,7 @@ tests/
 ### 4.2 代码与 API
 
 - 文档中的 MoonBit 代码是**示意**，不保证与最终 API 完全一致。
-- 包名使用 `MuVirus/MoonFMI/...` 形式；实际目录以 `design/architecture.md` 为准。
+- 包名使用 `MuVirus/fmi/...` 形式；实际目录以 `design/architecture.md` 为准。
 - C 函数名、类型名保持官方拼写，便于与头文件对照。
 
 ### 4.3 链接

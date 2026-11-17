@@ -2,11 +2,11 @@ import {
   "moonbitlang/core/env",
   "moonbitlang/core/string",
   "moonbitlang/x/fs",
-  "MuVirus/MoonFMI/src/fmi",
-  "MuVirus/MoonFMI/src/backend/native",
-  "MuVirus/MoonFMI/src/schema",
-  "MuVirus/MoonFMI/src/sim",
-  "MuVirus/MoonFMI/src/zip",
+  "MuVirus/fmi/src/fmi",
+  "MuVirus/fmi/src/backend/native",
+  "MuVirus/fmi/src/schema",
+  "MuVirus/fmi/src/sim",
+  "MuVirus/fmi/src/zip",
   "moonbitlang/x/crypto",
 }
 

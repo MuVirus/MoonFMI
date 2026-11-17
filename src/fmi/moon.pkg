@@ -1,6 +1,6 @@
 import {
   "moonbitlang/core/debug",
   "moonbitlang/x/fs",
-  "MuVirus/MoonFMI/src/schema",
-  "MuVirus/MoonFMI/src/zip",
+  "MuVirus/fmi/src/schema",
+  "MuVirus/fmi/src/zip",
 }

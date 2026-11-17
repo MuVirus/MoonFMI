@@ -1,8 +1,8 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/MoonFMI/src/sim"
+package "MuVirus/fmi/src/sim"
 
 import {
-  "MuVirus/MoonFMI/src/fmi",
+  "MuVirus/fmi/src/fmi",
 }
 
 // Values

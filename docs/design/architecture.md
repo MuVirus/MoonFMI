@@ -73,7 +73,7 @@ tests/
   spikes/           P0 一次性验证
 ```
 
-包名采用 `MuVirus/MoonFMI/src/schema` 形式，`backend/native` 的导入路径是 `MuVirus/MoonFMI/src/backend/native`。每个包有独立 `moon.pkg`，只暴露必要的公开类型。
+包名采用 `MuVirus/fmi/src/schema` 形式，`backend/native` 的导入路径是 `MuVirus/fmi/src/backend/native`。每个包有独立 `moon.pkg`，只暴露必要的公开类型。
 
 ### 3.1 依赖规则
 

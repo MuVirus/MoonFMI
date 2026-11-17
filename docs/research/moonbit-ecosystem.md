@@ -401,7 +401,7 @@ moon fmt
 pkgtype(kind: "executable")
 
 import {
-  "MuVirus/MoonFMI" @lib,
+  "MuVirus/fmi" @lib,
 }
 ```
 

@@ -1,7 +1,7 @@
 import {
-  "MuVirus/MoonFMI/src/fmi",
-  "MuVirus/MoonFMI/src/schema",
-  "MuVirus/MoonFMI/src/zip",
+  "MuVirus/fmi/src/fmi",
+  "MuVirus/fmi/src/schema",
+  "MuVirus/fmi/src/zip",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/env",
   "moonbitlang/x/fs",

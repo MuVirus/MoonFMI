@@ -1,86 +1,165 @@
-# MuVirus/MoonFMI
+# MoonFMI
 
 [English](README.md) | 简体中文
 
-一个面向符合 FMI 标准的 FMU 的实验性 MoonBit 接口（支持 FMI 2.0.4 与
-FMI 3.0.2，覆盖联合仿真 Co-Simulation 与模型交换 Model Exchange）。
+MoonFMI 是一个实验性的 MoonBit 库与命令行工具（`moonfmi`），面向符合
+FMI 2.0.4 或 3.0.2 的 FMU。它在 native 上运行联合仿真（Co-Simulation）
+与模型交换（Model Exchange），支持 FMI 3 的 Scheduled Execution，还能
+校验模型描述、打包 FMU，并把简单模型导出回 FMU。
 
-## 快速上手（10 分钟）
+mooncakes 上的模块名是 `MuVirus/fmi`；仓库仍叫 `MoonFMI`。
 
-1. 安装 MoonBit 并获取代码：
+## 能做什么
 
-   ```bash
-   # 工具链安装见 https://docs.moonbitlang.com
-   git clone https://github.com/MuVirus/MoonFMI.git
-   cd MoonFMI
-   moon test --target native   # 110 个测试，应全部通过
-   ```
+- 按 MD-001..MD-063 规则校验 `modelDescription.xml`，并打印摘要
+  （`validate`、`info`）。
+- 运行联合仿真或模型交换仿真，输出 CSV 或 JSON；FMI 3 还可按时钟运行
+  调度执行（`simulate`）。
+- 从已解压目录构建确定性的 `.fmu`（`package`）。
+- 以库的方式复用同一套代码：`MuVirus/fmi/src/{fmi,sim,backend/native}`。
 
-2. 下载测试用 FMU（来自 Reference-FMUs，BSD-2-Clause 许可；一条命令即可，
-   校验和与 `tests/data/manifest.json` 逐一核对）：
+## 安装
 
-   ```bash
-   moon run tests/data/fetch-fmus.mbtx --target native
-   ```
+需要 [MoonBit 工具链](https://docs.moonbitlang.com) 和一个 C 编译器：
+`moon` 会编译随包附带的 native shim。
 
-3. 校验、查看信息、仿真 —— 三个日常命令：
+```bash
+moon add MuVirus/fmi
+```
 
-   ```bash
-   moon run cmd/main --target native -- validate tests/data/.cache/fmi2/BouncingBall.fmu
-   # → 0 error(s), 0 warning(s)
+也可以直接从仓库使用：
 
-   moon run cmd/main --target native -- info tests/data/.cache/fmi2/BouncingBall.fmu
-   # → modelName: BouncingBall，接口、变量类型、支持平台、sha256
+```bash
+git clone https://github.com/MuVirus/MoonFMI.git
+cd MoonFMI
+moon build --target native
+```
 
-   moon run cmd/main --target native -- simulate tests/data/.cache/fmi2/BouncingBall.fmu \
-       --stop-time 3 --step-size 0.01 --output ball.csv
-   # → 300 步；ball.csv 中是 time,h,v 三列
+构建产物位于 `_build/native/release/build/cmd/main/`；不单独构建时，用
+`moon run cmd/main --target native -- --help` 也能运行。
 
-   moon run cmd/main --target native -- simulate tests/data/.cache/fmi2/VanDerPol.fmu \
-       --interface me --solver rk4 --stop-time 5 --output vdp.csv
-   ```
+## 最小示例
 
-   对 `tests/data/.cache/fmi3/` 下的 FMI 3 FMU 同样适用（`simulate`
-   会自动检测版本）。需要机器可读输出时加 `--json` —— 其结构是带版本号
-   的契约，见 [docs/cli-json.md](docs/cli-json.md)。
+先下载示例与测试所用的 Reference-FMUs（BSD-2-Clause；校验和会与
+`tests/data/manifest.json` 逐一核对）：
 
-4. 从目录打包你自己的 FMU：
+```bash
+moon run tests/data/fetch-fmus.mbtx --target native
+```
 
-   ```bash
-   moon run cmd/main --target native -- package build/MyModel --output MyModel.fmu
-   # 确定性打包：相同输入 → 相同字节（输出中含 sha256）
-   ```
+让小球模型运行三秒：
 
-提示：`moon build --target native` 会在
-`_build/native/release/build/cmd/main/main.exe` 下生成独立可执行文件；
-运行 `moonfmi --help` 查看完整命令集与退出码表。`moonfmi doctor`
-可检查本地环境。
+```bash
+moon run cmd/main --target native -- simulate tests/data/.cache/fmi2/BouncingBall.fmu \
+    --stop-time 3 --step-size 0.01 --output ball.csv
+```
+
+`ball.csv` 中即为 300 步的 `time,h,v`。
+
+## 用法
+
+只校验、查看模型描述，不执行 FMU：
+
+```bash
+moon run cmd/main --target native -- validate tests/data/.cache/fmi2/BouncingBall.fmu
+moon run cmd/main --target native -- info tests/data/.cache/fmi2/BouncingBall.fmu
+```
+
+模型交换走同一个入口，FMI 3 会被自动识别：
+
+```bash
+moon run cmd/main --target native -- simulate tests/data/.cache/fmi2/VanDerPol.fmu \
+    --interface me --solver rk4 --stop-time 5 --output vdp.csv
+```
+
+从已解压目录构建确定性的 `.fmu`：
+
+```bash
+moon run cmd/main --target native -- package build/MyModel --output MyModel.fmu
+```
+
+`moonfmi doctor` 检查本地环境，`moonfmi --help` 列出全部命令与退出码。
+加 `--json` 可得到机器可读输出，其结构是带版本号的契约，见
+[`docs/cli-json.md`](docs/cli-json.md)。
+
+### 作为库使用
+
+`src/` 下的包都是普通 MoonBit 包。构建时用 `--target native`，按需导入。
+下面的示例还需要 `moonbitlang/x/fs` 提供文件操作；如果它还不是直接依赖，
+先执行 `moon add moonbitlang/x`。
+
+`moon.pkg` 中：
+
+```moonbit
+import {
+  "MuVirus/fmi/src/backend/native" @native,
+  "MuVirus/fmi/src/fmi" @fmi,
+  "MuVirus/fmi/src/sim" @sim,
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+}
+
+supported_targets = "native"
+```
+
+在 `.mbt` 文件中运行一个联合仿真模型，并打印步数：
+
+```moonbit nocheck
+fn run_ball(fmu_path : String) -> Unit {
+  let data = @fs.read_file_to_bytes(fmu_path) catch {
+    _ => return println("cannot read " + fmu_path)
+  }
+  let host = @fmi.parse_host_platform(@native.host_platform_name()).unwrap()
+  @fs.create_dir(".moonfmi-tmp") catch { _ => () }
+  let work_dir = ".moonfmi-tmp/run-\{@env.now()}"
+  let loaded = @native.load_fmi2_fmu(
+    data,
+    host~,
+    temp_directory=work_dir,
+  ) catch {
+    _ => return println("load failed")
+  }
+  let config = @sim.CsConfig::new(
+    start_time=0.0, stop_time=3.0, step_size=0.01, record=[1U, 2U],
+  )
+  let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
+    _ => {
+      loaded.dispose()
+      return println("simulation failed")
+    }
+  }
+  loaded.dispose()
+  println("\{result.steps()} steps, \{result.series().length()} series")
+}
+```
+
+`temp_directory` 必须是全新的空目录：加载器会把整个 FMU 解压到那里，
+让动态库和资源都有真实路径。`dispose()` 负责释放实例、卸载动态库并删除
+该目录。FMI 3 走同样的流程，只是换成 `load_fmi3_fmu`。
 
 ## 已知限制
 
-- 模型交换（ME）的积分器只有定步长 Euler 与经典 RK4。MoonFMI
-  **不是通用 ME 求解器**：刚性系统、大型 DAE 与自适应步长控制不在
-  范围内，这类需求请使用外部求解器（见 `docs/design/master-algorithm.md`
-  §4.1）。
-- 每次运行只支持单个 FMU；多 FMU 耦合（连接、代数环）属于后续工作
-  （见 `docs/design/master-algorithm.md` §8 路线图）。
-- FMI 3 Scheduled Execution 已支持固定/动态/countdown 输入时钟、宿主触发时钟与输出时钟级联；不提供实时调度保证（priority 只决定同刻激活顺序）。
-- 源码 FMU 导出器只支持受限的显式模型（连续状态、直通输出、参数/输入）——
-  它不是 Modelica 编译器；数组方程暂不生成（FMI 3 下数组可按值读写）。
-- WebAssembly 后端为**实验性**：最小 CS 组件与 LS-WASM 打包已验证
-  （见 `tests/fmu-wasm/README.md`），完整 LS-WASM world 与浏览器宿主
-  属于后续工作；`simulate --backend wasm` 目前固定退出码 4。
-- `package` 的输出由 MoonFMI 自己的读取器校验；外部校验用 FMPy：
-  `uv run --with fmpy python tools/fmpy_compare.py --cli <moonfmi>`
-  会对比两者的 CS 轨迹（结果见 `docs/reports/fmpy-comparison.md`）。
+- 模型交换（ME）的积分器只有定步长 Euler 与经典 RK4。MoonFMI 不是通用
+  ME 求解器：刚性系统、大型 DAE 与自适应步长控制不在范围内（见
+  [`docs/design/master-algorithm.md`](docs/design/master-algorithm.md)）。
+- 每次运行只支持单个 FMU；多 FMU 耦合（连接、代数环）属于后续工作。
+- FMI 3 Scheduled Execution 支持固定、动态与 countdown 输入时钟、宿主
+  触发时钟以及输出时钟级联，但不提供实时保证：priority 只决定同一时刻
+  的激活顺序。
+- 源码 FMU 导出器只生成受限的显式模型（连续状态、直通输出、参数与
+  输入）；它不是 Modelica 编译器，也暂不生成数组方程。
+- WebAssembly 后端为实验性：已验证最小 CS 组件与 LS-WASM 打包（见
+  [`tests/fmu-wasm/README.md`](tests/fmu-wasm/README.md)），完整的
+  LS-WASM world 与浏览器导入属于后续工作。`simulate --backend wasm`
+  固定以退出码 4 结束。
 
-## 目录结构
+## 文档
 
-- `src/{xml,zip,schema}` —— 加固的 XML/ZIP 读取器、带类型的模型描述、
-  语义规则 MD-001..MD-063；
-- `src/fmi` —— FMU 容器层，`CsInstance`/`MeInstance` trait；
-- `src/backend/native` —— FMI 2/3 动态库绑定（C shim）；
-- `src/sim` —— CS 主控算法，以及带事件检测的 ME Euler/RK4 主控；
-- `src/cli` —— `moonfmi` 命令行（入口在 `cmd/main`）；
-- `docs/roadmap` —— 分阶段路线图与待办；`docs/design` —— 设计文档；
-  `docs/records` —— 带日期的实现记录。
+- [`docs/AGENTS.md`](docs/AGENTS.md) —— 文档地图。
+- [`docs/design/architecture.md`](docs/design/architecture.md) —— 包布局与
+  设计决策。
+- [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md) —— 阶段划分与待办。
+- [`docs/records/`](docs/records/README.md) —— 带日期、命令与证据的实施
+  记录。
+
+采用 [Apache-2.0](LICENSE) 许可。

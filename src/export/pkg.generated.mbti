@@ -1,8 +1,8 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "MuVirus/MoonFMI/src/export"
+package "MuVirus/fmi/src/export"
 
 import {
-  "MuVirus/MoonFMI/src/schema",
+  "MuVirus/fmi/src/schema",
   "moonbitlang/core/debug",
 }
 
