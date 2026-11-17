@@ -40,38 +40,8 @@ extern "wasm" fn mbt_ffi_free(position : Int) =
 
 ///|
 #doc(hidden)
-pub fn wasmExportMethodFmuDoStep(p0 : Int, p1 : Double, p2 : Double) -> Int {
-      @cs.wasmExportMethodFmuDoStep(p0, p1, p2)
-}
-
-///|
-#doc(hidden)
-pub fn wasmExportConstructorFmu() -> Int {
-      @cs.wasmExportConstructorFmu()
-}
-
-///|
-#doc(hidden)
-pub fn wasmExportMethodFmuGetReal(p0 : Int, p1 : Int) -> Double {
-      @cs.wasmExportMethodFmuGetReal(p0, p1)
-}
-
-///|
-#doc(hidden)
-pub fn wasmExportFmuDtor(handle : Int) -> Unit {
-      @cs.wasmExportFmuDtor(handle)
-}
-
-///|
-#doc(hidden)
-pub fn wasmExportMethodFmuGetVersion(p0 : Int) -> Int {
-      @cs.wasmExportMethodFmuGetVersion(p0)
-}
-
-///|
-#doc(hidden)
-pub fn wasmExportMethodFmuSetReal(p0 : Int, p1 : Int, p2 : Double) -> Unit {
-      @cs.wasmExportMethodFmuSetReal(p0, p1, p2)
+pub fn wasmExportGetVersionPostReturn(p0 : Int) -> Unit {
+      @cs.wasmExportGetVersionPostReturn(p0)
 }
 
 ///|
@@ -82,14 +52,44 @@ pub fn wasmExportMethodFmuDoStepPostReturn(p0 : Int) -> Unit {
 
 ///|
 #doc(hidden)
-pub fn wasmExportGetVersionPostReturn(p0 : Int) -> Unit {
-      @cs.wasmExportGetVersionPostReturn(p0)
+pub fn wasmExportMethodFmuSetReal(p0 : Int, p1 : Int, p2 : Double) -> Unit {
+      @cs.wasmExportMethodFmuSetReal(p0, p1, p2)
+}
+
+///|
+#doc(hidden)
+pub fn wasmExportMethodFmuGetReal(p0 : Int, p1 : Int) -> Double {
+      @cs.wasmExportMethodFmuGetReal(p0, p1)
+}
+
+///|
+#doc(hidden)
+pub fn wasmExportConstructorFmu() -> Int {
+      @cs.wasmExportConstructorFmu()
+}
+
+///|
+#doc(hidden)
+pub fn wasmExportMethodFmuGetVersion(p0 : Int) -> Int {
+      @cs.wasmExportMethodFmuGetVersion(p0)
 }
 
 ///|
 #doc(hidden)
 pub fn wasmExportMethodFmuGetVersionPostReturn(p0 : Int) -> Unit {
       @cs.wasmExportMethodFmuGetVersionPostReturn(p0)
+}
+
+///|
+#doc(hidden)
+pub fn wasmExportFmuDtor(handle : Int) -> Unit {
+      @cs.wasmExportFmuDtor(handle)
+}
+
+///|
+#doc(hidden)
+pub fn wasmExportMethodFmuDoStep(p0 : Int, p1 : Double, p2 : Double) -> Int {
+      @cs.wasmExportMethodFmuDoStep(p0, p1, p2)
 }
 
 ///|

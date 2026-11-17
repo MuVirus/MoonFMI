@@ -98,7 +98,7 @@ pub fn Fmu::do_step(
   }
   state.time = current + step
   state.y = state.u1 + state.u2
-  @host.log(1, "Adder: step to t={state.time}, y={state.y}")
+  @host.log(1, "Adder: step to t=\{state.time}, y=\{state.y}")
   Ok(())
 }
 

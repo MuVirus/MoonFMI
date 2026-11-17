@@ -294,7 +294,7 @@
 - [x] resource 生命周期正确（宿主 drop → guest dtor,P0 counter + P7 FMU resource）;
 - [x] string/list 往返正确（P0 codec 探针,UTF-16 编码注意点已记录）;
 - [x] Adder CS 完成 instantiate/step/get/set/terminate（tests/fmu-wasm 宿主测试）;
-- [ ] 浏览器可运行（宿主实测到 jco/Node 为止,Chrome/Firefox 留待 F-06）;
+- [x] 浏览器可运行（Chromium 内核自动化实测;Firefox 提供手工步骤,见 docs/reports/browser-poc.md）;
 - [x] 与解析结果一致（y = u1 + u2 = 30,步进幂等）;
 - [x] 工具链版本/限制记录（tests/fmu-wasm/README.md §1/§4）;
 - [x] 明确标记“实验性”，不影响 native 发布（README、设计文档、wasm 后端 simulate --backend wasm 退出 4）。

@@ -192,7 +192,7 @@ function run(cmd, args, options = {}) {
   const result = spawnSync(cmd, args, {
     stdio: 'inherit',
     cwd: options.cwd ?? here,
-    env: process.env,
+    env: options.env ?? process.env,
     shell: usesShell(cmd),
   });
   if (result.error) throw new Error(`${cmd}: ${result.error.message}`);
@@ -414,6 +414,15 @@ function commandSetupJco() {
   log('jco installed at ' + join(jcoHome, 'node_modules', '.bin'));
 }
 
+function commandBrowser(built) {
+  const browserDir = join(here, 'browser');
+  const jcoPath = requireTool('jco');
+  const env = { ...process.env, MOONFMI_JCO: jcoPath };
+  run(requireTool('node'), [join(browserDir, 'prepare.mjs'), built[0].component, built[0].jcoName], { cwd: browserDir, env });
+  log('serving ' + browserDir + ' on http://127.0.0.1:8123/');
+  run(requireTool('node'), [join(browserDir, 'serve.mjs'), '8123'], { cwd: browserDir });
+}
+
 function commandClean() {
   rmSync(cache, { recursive: true, force: true });
   log('removed ' + cache);
@@ -452,6 +461,9 @@ try {
     }
     case 'package':
       commandPackage(built);
+      break;
+    case 'browser':
+      commandBrowser(built);
       break;
     case 'setup-jco':
       commandSetupJco();

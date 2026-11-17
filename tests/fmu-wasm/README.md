@@ -9,6 +9,8 @@ component,宿主能不能驱动完整生命周期,日志能不能走回调。
 | F-04 | Adder CS resource(instantiate/set/step/get/terminate) | ✅ `y = u1 + u2 = 30` |
 | F-05 | 宿主回调(guest → host `log`) | ✅ 实例化/步进/析构消息全部到达宿主 |
 | F-07 | LS-WASM 布局打包 + manifest | ✅ `MoonfmiAdder.fmu`,modelDescription 通过 MoonFMI 校验 |
+| F-06 | 浏览器宿主 | ✅ Chromium 内核自动化实测(见 `docs/reports/browser-poc.md`) |
+| F-08 | WASM 导出器 | ✅ `src/export/export_wasm_fmu`(Float64 标量子集),e2e 构建通过 |
 
 产物和生成的绑定都在 `.cache/`,已被 Git 忽略。
 
@@ -48,6 +50,8 @@ export PATH="$PATH:$HOME/.moonfmi/bin"        # wit-bindgen / wasm-tools
 node tests/fmu-wasm/run.mjs build             # 只构建组件
 node tests/fmu-wasm/run.mjs test              # 构建 + jco/Node 宿主测试(默认)
 node tests/fmu-wasm/run.mjs package           # 构建 + 打包 .cache/MoonfmiAdder.fmu
+node tests/fmu-wasm/run.mjs browser           # 构建 + 转译 + 静态服务(http://127.0.0.1:8123/)
+node tests/fmu-wasm/run.mjs build-export <dir>  # 构建 MoonFMI 导出的 WASM 工程
 node tests/fmu-wasm/run.mjs setup-jco         # 装 jco(或复用 spike 的 .cache)
 node tests/fmu-wasm/run.mjs clean
 ```
@@ -71,7 +75,7 @@ FMU 的字节数与 sha256。MoonBit 侧的 `tests/integration/export_fmu_wbtest
 
 ## 4. 边界
 
-- 宿主是 Node(jco 转译),浏览器(Chrome/Firefox,F-06)未测;
+- 宿主覆盖 Node(jco 转译)与 Chromium 内核浏览器(F-06);Firefox 提供手工步骤;
   LS-WASM 规范的完整 world(CS/ME/SE 全量接口)未实现——这里只是
   `get-version` + Adder 的最小面。
 - `result<_, string>` 在 jco 的 JS 里映射为"成功返回 undefined、失败抛

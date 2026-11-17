@@ -123,7 +123,7 @@
 | F-03 | ✅ resource 实例生命周期 | P2 | L | F-02 | 宿主 drop（P0 探针已完成） |
 | F-04 ✅ | 最小 CS component | P2 | XL | F-03 | Adder 完整 CS 生命周期 |
 | F-05 ✅ | wasmtime 宿主 + 回调 | P2 | L | F-04 | jco/Node 日志回调通道 |
-| F-06 | `jco` 浏览器 POC | P3 | L | F-04 | Chrome/Firefox(待验证) |
+| F-06 ✅ | `jco` 浏览器 POC | P3 | L | F-04 | Chromium 自动化实测通过(Firefox 手工步骤);见 docs/reports/browser-poc.md |
 | F-07 ✅ | WASM FMU 打包/manifest | P2 | M | F-04 | LS-WASM 布局,MoonFMI 校验 |
 | F-08 ✅ | WASM 导出器 | P3 | XL | F-04/E-01 | `export_wasm_fmu` 生成 wit/guest/build.mjs;e2e 构建+Dahlquist 轨迹验证 |
 

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MoonFMI WASM FMU — Adder CS (F-06)</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem; max-width: 48rem; }
+  h1 { font-size: 1.2rem; }
+  #status { font-weight: 600; }
+  .pass { color: #0a7f34; }
+  .fail { color: #b3261e; }
+  pre { background: #f4f4f4; padding: .75rem; overflow: auto; max-height: 18rem; }
+  td, th { padding: .2rem .6rem; text-align: left; }
+</style>
+</head>
+<body>
+<h1>MoonFMI: FMI 3 CS component in the browser</h1>
+<p>This page hosts the jco-transpiled <code>moonfmi:adder</code> component
+(no WASI shim: the guest imports only <code>host.log</code>).</p>
+<p id="status">running…</p>
+<table>
+  <tr><th>check</th><th>value</th></tr>
+  <tbody id="results"></tbody>
+</table>
+<h2>Guest log (host callback)</h2>
+<pre id="log"></pre>
+<script type="module" src="./main.mjs"></script>
+</body>
+</html>
