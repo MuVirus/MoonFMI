@@ -555,7 +555,12 @@ pub fn load_fmi3_me_fmu(
     platform_override?,
     interface_kind=@schema.ModelExchange,
   )
-  let state_count = parsed.model_structure.continuous_state_derivatives.length()
+  // Array states (FMI 3) expand to their scalar elements: the C ABI passes
+  // a flat buffer, and FMUs validate nStates against the scalar count.
+  let state_count = fmi3_unknown_element_count(
+    parsed,
+    parsed.model_structure.continuous_state_derivatives,
+  )
   if state_count == 0 {
     raise Rejected(
       detail="the model declares no ContinuousStateDerivatives in its ModelStructure; there is nothing to integrate",
@@ -585,8 +590,82 @@ pub fn load_fmi3_me_fmu(
     library,
     instance,
     state_count,
-    event_indicator_count: parsed.model_structure.event_indicators.length(),
+    event_indicator_count: fmi3_unknown_element_count(
+      parsed,
+      parsed.model_structure.event_indicators,
+    ),
   }
+}
+
+///|
+/// Scalar element count of a variable: the product of its dimensions, or 1
+/// for a scalar. The continuous-state buffer is flat, so an array state (for
+/// example StateSpace's x[3]) contributes three elements.
+fn fmi3_element_count(
+  model : @schema.Fmi3ModelDescription,
+  variable : @schema.Fmi3Variable,
+) -> Int32 {
+  let mut count = 1
+  for dimension in variable.dimensions {
+    let size = match dimension.start {
+      Some(value) => value.to_int()
+      None =>
+        // A dimension may reference a structural parameter; its size is the
+        // parameter's start value (StateSpace: "n" = 3).
+        match dimension.value_reference {
+          Some(reference) => fmi3_uint_start(model, reference)
+          None => 1
+        }
+    }
+    count = count * size
+  }
+  count
+}
+
+///|
+/// Start value of an integer-typed variable by reference; 1 when absent.
+fn fmi3_uint_start(
+  model : @schema.Fmi3ModelDescription,
+  reference : UInt32,
+) -> Int32 {
+  for variable in model.variables {
+    if variable.value_reference == reference {
+      match variable.payload {
+        @schema.Fmi3Payload::UInt(attrs) =>
+          if attrs.starts.length() > 0 {
+            return attrs.starts[0].to_int()
+          }
+        @schema.Fmi3Payload::Int(attrs) =>
+          if attrs.starts.length() > 0 {
+            return attrs.starts[0].to_int()
+          }
+        _ => ()
+      }
+      break
+    }
+  }
+  1
+}
+
+///|
+/// Total scalar elements behind an unknown list (derivatives or event
+/// indicators); array entries expand to their dimension product.
+fn fmi3_unknown_element_count(
+  model : @schema.Fmi3ModelDescription,
+  unknowns : Array[@schema.Fmi3Unknown],
+) -> Int32 {
+  let mut total = 0
+  for unknown in unknowns {
+    let mut found = 1
+    for variable in model.variables {
+      if variable.value_reference == unknown.value_reference {
+        found = fmi3_element_count(model, variable)
+        break
+      }
+    }
+    total = total + found
+  }
+  total
 }
 
 ///|

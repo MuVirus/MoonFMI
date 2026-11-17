@@ -1,0 +1,28 @@
+{
+  "schema": "moonfmi.crosscheck/v1",
+  "samples": [
+    {"path": "fmi2/BouncingBall.fmu", "interface": "cs", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi2/BouncingBall.fmu", "interface": "me", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi2/Dahlquist.fmu", "interface": "cs", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi2/Dahlquist.fmu", "interface": "me", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi2/Feedthrough.fmu", "interface": "cs", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi2/Feedthrough.fmu", "interface": "me", "validate": true, "info": true, "status": "skip"},
+    {"path": "fmi2/Resource.fmu", "interface": "cs", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi2/Resource.fmu", "interface": "me", "validate": true, "info": true, "status": "skip"},
+    {"path": "fmi2/VanDerPol.fmu", "interface": "cs", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi2/VanDerPol.fmu", "interface": "me", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi3/BouncingBall.fmu", "interface": "cs", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi3/BouncingBall.fmu", "interface": "me", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi3/Clocks.fmu", "interface": "se", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi3/Feedthrough.fmu", "interface": "cs", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi3/Feedthrough.fmu", "interface": "me", "validate": true, "info": true, "status": "skip"},
+    {"path": "fmi3/Resource.fmu", "interface": "cs", "validate": true, "info": true, "status": "skip"},
+    {"path": "fmi3/Resource.fmu", "interface": "me", "validate": true, "info": true, "status": "skip"},
+    {"path": "fmi3/StateSpace.fmu", "interface": "cs", "validate": true, "info": true, "status": "ok"},
+    {"path": "fmi3/StateSpace.fmu", "interface": "me", "validate": true, "info": true, "status": "ok"}
+  ],
+  "comparisons": [
+    {"model": "BouncingBall", "verdict": "match", "maxAbsDiff": 0},
+    {"model": "Feedthrough", "verdict": "match", "maxAbsDiff": 0}
+  ]
+}

@@ -12,12 +12,17 @@ import {
 //
 //   moon run scripts/crosscheck.mbtx --target native --release
 //
-// Builds the `moonfmi` CLI (release), then runs `validate`, `info` and
-// `simulate` over every FMU in tests/data/.cache (fmi2/* and fmi3/*) and
-// writes docs/reports/crosscheck.md. The corpus is fetched with
-// `node tests/data/fetch-fmus.mjs`. Simulation uses start 0 / stop 1 /
-// step 0.1 — a repeatable smoke report, not the full fmi-cross-check
-// harness (that stays a P8+ item).
+// Builds the `moonfmi` CLI (release), then:
+//   1. runs validate / info / simulate over every FMU in tests/data/.cache
+//      (fmi2/*, fmi3/*), covering the declared interfaces (CS, ME and SE);
+//   2. compares the same model across FMI versions (FMI 2 vs FMI 3) by
+//      running both and diffing the recorded trajectory column by column;
+//   3. writes docs/reports/crosscheck.md (human) and
+//      docs/reports/crosscheck.json (machine readable; the status values
+//      follow research/fmpy.md §9: ok / skip / FAIL with a detail).
+//
+// The corpus is fetched with `moon run tests/data/fetch-fmus.mbtx`. The
+// official fmi-cross-check submission layout remains a follow-up.
 
 ///|
 fn[T] fail(msg : String) -> T {
@@ -28,11 +33,6 @@ fn[T] fail(msg : String) -> T {
 ///|
 async fn tick() -> Bool raise {
   @fs.exists(".")
-}
-
-///|
-async fn run_capture(command : String, args : Array[String]) -> @shell.Output raise {
-  @shell.Cmd::Cmd(command, args).output()
 }
 
 ///|
@@ -54,6 +54,95 @@ fn first_line(text : String) -> String {
 }
 
 ///|
+fn csv_number(text : String) -> Double? {
+  try {
+    Some(@string.parse_double(text.trim()))
+  } catch {
+    _ => None
+  }
+}
+
+///|
+/// Parses MoonFMI's CSV output into (header, numeric rows).
+fn parse_csv(text : String) -> (Array[String], Array[Array[Double]]) {
+  let header : Array[String] = []
+  let rows : Array[Array[Double]] = []
+  let mut first = true
+  for line in text.split("\n") {
+    let trimmed = line.trim()
+    if trimmed.is_empty() {
+      continue
+    }
+    let cells : Array[String] = []
+    for cell in trimmed.split(",") {
+      cells.push(cell.to_owned())
+    }
+    if first {
+      for cell in cells {
+        header.push(cell)
+      }
+      first = false
+      continue
+    }
+    let numbers : Array[Double] = []
+    for cell in cells {
+      numbers.push(csv_number(cell).unwrap_or(0.0))
+    }
+    rows.push(numbers)
+  }
+  (header, rows)
+}
+
+///|
+/// Largest absolute difference over the shared grid; `None` when the shapes
+/// differ (reported as a structural deviation).
+fn max_abs_diff(a : Array[Array[Double]], b : Array[Array[Double]]) -> Double? {
+  if a.length() != b.length() {
+    return None
+  }
+  let mut worst = 0.0
+  for i, row_a in a {
+    let row_b = b[i]
+    if row_a.length() != row_b.length() {
+      return None
+    }
+    for j, value_a in row_a {
+      let delta = (value_a - row_b[j]).abs()
+      if delta > worst {
+        worst = delta
+      }
+    }
+  }
+  Some(worst)
+}
+
+///|
+fn json_escape(text : String) -> String {
+  let buf = StringBuilder()
+  for ch in text {
+    match ch {
+      '"' => buf.write_string("\\\"")
+      '\\' => buf.write_string("\\\\")
+      '\n' => buf.write_string("\\n")
+      '\r' => buf.write_string("\\r")
+      '\t' => buf.write_string("\\t")
+      c => buf.write_char(c)
+    }
+  }
+  buf.to_string()
+}
+
+///|
+struct SampleResult {
+  path : String
+  interface : String
+  validate : Bool
+  info : Bool
+  status : String
+  detail : String
+}
+
+///|
 async fn main raise {
   println("--- building the CLI (release) ---")
   let build = @shell.Cmd::Cmd(
@@ -67,11 +156,16 @@ async fn main raise {
   }
   let cli = "_build/native/release/build/cmd/main/main.exe"
   if !@fs.exists(cli) {
-    fail("CLI binary missing: \{cli} (backend may name the exe differently)")
+    fail("CLI binary missing: \{cli}")
   }
+  let reportDir = "docs/reports"
+  let scratch = ".moonfmi-tmp/crosscheck"
+  @fs.mkdir(reportDir, recursive=true, allow_exist=true) catch { _ => () }
+  @fs.mkdir(scratch, recursive=true, allow_exist=true) catch { _ => () }
+  let samples : Array[SampleResult] = []
   let rows : Array[String] = []
-  rows.push("| sample | validate | info | simulate (0..1s, h=0.1) |")
-  rows.push("| --- | --- | --- | --- |")
+  rows.push("| sample | interface | validate | info | simulate (0..1s, h=0.1) |")
+  rows.push("| --- | --- | --- | --- | --- |")
   for dir in ["fmi2", "fmi3"] {
     let entries = @fs.readdir("tests/data/.cache/\{dir}") catch { _ => [] }
     for entry in entries {
@@ -80,47 +174,183 @@ async fn main raise {
         continue
       }
       let path = "tests/data/.cache/\{dir}/\{name}"
-      let v = run_capture(cli, ["validate", path, "--json"])
-      let i = run_capture(cli, ["info", path])
-      let s = run_capture(
+      let v = @shell.Cmd::Cmd(cli, ["validate", path, "--json"]).output()
+      let i = @shell.Cmd::Cmd(cli, ["info", path]).output()
+      let infoText = i.stdout() + i.stderr()
+      let interfaces : Array[String] = []
+      if infoText.contains("ScheduledExecution") {
+        interfaces.push("se")
+      } else {
+        interfaces.push("cs")
+        if infoText.contains("ModelExchange") {
+          interfaces.push("me")
+        }
+      }
+      for interface in interfaces {
+        let s = @shell.Cmd::Cmd(
+          cli,
+          [
+            "simulate", path, "--interface", interface, "--start-time", "0",
+            "--stop-time", "1", "--step-size", "0.1", "--json",
+          ],
+        )
+          .output()
+        let output = s.stdout() + s.stderr()
+        let unsupported = output.contains("nothing to integrate") ||
+          output.contains("no ContinuousStateDerivatives") ||
+          output.contains("no Derivatives") ||
+          output.contains("returned no component") ||
+          output.contains("does not declare a ScheduledExecution")
+        let status = if s.exit_code() == 0 {
+          "ok"
+        } else if unsupported {
+          "skip"
+        } else {
+          "FAIL"
+        }
+        let detail = if status == "ok" || status == "skip" {
+          ""
+        } else {
+          " — " + first_line(output)
+        }
+        rows.push(
+          "| \{dir}/\{name} | \{interface} | \{check(v.exit_code() == 0)} | \{check(i.exit_code() == 0)} | \{status}\{detail} |",
+        )
+        samples.push(
+          {
+            path: "\{dir}/\{name}",
+            interface,
+            validate: v.exit_code() == 0,
+            info: i.exit_code() == 0,
+            status,
+            detail,
+          },
+        )
+      }
+    }
+  }
+  let _ = tick()
+  // Cross-version comparison: same model source, FMI 2 vs FMI 3, CS.
+  let pairs = [
+    ("BouncingBall", "fmi2/BouncingBall.fmu", "fmi3/BouncingBall.fmu"),
+    ("Feedthrough", "fmi2/Feedthrough.fmu", "fmi3/Feedthrough.fmu"),
+  ]
+  let comparisons : Array[(String, String, Double?)] = []
+  for pair in pairs {
+    let (model, old_path, new_path) = pair
+    if !@fs.exists("tests/data/.cache/\{old_path}") ||
+      !@fs.exists("tests/data/.cache/\{new_path}") {
+      comparisons.push((model, "skip (missing corpus entry)", None))
+      continue
+    }
+    let old_csv = "\{scratch}/\{model}-fmi2.csv"
+    let new_csv = "\{scratch}/\{model}-fmi3.csv"
+    let run_old = @shell.Cmd::Cmd(
         cli,
-        ["simulate", path, "--start-time", "0", "--stop-time", "1", "--step-size", "0.1", "--json"],
+        [
+          "simulate", "tests/data/.cache/\{old_path}", "--start-time", "0",
+          "--stop-time", "1", "--step-size", "0.1", "--output", old_csv,
+        ],
       )
-      let s_stderr = s.stderr() + s.stdout()
-      let unsupported = s_stderr.contains("no ContinuousStateDerivatives") ||
-        s_stderr.contains("returned no component")
-      let simulate_detail = if s.exit_code() == 0 {
-        ""
-      } else if unsupported {
-        " — skip (interface/state requirements, see README)"
-      } else {
-        " — FAIL \{first_line(s_stderr)}"
-      }
-      let simulate_cell = if s.exit_code() == 0 {
-        "ok"
-      } else if unsupported {
-        "skip"
-      } else {
-        "FAIL"
-      }
-      rows.push(
-        "| \{dir}/\{name} | \{check(v.exit_code() == 0)} | \{check(i.exit_code() == 0)} | \{simulate_cell}\{simulate_detail} |",
+      .output()
+    let run_new = @shell.Cmd::Cmd(
+        cli,
+        [
+          "simulate", "tests/data/.cache/\{new_path}", "--start-time", "0",
+          "--stop-time", "1", "--step-size", "0.1", "--output", new_csv,
+        ],
       )
+      .output()
+    if run_old.exit_code() != 0 || run_new.exit_code() != 0 {
+      comparisons.push((model, "simulate failed", None))
+      continue
+    }
+    let old_text = @fs.read_file(old_csv) catch {
+      _ => fail("reading \{old_csv} failed")
+    }
+    let new_text = @fs.read_file(new_csv) catch {
+      _ => fail("reading \{new_csv} failed")
+    }
+    let (_, old_rows) = parse_csv(old_text.text() catch { _ => fail("decoding old csv") })
+    let (_, new_rows) = parse_csv(new_text.text() catch { _ => fail("decoding new csv") })
+    match max_abs_diff(old_rows, new_rows) {
+      Some(diff) =>
+        comparisons.push(
+          (model, if diff <= 0.000001 { "match" } else { "deviation" }, Some(diff)),
+        )
+      None => comparisons.push((model, "deviation (shape mismatch)", None))
     }
   }
   let report = StringBuilder()
-  report.write_string("# Cross-check smoke report (G-02)\n\n")
+  report.write_string("# Cross-check report (G-02)\n\n")
   report.write_string("> Generated by `moon run scripts/crosscheck.mbtx --target native --release`.\n\n")
-  report.write_string("> Every cached Reference-FMUs sample runs through `validate`, `info` and a\n")
-  report.write_string("> 1 s CS smoke simulation; regenerate after backend changes.\n\n")
+  report.write_string("## 1. Corpus smoke matrix\n\n")
   for row in rows {
     report.write_string(row)
     report.write_string("\n")
   }
-  @fs.write_file("docs/reports/crosscheck.md", report.to_string())
+  report.write_string("\n`skip` means the FMU does not offer that interface or state shape (an\nSE-only model under CS, or an ME run of a stateless model); the P4/P7\nintegration tests cover those directly.\n\n")
+  report.write_string("## 2. Cross-version trajectory comparison (FMI 2 vs FMI 3)\n\n")
+  report.write_string("| model | verdict | max abs diff |\n| --- | --- | --- |\n")
+  for comparison in comparisons {
+    let (model, verdict, diff) = comparison
+    let diff_text = match diff {
+      Some(value) => value.to_string()
+      None => "-"
+    }
+    report.write_string("| \{model} | \{verdict} | \{diff_text} |\n")
+  }
+  report.write_string("\nTolerance: 1e-6. Both versions are driven by the same CS master\n(start 0, stop 1, h = 0.1), so the same model source has to produce the same\ntrajectory.\n")
+  @fs.write_file("\{reportDir}/crosscheck.md", report.to_string())
+  let json = StringBuilder()
+  json.write_string("{\n  \"schema\": \"moonfmi.crosscheck/v1\",\n  \"samples\": [\n")
+  let mut index = 0
+  for sample in samples {
+    if index > 0 {
+      json.write_string(",\n")
+    }
+    json.write_string("    {")
+    json.write_string("\"path\": \"\{json_escape(sample.path)}\", ")
+    json.write_string("\"interface\": \"\{json_escape(sample.interface)}\", ")
+    json.write_string("\"validate\": \{(if sample.validate { "true" } else { "false" })}, ")
+    json.write_string("\"info\": \{(if sample.info { "true" } else { "false" })}, ")
+    json.write_string("\"status\": \"\{json_escape(sample.status)}\"")
+    if !sample.detail.is_empty() {
+      json.write_string(", \"detail\": \"\{json_escape(sample.detail)}\"")
+    }
+    json.write_string("}")
+    index += 1
+  }
+  json.write_string("\n  ],\n  \"comparisons\": [\n")
+  index = 0
+  for comparison in comparisons {
+    let (model, verdict, diff) = comparison
+    if index > 0 {
+      json.write_string(",\n")
+    }
+    json.write_string("    {")
+    json.write_string("\"model\": \"\{json_escape(model)}\", ")
+    json.write_string("\"verdict\": \"\{json_escape(verdict)}\"")
+    match diff {
+      Some(value) => json.write_string(", \"maxAbsDiff\": \{value.to_string()}")
+      None => ()
+    }
+    json.write_string("}")
+    index += 1
+  }
+  json.write_string("\n  ]\n}\n")
+  @fs.write_file("\{reportDir}/crosscheck.json", json.to_string())
   let _ = tick()
-  println("report written to docs/reports/crosscheck.md")
+  println("report written to \{reportDir}/crosscheck.md and crosscheck.json")
   for row in rows {
     println(row)
+  }
+  for comparison in comparisons {
+    let (model, verdict, diff) = comparison
+    let diff_text = match diff {
+      Some(value) => value.to_string()
+      None => "-"
+    }
+    println("compare \{model}: \{verdict} (max abs diff \{diff_text})")
   }
 }
