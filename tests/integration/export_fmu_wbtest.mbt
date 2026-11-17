@@ -78,14 +78,29 @@ fn build_source_fmu(
       "generated modelDescription.xml failed validation: \{report.diagnostics[0].render()}",
     )
   }
-  // Compile (E-06). The exported layout already contains sources/.
-  let (platform, entry_file, ext) = match version {
-    @schema.FmiVersion::V2 => ("win64", "fmi2Functions.c", "dll")
-    @schema.FmiVersion::V3 => ("x86_64-windows", "fmi3Functions.c", "dll")
+  // Compile (E-06) for the host platform: the exported layout already
+  // contains sources/, and the FMU layout uses the FMI platform directory
+  // names of the running host.
+  let host_platform = host()
+  let extension = match host_platform.os {
+    @fmi.Windows => "dll"
+    @fmi.Darwin => "dylib"
+    @fmi.Linux => "so"
   }
-  let binary_path = "\{result.output_dir}/binaries/\{platform}/MoonfmiDahlquist.\{ext}"
+  let (platform, entry_file) = match version {
+    @schema.FmiVersion::V2 =>
+      (@fmi.fmi2_platform_dir(host_platform), "fmi2Functions.c")
+    @schema.FmiVersion::V3 =>
+      (@fmi.fmi3_platform_dir(host_platform), "fmi3Functions.c")
+  }
+  let binary_path = "\{result.output_dir}/binaries/\{platform}/MoonfmiDahlquist.\{extension}"
   ensure_test_dir("\{result.output_dir}/binaries/\{platform}")
-  let command = "clang -O1 -shared -o \"\{binary_path}\" \"\{result.output_dir}/sources/moonfmi_model.c\" \"\{result.output_dir}/sources/\{entry_file}\""
+  let flags = match host_platform.os {
+    @fmi.Windows => "-O1 -shared"
+    @fmi.Darwin => "-O1 -dynamiclib"
+    @fmi.Linux => "-O1 -shared -fPIC"
+  }
+  let command = "clang \{flags} -o \"\{binary_path}\" \"\{result.output_dir}/sources/moonfmi_model.c\" \"\{result.output_dir}/sources/\{entry_file}\""
   if run_shell(command) != 0L {
     abort("clang failed: \{command}")
   }
@@ -97,7 +112,7 @@ fn build_source_fmu(
   for entry in result.files {
     entries.push(entry)
   }
-  entries.push(("binaries/\{platform}/MoonfmiDahlquist.\{ext}", binary))
+  entries.push(("binaries/\{platform}/MoonfmiDahlquist.\{extension}", binary))
   let archive = @zip.build_deterministic_zip(entries) catch {
     error => abort("packaging failed: " + error.message())
   }
@@ -322,9 +337,21 @@ test "exported fmi3 array passthrough roundtrips u[3]" {
   let result = @export.export_source_fmu(ir, options) catch {
     error => abort("export failed: " + error.message())
   }
-  let binary_path = "\{result.output_dir}/binaries/x86_64-windows/MoonfmiArrayPassthrough.dll"
-  ensure_test_dir("\{result.output_dir}/binaries/x86_64-windows")
-  let command = "clang -O1 -shared -o \"\{binary_path}\" \"\{result.output_dir}/sources/moonfmi_model.c\" \"\{result.output_dir}/sources/fmi3Functions.c\""
+  let host_platform = host()
+  let platform = @fmi.fmi3_platform_dir(host_platform)
+  let extension = match host_platform.os {
+    @fmi.Windows => "dll"
+    @fmi.Darwin => "dylib"
+    @fmi.Linux => "so"
+  }
+  let flags = match host_platform.os {
+    @fmi.Windows => "-O1 -shared"
+    @fmi.Darwin => "-O1 -dynamiclib"
+    @fmi.Linux => "-O1 -shared -fPIC"
+  }
+  let binary_path = "\{result.output_dir}/binaries/\{platform}/MoonfmiArrayPassthrough.\{extension}"
+  ensure_test_dir("\{result.output_dir}/binaries/\{platform}")
+  let command = "clang \{flags} -o \"\{binary_path}\" \"\{result.output_dir}/sources/moonfmi_model.c\" \"\{result.output_dir}/sources/fmi3Functions.c\""
   if run_shell(command) != 0L {
     abort("clang failed: \{command}")
   }
@@ -335,7 +362,9 @@ test "exported fmi3 array passthrough roundtrips u[3]" {
   for entry in result.files {
     entries.push(entry)
   }
-  entries.push(("binaries/x86_64-windows/MoonfmiArrayPassthrough.dll", binary))
+  entries.push(
+    ("binaries/\{platform}/MoonfmiArrayPassthrough.\{extension}", binary),
+  )
   let archive = @zip.build_deterministic_zip(entries) catch {
     error => abort("packaging failed: " + error.message())
   }
