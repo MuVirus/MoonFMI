@@ -77,7 +77,9 @@ checks the local environment.
   full LS-WASM world and browser hosts are future work; `simulate
   --backend wasm` intentionally exits with code 4.
 - `package` output is verified by MoonFMI's own reader; validating with
-  FMPy (`python -m fmpy <file>.fmu`) is recommended as an external check.
+  FMPy as an external check: `uv run --with fmpy python tools/fmpy_compare.py
+  --cli <moonfmi>` compares both tools' CS trajectories; results live in
+  `docs/reports/fmpy-comparison.md`.
 
 ## Layout
 

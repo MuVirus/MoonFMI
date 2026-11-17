@@ -70,8 +70,9 @@ FMI 3.0.2，覆盖联合仿真 Co-Simulation 与模型交换 Model Exchange）�
 - WebAssembly 后端为**实验性**：最小 CS 组件与 LS-WASM 打包已验证
   （见 `tests/fmu-wasm/README.md`），完整 LS-WASM world 与浏览器宿主
   属于后续工作；`simulate --backend wasm` 目前固定退出码 4。
-- `package` 的输出由 MoonFMI 自己的读取器校验；建议再用 FMPy
-  （`python -m fmpy <file>.fmu`）做一次外部校验。
+- `package` 的输出由 MoonFMI 自己的读取器校验；外部校验用 FMPy：
+  `uv run --with fmpy python tools/fmpy_compare.py --cli <moonfmi>`
+  会对比两者的 CS 轨迹（结果见 `docs/reports/fmpy-comparison.md`）。
 
 ## 目录结构
 

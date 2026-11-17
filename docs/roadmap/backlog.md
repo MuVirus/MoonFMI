@@ -136,7 +136,7 @@
 | ID | 任务 | 优先级 | 规模 | 依赖 | 验收 |
 | --- | --- | --- | --- | --- | --- |
 | G-01 ✅ | XML/ZIP fuzz 扩展 | P2 | M | B-20 | FMI 3 语料 + 截断变异;ZIP 400 次固定种子 |
-| G-02 ✅ | fmi-cross-check 集成 | P2 | L | C-10 ✅ | 语料冒烟报告(crosscheck.md);全量 harness 顺延 |
+| G-02 ✅ | fmi-cross-check 集成 | P2 | L | C-10 ✅ | 语料×接口矩阵 + FMI2/3 轨迹对照(crosscheck.md/json);FMPy 外检(fmpy-comparison.md) |
 | G-03 ✅ | 性能基线/回归 | P2 | M | A-08 | perf-baseline.md + 250ms 硬门 |
 | G-04 ✅ | 安全审查/沙箱方案 | P2 | L | C-04 ✅ | security-review.md(残余风险 R1..R7) |
 | G-05 ✅ | 文档/示例/迁移 | P1 | M | 全程 | 新用户可跑通 |

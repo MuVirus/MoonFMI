@@ -203,7 +203,7 @@
 - [x] 可选能力缺失时行为明确（按类型分组的 `has_*` 能力标志 + 显式
       `Fmi3CapabilityMissing` 错误；FMU state 缺失时同样明确报错）；
 - [x] 与 FMPy/Reference 结果对比（FMI 3 BouncingBall 对 FMI 2 C 参考宿主；
-      StateSpace 对解析解；本机无 FMPy，见 records/2026-11-15）；
+      StateSpace 对解析解；FMPy 实测见 docs/reports/fmpy-comparison.md）；
 - [x] SE 已实现（超出原 P4 范围，按用户要求）：constant/countdown/triggered 输入时钟、
       priority 排序、输出时钟级联；Clocks.fmu 参考时间线验收见 records/2026-11-17。
 
