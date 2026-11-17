@@ -164,6 +164,10 @@ typedef struct moonfmi_fmi3_library {
   fmi3SetBinaryTYPE *set_binary;
   fmi3GetClockTYPE *get_clock;
   fmi3SetClockTYPE *set_clock;
+  /* Scheduled Execution group. */
+  fmi3InstantiateScheduledExecutionTYPE *instantiate_scheduled_execution;
+  fmi3ActivateModelPartitionTYPE *activate_model_partition;
+  fmi3GetIntervalDecimalTYPE *get_interval_decimal;
   /* Optional FMU state group. */
   fmi3GetFMUStateTYPE *get_fmu_state;
   fmi3SetFMUStateTYPE *set_fmu_state;
@@ -185,6 +189,7 @@ typedef struct moonfmi_fmi3_library {
   int32_t has_binary;
   int32_t has_clock;
   int32_t has_fmu_state;
+  int32_t has_scheduled_execution;
   /* Retired instances keep their context alive until the library is
      released, so a callback from a buggy FMU cannot touch freed memory. */
   moonfmi_fmi3_instance *retired;
@@ -199,6 +204,8 @@ struct moonfmi_fmi3_instance {
   moonfmi_fmi3_log_thunk log_thunk;
   uint64_t log_count;
   uint64_t intermediate_updates;
+  /* Output-clock activations reported through the clockUpdate callback. */
+  uint64_t clock_updates;
   int32_t logging_enabled;
   int32_t freed;
   moonfmi_fmi3_instance *next_retired;
@@ -294,10 +301,18 @@ moonfmi_fmi3_library_new(void *handle) {
                                 (void *)&library->enter_continuous_time_mode) &&
       moonfmi_fmi3_resolve_into(handle, "fmi3CompletedIntegratorStep",
                                 (void *)&library->completed_integrator_step);
-  if (!library->has_co_simulation && !library->has_model_exchange) {
+  library->has_scheduled_execution =
+      moonfmi_fmi3_resolve_into(handle, "fmi3InstantiateScheduledExecution",
+                                (void *)&library->instantiate_scheduled_execution) &&
+      moonfmi_fmi3_resolve_into(handle, "fmi3ActivateModelPartition",
+                                (void *)&library->activate_model_partition) &&
+      moonfmi_fmi3_resolve_into(handle, "fmi3GetIntervalDecimal",
+                                (void *)&library->get_interval_decimal);
+  if (!library->has_co_simulation && !library->has_model_exchange &&
+      !library->has_scheduled_execution) {
     moonfmi_fmi3_set_error(
-        "the shared library exports neither fmi3InstantiateCoSimulation nor "
-        "fmi3InstantiateModelExchange");
+        "the shared library exports none of fmi3InstantiateCoSimulation, "
+        "fmi3InstantiateModelExchange or fmi3InstantiateScheduledExecution");
     free(library);
     return NULL;
   }
@@ -392,7 +407,8 @@ enum {
   moonfmi_fmi3_flag_string = 13,
   moonfmi_fmi3_flag_binary = 14,
   moonfmi_fmi3_flag_clock = 15,
-  moonfmi_fmi3_flag_fmu_state = 16
+  moonfmi_fmi3_flag_fmu_state = 16,
+  moonfmi_fmi3_flag_scheduled_execution = 17
 };
 
 MOONBIT_FFI_EXPORT
@@ -437,6 +453,8 @@ moonfmi_fmi3_library_has_flag(void *handle, int32_t flag) {
     return library->has_clock;
   case moonfmi_fmi3_flag_fmu_state:
     return library->has_fmu_state;
+  case moonfmi_fmi3_flag_scheduled_execution:
+    return library->has_scheduled_execution;
   default:
     return 0;
   }
@@ -506,6 +524,12 @@ static void moonfmi_fmi3_intermediate_update(
   *earlyReturnRequested = fmi3False;
 }
 
+/* Scheduled Execution callbacks live at the end of this file; forward
+   declarations keep moonfmi_fmi3_instance_new readable. */
+static void moonfmi_fmi3_clock_update(fmi3InstanceEnvironment environment);
+static void moonfmi_fmi3_lock_preemption(void);
+static void moonfmi_fmi3_unlock_preemption(void);
+
 MOONBIT_FFI_EXPORT
 void *
 moonfmi_fmi3_instance_new(void *library_handle,
@@ -531,6 +555,7 @@ moonfmi_fmi3_instance_new(void *library_handle,
   instance->log_closure = log_closure;
   instance->log_thunk = log_thunk;
   instance->logging_enabled = logging_on != 0;
+  instance->clock_updates = 0;
   instance->instance_name = moonfmi_fmi3_copy_bytes(instance_name);
   instance->resource_path = moonfmi_fmi3_copy_bytes(resource_path);
   char *token_text = moonfmi_fmi3_copy_bytes(instantiation_token);
@@ -564,6 +589,21 @@ moonfmi_fmi3_instance_new(void *library_handle,
         /* requiredIntermediateVariables = none. */
         NULL, 0, instance, moonfmi_fmi3_log_message,
         moonfmi_fmi3_intermediate_update);
+  } else if (interface_kind == 2) {
+    if (!library->has_scheduled_execution) {
+      moonfmi_fmi3_set_error(
+          "the FMU does not export the Scheduled Execution functions");
+      free(instance->instance_name);
+      free(instance->resource_path);
+      free(token_text);
+      free(instance);
+      return NULL;
+    }
+    instance->component = library->instantiate_scheduled_execution(
+        instance->instance_name, token_text, instance->resource_path,
+        fmi3False, logging_on != 0 ? fmi3True : fmi3False, instance,
+        moonfmi_fmi3_log_message, moonfmi_fmi3_clock_update,
+        moonfmi_fmi3_lock_preemption, moonfmi_fmi3_unlock_preemption);
   } else {
     if (!library->has_model_exchange) {
       moonfmi_fmi3_set_error(
@@ -611,8 +651,8 @@ moonfmi_fmi3_instance_free(void *handle) {
   }
   instance->log_thunk = NULL;
   instance->next_retired = instance->library->retired;
-  instance->library->retired = instance;
-}
+	  instance->library->retired = instance;
+	}
 
 MOONBIT_FFI_EXPORT
 uint64_t
@@ -1188,3 +1228,62 @@ moonfmi_fmi3_free_fmu_state(void *handle, void *state) {
   }
   instance->library->free_fmu_state(instance->component, state);
 }
+
+
+	/* The FMU activates output clocks by calling fmi3SetClock internally
+	   and notifies the environment through this callback. The host
+	   scheduler polls fmi3GetClock afterwards; here we only count
+	   notifications. */
+	static void moonfmi_fmi3_clock_update(fmi3InstanceEnvironment environment) {
+	  moonfmi_fmi3_instance *instance =
+	      (moonfmi_fmi3_instance *)environment;
+	  if (instance == NULL || instance->freed) {
+	    return;
+	  }
+	  instance->clock_updates++;
+	}
+
+	/* The host scheduler is single-threaded and deterministic, so preemption
+	   locking is a no-op; the callbacks exist to satisfy the instantiate
+	   contract (Reference-FMUs' Clocks calls them). */
+	static void moonfmi_fmi3_lock_preemption(void) {}
+	static void moonfmi_fmi3_unlock_preemption(void) {}
+
+	MOONBIT_FFI_EXPORT
+	int32_t moonfmi_fmi3_activate_model_partition(
+	    void *handle, uint32_t clock_reference, double activation_time) {
+	  moonfmi_fmi3_instance *instance =
+	      (moonfmi_fmi3_instance *)moonfmi_fmi3_live(handle);
+	  if (instance == NULL) {
+	    return (int32_t)fmi3Error;
+	  }
+	  return (int32_t)instance->library->activate_model_partition(
+	      instance->component, (fmi3ValueReference)clock_reference,
+	      activation_time);
+	}
+
+	MOONBIT_FFI_EXPORT
+	int32_t moonfmi_fmi3_get_interval_decimal(
+	    void *handle, const uint32_t *references, double *intervals,
+	    int32_t *qualifiers, int32_t count) {
+	  moonfmi_fmi3_instance *instance =
+	      (moonfmi_fmi3_instance *)moonfmi_fmi3_live(handle);
+	  if (instance == NULL || count < 0) {
+	    return (int32_t)fmi3Error;
+	  }
+	  return (int32_t)instance->library->get_interval_decimal(
+	      instance->component,
+	      (const fmi3ValueReference *)references,
+	      (size_t)count, (fmi3Float64 *)intervals,
+	      (fmi3IntervalQualifier *)qualifiers);
+	}
+
+	MOONBIT_FFI_EXPORT
+	int64_t moonfmi_fmi3_clock_update_count(void *handle) {
+	  moonfmi_fmi3_instance *instance =
+	      (moonfmi_fmi3_instance *)handle;
+	  if (instance == NULL) {
+	    return 0;
+	  }
+	  return (int64_t)instance->clock_updates;
+	}

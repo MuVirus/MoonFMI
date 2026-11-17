@@ -64,7 +64,7 @@ FMI 3.0.2，覆盖联合仿真 Co-Simulation 与模型交换 Model Exchange）�
   §4.1）。
 - 每次运行只支持单个 FMU；多 FMU 耦合（连接、代数环）属于后续工作
   （见 `docs/design/master-algorithm.md` §8 路线图）。
-- FMI 3 Scheduled Execution 目前仅有可行性说明文档，尚未实现。
+- FMI 3 Scheduled Execution 已支持固定/动态/countdown 输入时钟、宿主触发时钟与输出时钟级联；不提供实时调度保证（priority 只决定同刻激活顺序）。
 - 源码 FMU 导出器只支持受限的显式模型（连续状态、直通输出、参数/输入）——
   它不是 Modelica 编译器；数组方程暂不生成（FMI 3 下数组可按值读写）。
 - WebAssembly 后端为**实验性**：最小 CS 组件与 LS-WASM 打包已验证

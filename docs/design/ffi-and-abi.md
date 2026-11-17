@@ -221,7 +221,7 @@ typedef void (*fmi2CallbackLogger)(
 | `logger` | C 侧格式化 + 入队/直接回调 |
 | `stepFinished` | 记录状态；异步 CS 后续支持 |
 | `intermediateUpdate` | POC 后支持；需要同步决策 |
-| `clockUpdate` / lock/unlock | SE 后置 |
+| `clockUpdate` / lock/unlock | 已实现:clockUpdate 计数通知,lock/unlock 为 no-op(单线程确定性调度) |
 
 ### 4.3 重入与线程
 
@@ -524,7 +524,7 @@ FMI 3 的 `fmi3Boolean` 在这些平台上实测 1 字节、`fmi3ValueReference`
 - FMI 2 int 数组与 FMI 3 bool 数组的批量转换（FMI 3 shim 未实现）；
 - `size_t` 在 32 位目标上的行为；
 - 二进制长度 0/非 0；
-- ME/SE 函数指针；
+- ME 函数指针（SE 函数指针已覆盖）；
 - 多实例并发日志（目前只测了单实例 + FMU 自身线程）。
 
 ### 10.3 对照测试

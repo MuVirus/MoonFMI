@@ -110,3 +110,73 @@ pub(open) trait MeInstance {
   /// Terminate the instance before freeing it.
   fn finish(self : Self) -> Unit raise SimulationError
 }
+
+///|
+/// Qualifier returned with a clock interval by `fmi3GetIntervalDecimal`.
+#derive(Eq, Debug)
+pub(all) enum IntervalQualifier {
+  /// The interval cannot be decided yet.
+  NotYetKnown
+  /// The interval is unchanged since the previous query.
+  Unchanged
+  /// The interval changed since the previous query.
+  Changed
+}
+
+///|
+pub extend IntervalQualifier with Eq::{not_equal, equal}
+
+///|
+pub extend IntervalQualifier with @debug.Debug::{to_repr}
+
+///|
+/// Converts the FMI 3 `fmi3IntervalQualifier` enum value to an IntervalQualifier.
+pub fn IntervalQualifier::from_int32(value : Int32) -> IntervalQualifier? {
+  match value {
+    0 => Some(NotYetKnown)
+    1 => Some(Unchanged)
+    2 => Some(Changed)
+    _ => None
+  }
+}
+
+///|
+/// The Scheduled Execution instance surface the clock scheduler needs
+/// (`src/sim/se.mbt`). One clock = one model partition, activated by the
+/// environment; output clocks are observed via `get_clock`.
+pub(open) trait SeInstance {
+  /// Configure the experiment (`fmi3EnterInitializationMode` arguments are
+  /// held by the backend; `stop` may be omitted).
+  fn setup_experiment(self : Self, start~ : Double, stop~ : Double?) -> Unit raise SimulationError
+
+  /// Enter and leave initialization mode.
+  fn initialize(self : Self) -> Unit raise SimulationError
+
+  /// `fmi3ActivateModelPartition` — runs the model partition of one clock.
+  fn activate_partition(
+    self : Self,
+    clock_reference : UInt32,
+    activation_time : Double,
+  ) -> Unit raise SimulationError
+
+  /// `fmi3SetClock` — activates/deactivates one clock.
+  fn set_clock(self : Self, reference : UInt32, active : Bool) -> Unit raise SimulationError
+
+  /// `fmi3GetClock` — reads one clock activation state.
+  fn get_clock(self : Self, reference : UInt32) -> Bool raise SimulationError
+
+  /// `fmi3GetIntervalDecimal` for one clock; `None` means NotYetKnown.
+  fn get_interval(self : Self, reference : UInt32) -> (
+    Double,
+    IntervalQualifier,
+  )? raise SimulationError
+
+  /// Read one real output by value reference.
+  fn read_real(self : Self, value_reference : UInt32) -> Double raise SimulationError
+
+  /// Write one real input by value reference.
+  fn write_real(self : Self, value_reference : UInt32, value : Double) -> Unit raise SimulationError
+
+  /// Terminate the instance before freeing it.
+  fn finish(self : Self) -> Unit raise SimulationError
+}

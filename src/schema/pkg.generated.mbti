@@ -102,6 +102,7 @@ pub(all) enum ClockIntervalVariability {
   Constant
   Calculated
   Triggered
+  Countdown
 }
 pub fn ClockIntervalVariability::equal(Self, Self) -> Bool
 pub fn ClockIntervalVariability::name(Self) -> String

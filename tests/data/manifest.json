@@ -224,6 +224,29 @@
         "windows": "binaries/x86_64-windows/StateSpace.dll",
         "linux": "binaries/x86_64-linux/StateSpace.so"
       }
+    },
+    {
+      "id": "fmi3-clocks",
+      "archivePath": "3.0/Clocks.fmu",
+      "cachePath": "fmi3/Clocks.fmu",
+      "bytes": 219647,
+      "sha256": "baee92f2a34b2f22985d443ca92a982bbf3e43da7dfffa63dc9b4eadcb291e44",
+      "fmiVersion": "3.0",
+      "interfaces": [
+        "ScheduledExecution"
+      ],
+      "covers": [
+        "scheduled-execution",
+        "clocks",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "SE only: constant/triggered/countdown input clocks plus an output clock; the host scheduler drives partitions.",
+      "modelIdentifier": "Clocks",
+      "binaries": {
+        "windows": "binaries/x86_64-windows/Clocks.dll",
+        "linux": "binaries/x86_64-linux/Clocks.so"
+      }
     }
   ]
 }

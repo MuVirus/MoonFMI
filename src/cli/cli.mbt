@@ -19,7 +19,7 @@ pub fn usage() -> String {
   "Usage:\n" +
   "  moonfmi validate <fmu | modelDescription.xml> [--json] [--strict]\n" +
   "  moonfmi info <fmu | modelDescription.xml> [--json]\n" +
-  "  moonfmi simulate <fmu> [--interface cs|me] [--solver euler|rk4]\n" +
+  "  moonfmi simulate <fmu> [--interface cs|me|se] [--solver euler|rk4]\n" +
   "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
   "                  [--output out.csv] [--timeout SEC] [--backend native|wasm]\n" +
   "                  [--platform DIR] [--json]\n" +
@@ -86,7 +86,7 @@ fn command_help(command : String) -> String {
       "  moonfmi simulate <file.fmu> [options]\n" +
       "\n" +
       "Options:\n" +
-      "  --interface cs|me    Co-simulation or model exchange (default cs)\n" +
+      "  --interface cs|me|se Co-simulation, model exchange or scheduled execution (default cs)\n" +
       "  --solver euler|rk4   ME integrator (default rk4; ignored for cs)\n" +
       "  --start-time T       Start time (default 0 or the model's DefaultExperiment)\n" +
       "  --stop-time T        Stop time (default 1.0 or the model's DefaultExperiment)\n" +
@@ -740,10 +740,10 @@ fn parse_simulate_options(
           None => return (options, Some("'" + value + "' is not a number"))
         }
       } else if arg == "--interface" {
-        if value != "cs" && value != "me" {
+        if value != "cs" && value != "me" && value != "se" {
           return (
             options,
-            Some("'--interface' accepts cs or me, not '" + value + "'"),
+            Some("'--interface' accepts cs, me or se, not '" + value + "'"),
           )
         }
         options.interface = value
@@ -1207,6 +1207,89 @@ fn simulate_fmi3(
       deadline=options.timeout_seconds,
     )
     let result = @sim.run_me_simulation(loaded.instance(), config~) catch {
+      error => {
+        loaded.dispose()
+        raise map_run_failure(error)
+      }
+    }
+    let names : Array[String] = []
+    for output in outputs {
+      names.push(output.1)
+    }
+    loaded.dispose()
+    (names, result, step_size, stop_time)
+  } else if options.interface == "se" {
+    let loaded = match options.platform_override {
+      Some(requested) =>
+        @native.load_fmi3_se_fmu(
+          data,
+          host~,
+          temp_directory=directory,
+          platform_override=requested,
+        ) catch {
+          error => raise map_loader_failure(error)
+        }
+      None =>
+        @native.load_fmi3_se_fmu(data, host~, temp_directory=directory) catch {
+          error => raise map_loader_failure(error)
+        }
+    }
+    let outputs = real_outputs_fmi3(loaded.model())
+    let references : Array[UInt32] = []
+    for output in outputs {
+      references.push(output.0)
+    }
+    let step_size = match options.step_size {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.step_size.unwrap_or(0.01)
+          None => 0.01
+        }
+    }
+    let stop_time = match options.stop_time {
+      Some(value) => value
+      None =>
+        match loaded.model().default_experiment {
+          Some(experiment) => experiment.stop_time.unwrap_or(1.0)
+          None => 1.0
+        }
+    }
+    // Scheduler view of the input clocks: constant intervals come from the
+    // model description, countdown clocks are polled, triggered clocks fire
+    // through the default policy (every triggered clock at every grid
+    // point). The CLI has no scripted trigger channel yet.
+    let clocks : Array[@sim.SeClockInfo] = []
+    for clock in loaded.clocks {
+      let countdown = clock.variability
+        is @schema.ClockIntervalVariability::Countdown
+      let period : Double? = if countdown || clock.triggered {
+        None
+      } else {
+        clock.interval_decimal
+      }
+      clocks.push(
+        @sim.SeClockInfo::new(
+          value_reference=clock.value_reference,
+          priority=clock.priority,
+          period~,
+          shift=clock.shift_decimal.unwrap_or(0.0),
+          triggered=clock.triggered,
+          countdown~,
+        ),
+      )
+    }
+    let trigger = @sim.SeConfig::trigger_all_each_step(clocks~)
+    let config = @sim.SeConfig::new(
+      start_time~,
+      stop_time~,
+      step_size~,
+      record=references,
+      deadline=options.timeout_seconds,
+      trigger~,
+      output_clocks=loaded.output_clocks,
+    )
+    let result = @sim.run_se_simulation(loaded.instance(), clocks~, config~) catch {
       error => {
         loaded.dispose()
         raise map_run_failure(error)

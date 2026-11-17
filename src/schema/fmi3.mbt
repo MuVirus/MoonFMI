@@ -93,6 +93,9 @@ pub(all) enum ClockIntervalVariability {
   Constant
   Calculated
   Triggered
+  // FMI 3.0.2: due when a countdown timer set by the FMU reaches zero;
+  // the remaining time comes from fmi3GetIntervalDecimal.
+  Countdown
 }
 
 ///|
@@ -103,6 +106,7 @@ pub fn ClockIntervalVariability::parse(
     "constant" => Some(Constant)
     "calculated" => Some(Calculated)
     "triggered" => Some(Triggered)
+    "countdown" => Some(Countdown)
     _ => None
   }
 }
@@ -115,6 +119,7 @@ pub fn ClockIntervalVariability::name(
     Constant => "constant"
     Calculated => "calculated"
     Triggered => "triggered"
+    Countdown => "countdown"
   }
 }
 

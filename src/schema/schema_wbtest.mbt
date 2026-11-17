@@ -445,34 +445,53 @@ test "MD-030..MD-032 dimensions" {
 }
 
 ///|
-test "MD-033..MD-036 clock rules" {
+test "MD-033..MD-037 clock rules" {
   let missing_interval = fmi3_doc(
     variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"parameter\" variability=\"tunable\"/>\n",
     structure="",
   )
   assert_true(rule_codes(missing_interval).contains("MD-033"))
-  // clocks references must exist.
+  // clocks entries are value references of Clock variables (FMI 3.0.2).
   let missing_clock = fmi3_doc(
     variables="\n    <Boolean name=\"b\" valueReference=\"0\" causality=\"input\" variability=\"discrete\" clocks=\"nope\"/>\n",
     structure="",
   )
   assert_true(rule_codes(missing_clock).contains("MD-034"))
-  // Triggered clock with a fixed interval warns.
+  let unknown_reference = fmi3_doc(
+    variables="\n    <Boolean name=\"b\" valueReference=\"0\" causality=\"input\" variability=\"discrete\" clocks=\"7\"/>\n",
+    structure="",
+  )
+  assert_true(rule_codes(unknown_reference).contains("MD-034"))
+  let good_reference = fmi3_doc(
+    variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"input\" intervalVariability=\"constant\" intervalDecimal=\"1\" priority=\"0\"/>\n    <Boolean name=\"b\" valueReference=\"1\" causality=\"input\" variability=\"discrete\" clocks=\"0\"/>\n",
+    structure="",
+  )
+  assert_false(rule_codes(good_reference).contains("MD-034"))
+  // Triggered clock with a fixed interval warns (MD-035).
   let triggered = fmi3_doc(
     variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"parameter\" variability=\"tunable\" intervalVariability=\"triggered\" intervalDecimal=\"1\"/>\n",
     structure="",
   )
-  let report = run_validate(triggered)
-  assert_eq(report.warning_count(), 1)
-  assert_eq(report.diagnostics()[0].code(), "MD-035")
-  // Priority outside triggered clocks warns.
-  let priority = fmi3_doc(
-    variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"parameter\" variability=\"tunable\" intervalVariability=\"constant\" intervalDecimal=\"1\" priority=\"3\"/>\n",
+  assert_true(rule_codes(triggered).contains("MD-035"))
+  // Output clocks must not declare priority (MD-036, FMI 3.0.2 2.4.2).
+  let output_priority = fmi3_doc(
+    variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"output\" intervalVariability=\"triggered\" priority=\"3\"/>\n",
     structure="",
   )
-  let report2 = run_validate(priority)
-  assert_eq(report2.warning_count(), 1)
-  assert_eq(report2.diagnostics()[0].code(), "MD-036")
+  assert_true(rule_codes(output_priority).contains("MD-036"))
+  // SE input clocks must declare priority (MD-037, mandatory per spec).
+  let se_missing_priority = fmi3_doc(
+    variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"input\" intervalVariability=\"constant\" intervalDecimal=\"1\"/>\n",
+    structure="",
+    extra="  <ScheduledExecution modelIdentifier=\"M\"/>\n",
+  )
+  assert_true(rule_codes(se_missing_priority).contains("MD-037"))
+  // Constant input clocks may declare priority: no MD-036 warning.
+  let constant_priority = fmi3_doc(
+    variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"input\" intervalVariability=\"constant\" intervalDecimal=\"1\" priority=\"3\"/>\n",
+    structure="",
+  )
+  assert_false(rule_codes(constant_priority).contains("MD-036"))
 }
 
 ///|

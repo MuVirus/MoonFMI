@@ -65,8 +65,9 @@ checks the local environment.
   those (see `docs/design/master-algorithm.md` §4.1).
 - One FMU per run; coupling multiple FMUs (connections, algebraic loops) is
   future work (see `docs/design/master-algorithm.md` §8 of the roadmap).
-- FMI 3 Scheduled Execution is a documented feasibility note only, not
-  implemented.
+- FMI 3 Scheduled Execution is supported for fixed/calculated/countdown
+  input clocks, host-triggered clocks and output-clock cascades; there is
+  no real-time guarantee (priority only orders same-instant activations).
 - The source-FMU exporter emits restricted explicit models (continuous
   states, feedthrough outputs, parameters/inputs) — it is not a Modelica
   compiler; array equations are not generated yet (arrays roundtrip as

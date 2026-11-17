@@ -897,6 +897,17 @@ pub fn validate_fmi3(
 }
 
 ///|
+
+///|
+/// True when the model declares a `<ScheduledExecution>` interface, which
+/// tightens the Clock priority rules (MD-037).
+fn Fmi3Rules::declares_scheduled_execution(self : Fmi3Rules) -> Bool {
+  self.model.interfaces
+  .iter()
+  .any(fn(interface) { interface.kind is ScheduledExecution })
+}
+
+///|
 fn Fmi3Rules::check_root(self : Fmi3Rules) -> Unit {
   let root = "/fmiModelDescription"
   if self.model.interfaces.is_empty() {
@@ -1317,16 +1328,34 @@ fn Fmi3Rules::check_variables(self : Fmi3Rules) -> Unit {
                 )
               }
             }
-            // MD-036: priority only matters for triggered clocks.
-            if attrs.priority is Some(_) && !(variability is Triggered) {
-              self.add(
-                code="MD-036",
-                message="priority has no effect on '\{variability.name()}' clock '\{variable.name}'",
-                path~,
-                severity=Warning,
-                line=variable.line,
-                column=variable.column,
-              )
+            // MD-036/MD-037: FMI 3.0.2 §2.4.2 priority semantics:
+            // mandatory for input Clocks in Scheduled Execution, must not
+            // appear on output Clocks, ignored for CS/ME.
+            let is_output = match variable.causality {
+              Some(Output) => true
+              _ => false
+            }
+            match attrs.priority {
+              Some(_) =>
+                if is_output {
+                  self.add(
+                    code="MD-036",
+                    message="output clock '\{variable.name}' must not declare priority",
+                    path~,
+                    line=variable.line,
+                    column=variable.column,
+                  )
+                }
+              None =>
+                if !is_output && self.declares_scheduled_execution() {
+                  self.add(
+                    code="MD-037",
+                    message="input clock '\{variable.name}' must declare priority in a Scheduled Execution FMU",
+                    path~,
+                    line=variable.line,
+                    column=variable.column,
+                  )
+                }
             }
           }
           None =>
@@ -1340,28 +1369,52 @@ fn Fmi3Rules::check_variables(self : Fmi3Rules) -> Unit {
         }
       _ => ()
     }
-    // MD-034: clocks references exist and name Clock variables. The
-    // attribute can appear on any variable kind, not only clocks.
+    // MD-034: `clocks` holds value references of Clock variables (FMI 3.0.2
+    // §2.4.2), not names: "the value of the attribute clocks is a non-empty
+    // list of value references of Clocks this variable belongs to".
     match variable.clocks {
       Some(list) =>
-        for clock_name in split_ws_list(list) {
-          match self.index.position_of_name(clock_name) {
-            Some(owner_position) => {
-              let owner = self.model.variables[owner_position - 1]
-              if !(owner.type_kind is Clock) {
-                self.add(
-                  code="MD-034",
-                  message="clocks reference '\{clock_name}' is not a Clock variable",
-                  path~,
-                  line=variable.line,
-                  column=variable.column,
-                )
+        for clock_reference in split_ws_list(list) {
+          let parsed : UInt32? = Some(
+            parse_uint32_value(
+              clock_reference,
+              path~,
+              line=variable.line,
+              column=variable.column,
+            ),
+          ) catch {
+            _ => None
+          }
+          match parsed {
+            Some(value_reference) =>
+              match self.index.positions_of_value_reference(value_reference) {
+                Some(positions) =>
+                  if !positions
+                    .iter()
+                    .any(fn(position) {
+                      self.model.variables[position - 1].type_kind is Clock
+                    }) {
+                    self.add(
+                      code="MD-034",
+                      message="clocks reference '\{clock_reference}' is not the value reference of a Clock variable",
+                      path~,
+                      line=variable.line,
+                      column=variable.column,
+                    )
+                  }
+                None =>
+                  self.add(
+                    code="MD-034",
+                    message="clocks reference '\{clock_reference}' does not match any variable",
+                    path~,
+                    line=variable.line,
+                    column=variable.column,
+                  )
               }
-            }
             None =>
               self.add(
                 code="MD-034",
-                message="clocks reference '\{clock_name}' does not match any variable",
+                message="clocks entry '\{clock_reference}' is not a value reference",
                 path~,
                 line=variable.line,
                 column=variable.column,

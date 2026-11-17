@@ -401,3 +401,117 @@ pub extend Fmi3Instance with @fmi.MeInstance::{
   get_derivatives,
   new_discrete_states,
 }
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn setup_experiment(
+  self,
+  start~,
+  stop~,
+) {
+  match stop {
+    Some(value) =>
+      Fmi3Instance::setup_experiment(self, start_time=start, stop_time=value) catch {
+        error =>
+          raise @fmi.FmiCall(
+            operation="fmi3SetupExperiment",
+            detail=error.message(),
+          )
+      }
+    None =>
+      Fmi3Instance::setup_experiment(self, start_time=start) catch {
+        error =>
+          raise @fmi.FmiCall(
+            operation="fmi3SetupExperiment",
+            detail=error.message(),
+          )
+      }
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn initialize(self) {
+  Fmi3Instance::initialize(self) catch {
+    error =>
+      raise @fmi.FmiCall(
+        operation="fmi3ExitInitializationMode",
+        detail=error.message(),
+      )
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn activate_partition(
+  self,
+  clock_reference,
+  activation_time,
+) {
+  Fmi3Instance::activate_model_partition(self, clock_reference, activation_time) catch {
+    error =>
+      raise @fmi.FmiCall(
+        operation="fmi3ActivateModelPartition",
+        detail=error.message(),
+      )
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn set_clock(
+  self,
+  reference,
+  active,
+) {
+  Fmi3Instance::set_clock_one(self, reference, active) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3SetClock", detail=error.message())
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn get_clock(self, reference) {
+  Fmi3Instance::get_clock_one(self, reference) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3GetClock", detail=error.message())
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn get_interval(self, reference) {
+  Fmi3Instance::get_interval_decimal(self, reference) catch {
+    error =>
+      raise @fmi.FmiCall(
+        operation="fmi3GetIntervalDecimal",
+        detail=error.message(),
+      )
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn read_real(
+  self,
+  value_reference,
+) {
+  Fmi3Instance::get_float64_one(self, value_reference) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3GetFloat64", detail=error.message())
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn write_real(
+  self,
+  value_reference,
+  value,
+) {
+  Fmi3Instance::set_float64_one(self, value_reference, value) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3SetFloat64", detail=error.message())
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn finish(self) {
+  Fmi3Instance::terminate(self) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3Terminate", detail=error.message())
+  }
+}

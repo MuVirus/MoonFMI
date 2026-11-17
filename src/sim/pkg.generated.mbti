@@ -10,6 +10,8 @@ pub fn run_cs_simulation(&@fmi.CsInstance, config~ : CsConfig) -> SimulationResu
 
 pub fn run_me_simulation(&@fmi.MeInstance, config~ : MeConfig) -> SimulationResult raise @fmi.SimulationError
 
+pub fn run_se_simulation(&@fmi.SeInstance, clocks~ : Array[SeClockInfo], config~ : SeConfig) -> SimulationResult raise @fmi.SimulationError
+
 // Errors
 
 // Types and methods
@@ -39,6 +41,29 @@ pub(all) enum MeSolver {
   Euler
   Rk4
 }
+
+pub struct SeClockInfo {
+  value_reference : UInt32
+  priority : UInt32
+  period : Double?
+  shift : Double
+  triggered : Bool
+  countdown : Bool
+}
+pub fn SeClockInfo::new(value_reference~ : UInt32, priority? : UInt32, period? : Double?, shift? : Double, triggered? : Bool, countdown? : Bool) -> Self
+
+pub struct SeConfig {
+  start_time : Double
+  stop_time : Double
+  step_size : Double
+  record : Array[UInt32]
+  deadline : UInt64?
+  max_rounds : Int32
+  trigger : (Double) -> Array[UInt32]
+  output_clocks : Array[UInt32]
+}
+pub fn SeConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], deadline? : UInt64?, max_rounds? : Int32, trigger? : (Double) -> Array[UInt32], output_clocks? : Array[UInt32]) -> Self
+pub fn SeConfig::trigger_all_each_step(clocks~ : Array[SeClockInfo]) -> (Double) -> Array[UInt32]
 
 pub(all) struct SimulationResult {
   times : Array[Double]

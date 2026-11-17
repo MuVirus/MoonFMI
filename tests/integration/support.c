@@ -12,11 +12,30 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 int64_t moonfmi_test_run_command(const char *command) {
-  int status = system(command);
-  return (int64_t)status;
+  /* Capture the child's output instead of inheriting stdout: the MoonBit
+     test harness speaks JSON on its own stdout, and a compiler banner would
+     corrupt the protocol stream. */
+#ifdef _WIN32
+  FILE *pipe = _popen(command, "r");
+#else
+  FILE *pipe = popen(command, "r");
+#endif
+  if (pipe == NULL) {
+    return -1;
+  }
+  char buffer[512];
+  while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
+    /* discard */
+  }
+#ifdef _WIN32
+  return (int64_t)_pclose(pipe);
+#else
+  return (int64_t)pclose(pipe);
+#endif
 }
 
 #ifdef _WIN32

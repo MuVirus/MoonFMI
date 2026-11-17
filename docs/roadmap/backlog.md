@@ -81,7 +81,7 @@
 | C-16 ✅ | FMI 3 新类型/数组 | P1 | L | C-15 | ABI/数组测试 |
 | C-17 ✅ | FMI 3 CS | P1 | M | C-15/C-16 | 事件/早退 |
 | C-18 ✅ | FMI 3 ME | P2 | M | C-15/C-16 | 参考轨迹 |
-| C-19 | FMI 3 SE 可行性研究 | P3 | M | C-15 | 报告，不承诺 |
+| C-19 ✅ | FMI 3 SE 实现 | P3 | L | C-15 | 调度器(constant/countdown/triggered + priority + 输出时钟);Clocks.fmu 参考时间线通过 |
 
 ---
 
@@ -123,7 +123,7 @@
 | F-03 | ✅ resource 实例生命周期 | P2 | L | F-02 | 宿主 drop（P0 探针已完成） |
 | F-04 ✅ | 最小 CS component | P2 | XL | F-03 | Adder 完整 CS 生命周期 |
 | F-05 ✅ | wasmtime 宿主 + 回调 | P2 | L | F-04 | jco/Node 日志回调通道 |
-| F-06 | `jco` 浏览器 POC | P3 | L | F-04 | Chrome/Firefox(仅 Node 实测,浏览器未测) |
+| F-06 | `jco` 浏览器 POC | P3 | L | F-04 | Chrome/Firefox(待验证) |
 | F-07 ✅ | WASM FMU 打包/manifest | P2 | M | F-04 | LS-WASM 布局,MoonFMI 校验 |
 | F-08 | WASM 导出器 | P3 | XL | F-04/E-01 | 生成可加载 FMU(未启动;F-07 已手工验证布局) |
 

@@ -98,6 +98,17 @@ pub fn HostPlatform::equal(Self, Self) -> Bool
 pub fn HostPlatform::not_equal(Self, Self) -> Bool
 pub fn HostPlatform::to_repr(Self) -> @debug.Repr
 
+#derive(Eq, @debug.Debug)
+pub(all) enum IntervalQualifier {
+  NotYetKnown
+  Unchanged
+  Changed
+}
+pub fn IntervalQualifier::equal(Self, Self) -> Bool
+pub fn IntervalQualifier::from_int32(Int32) -> Self?
+pub fn IntervalQualifier::not_equal(Self, Self) -> Bool
+pub fn IntervalQualifier::to_repr(Self) -> @debug.Repr
+
 // Type aliases
 
 // Traits
@@ -123,6 +134,18 @@ pub(open) trait MeInstance {
   fn new_discrete_states(Self) -> EventInfo raise SimulationError
   fn enter_continuous_time_mode(Self) -> Unit raise SimulationError
   fn completed_integrator_step(Self, no_set_fmu_state_prior~ : Bool) -> (Bool, Bool) raise SimulationError
+  fn read_real(Self, UInt32) -> Double raise SimulationError
+  fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
+  fn finish(Self) -> Unit raise SimulationError
+}
+
+pub(open) trait SeInstance {
+  fn setup_experiment(Self, start~ : Double, stop~ : Double?) -> Unit raise SimulationError
+  fn initialize(Self) -> Unit raise SimulationError
+  fn activate_partition(Self, UInt32, Double) -> Unit raise SimulationError
+  fn set_clock(Self, UInt32, Bool) -> Unit raise SimulationError
+  fn get_clock(Self, UInt32) -> Bool raise SimulationError
+  fn get_interval(Self, UInt32) -> (Double, IntervalQualifier)? raise SimulationError
   fn read_real(Self, UInt32) -> Double raise SimulationError
   fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
   fn finish(Self) -> Unit raise SimulationError

@@ -588,3 +588,153 @@ pub fn load_fmi3_me_fmu(
     event_indicator_count: parsed.model_structure.event_indicators.length(),
   }
 }
+
+///|
+/// One input clock of a Scheduled Execution FMU, derived from the model
+/// description. The scheduler (`src/sim/se.mbt`) consumes these.
+pub struct SeClock {
+  value_reference : UInt32
+  variability : @schema.ClockIntervalVariability
+  /// XML-declared constant interval, when present.
+  interval_decimal : Double?
+  /// XML-declared shift before the first activation.
+  shift_decimal : Double?
+  /// Scheduling priority (lower value = activated first on ties).
+  priority : UInt32
+  /// Whether the host decides when the clock fires.
+  triggered : Bool
+}
+
+///|
+pub(all) struct LoadedFmu3Se {
+  model : @schema.Fmi3ModelDescription
+  directory : String
+  files : Array[String]
+  library : Fmi3Library
+  instance : Fmi3Instance
+  /// Input clocks in declaration order.
+  clocks : Array[SeClock]
+  /// Output clocks (observed via GetClock, activated by the FMU).
+  output_clocks : Array[UInt32]
+}
+
+///|
+pub fn LoadedFmu3Se::model(self : LoadedFmu3Se) -> @schema.Fmi3ModelDescription {
+  self.model
+}
+
+///|
+pub fn LoadedFmu3Se::instance(self : LoadedFmu3Se) -> Fmi3Instance {
+  self.instance
+}
+
+///|
+pub fn LoadedFmu3Se::dispose(self : LoadedFmu3Se) -> Unit {
+  Fmi3Instance::free(self.instance)
+  Fmi3Library::close(self.library) catch {
+    _ => ()
+  }
+  @fmi.remove_directory_best_effort(self.directory, self.files)
+}
+
+///|
+/// Extracts the clock metadata of a variable; `None` for non-clock
+/// variables.
+fn se_clock_of(
+  variable : @schema.Fmi3Variable,
+  value_reference : UInt32,
+) -> SeClock? {
+  match variable.payload {
+    @schema.Fmi3Payload::Clock(attrs) => {
+      let variability = match attrs.interval_variability {
+        Some(value) => value
+        None =>
+          // MD-033 requires the attribute; treat absence as triggered so
+          // the scheduler cannot silently skip the clock.
+          @schema.ClockIntervalVariability::Triggered
+      }
+      let priority = match attrs.priority {
+        Some(value) => value
+        None => 0U
+      }
+      Some({
+        value_reference,
+        variability,
+        interval_decimal: attrs.interval_decimal,
+        shift_decimal: attrs.shift_decimal,
+        priority,
+        triggered: variability is @schema.ClockIntervalVariability::Triggered,
+      })
+    }
+    _ => None
+  }
+}
+
+///|
+/// Loads a Scheduled Execution FMU (roadmap: FMI 3 SE). The clock list is
+/// derived from the model description; the scheduler drives activations.
+pub fn load_fmi3_se_fmu(
+  data : Bytes,
+  host~ : @fmi.HostPlatform,
+  temp_directory~ : String,
+  platform_override? : String,
+  logging_on? : Bool,
+  on_log~ : (Fmi3LogMessage) -> Unit = fn(_) {  },
+) -> LoadedFmu3Se raise LoaderError {
+  let (parsed, library, temp_directory, files) = load_fmi3_common(
+    data,
+    host~,
+    temp_directory~,
+    platform_override?,
+    interface_kind=@schema.ScheduledExecution,
+  )
+  let clocks : Array[SeClock] = []
+  let output_clocks : Array[UInt32] = []
+  for variable in parsed.variables {
+    // The causality decides the scheduling role: input clocks are driven
+    // by the environment (interval-based or triggered by policy), output
+    // clocks are activated by the FMU and only observed here.
+    if !(variable.payload is @schema.Fmi3Payload::Clock(_)) {
+      continue
+    }
+    let vr = variable.value_reference
+    let is_output = match variable.causality {
+      Some(@schema.Causality::Output) => true
+      _ => false
+    }
+    if is_output {
+      output_clocks.push(vr)
+      continue
+    }
+    match se_clock_of(variable, vr) {
+      Some(clock) => clocks.push(clock)
+      None => ()
+    }
+  }
+  let resource_directory = temp_directory + "/resources"
+  let instance = Fmi3Library::instantiate_se(
+    library,
+    instance_name=parsed.model_name,
+    instantiation_token=parsed.instantiation_token,
+    resource_path=resource_directory,
+    logging_on=logging_on.unwrap_or(true),
+    on_log~,
+  ) catch {
+    error => {
+      Fmi3Library::close(library) catch {
+        _ => ()
+      }
+      @fmi.remove_directory_best_effort(temp_directory, files)
+      raise LoadFailed(detail=error.message())
+    }
+  }
+  {
+    model: parsed,
+    directory: temp_directory,
+    files,
+    library,
+    instance,
+    clocks,
+    output_clocks,
+  }
+}

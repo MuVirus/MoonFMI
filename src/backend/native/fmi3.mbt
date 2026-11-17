@@ -1762,3 +1762,118 @@ fn Fmi3Library::has_clock_capability(self : Fmi3Library) -> Bool {
 fn Fmi3Library::has_fmu_state_capability(self : Fmi3Library) -> Bool {
   shim_has_flag(self.shim, flag_fmu_state)
 }
+
+///|
+let flag_scheduled_execution : Int32 = 17
+
+///|
+extern "C" fn fmi3_activate_model_partition(
+  handle : @c.Pointer[Unit],
+  clock_reference : UInt32,
+  activation_time : Double,
+) -> Int32 = "moonfmi_fmi3_activate_model_partition"
+
+///|
+#borrow(references, intervals, qualifiers)
+extern "C" fn fmi3_get_interval_decimal(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  intervals : FixedArray[Double],
+  qualifiers : FixedArray[Int32],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi3_get_interval_decimal"
+
+///|
+extern "C" fn fmi3_clock_update_count(handle : @c.Pointer[Unit]) -> Int64 = "moonfmi_fmi3_clock_update_count"
+
+///|
+/// Whether the FMU exports the Scheduled Execution group.
+pub fn Fmi3Instance::supports_scheduled_execution(self : Fmi3Instance) -> Bool {
+  shim_has_flag(self.library.shim, flag_scheduled_execution)
+}
+
+///|
+/// Creates a Scheduled Execution instance.
+pub fn Fmi3Library::instantiate_se(
+  self : Fmi3Library,
+  instance_name~ : String,
+  instantiation_token~ : String,
+  resource_path~ : String,
+  logging_on~ : Bool = true,
+  on_log~ : (Fmi3LogMessage) -> Unit = fn(_) {  },
+) -> Fmi3Instance raise Fmi3Error {
+  self.instantiate_common(
+    instance_name~,
+    instantiation_token~,
+    resource_path~,
+    interface_kind=2,
+    logging_on~,
+    on_log~,
+  )
+}
+
+///|
+/// Activates the model partition of one clock
+/// (`fmi3ActivateModelPartition`). `activation_time` is the absolute
+/// simulation time of the clock tick.
+pub fn Fmi3Instance::activate_model_partition(
+  self : Fmi3Instance,
+  clock_reference : UInt32,
+  activation_time : Double,
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_scheduled_execution_capability(),
+    "fmi3ActivateModelPartition",
+    "fmi3ActivateModelPartition",
+  )
+  self.ensure_live("fmi3ActivateModelPartition")
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_activate_model_partition(self.handle, clock_reference, activation_time),
+  )
+  fmi3_fail_on_failure(status, "fmi3ActivateModelPartition")
+}
+
+///|
+/// Reads the remaining interval of one clock together with its qualifier
+/// (`fmi3GetIntervalDecimal`). Returns `None` when the FMU reports
+/// `NotYetKnown`, i.e. the interval is not decidable yet.
+pub fn Fmi3Instance::get_interval_decimal(
+  self : Fmi3Instance,
+  reference : UInt32,
+) -> (Double, @fmi.IntervalQualifier)? raise Fmi3Error {
+  fmi3_require(
+    self.library.has_scheduled_execution_capability(),
+    "fmi3GetIntervalDecimal",
+    "fmi3GetIntervalDecimal",
+  )
+  self.ensure_live("fmi3GetIntervalDecimal")
+  let refs : FixedArray[UInt32] = FixedArray::make(1, reference)
+  let intervals : FixedArray[Double] = FixedArray::make(1, 0.0)
+  let raw : FixedArray[Int32] = FixedArray::make(1, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_interval_decimal(self.handle, refs, intervals, raw, 1),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetIntervalDecimal")
+  match @fmi.IntervalQualifier::from_int32(raw[0]) {
+    Some(qualifier) =>
+      if qualifier is @fmi.IntervalQualifier::NotYetKnown {
+        None
+      } else {
+        Some((intervals[0], qualifier))
+      }
+    None =>
+      raise Fmi3StatusFailed(operation="fmi3GetIntervalDecimal", status=Error)
+  }
+}
+
+///|
+/// How many output-clock notifications the FMU sent through the
+/// clockUpdate callback so far.
+pub fn Fmi3Instance::clock_update_count(self : Fmi3Instance) -> Int64 {
+  fmi3_clock_update_count(self.handle)
+}
+
+///|
+fn Fmi3Library::has_scheduled_execution_capability(self : Fmi3Library) -> Bool {
+  shim_has_flag(self.shim, flag_scheduled_execution)
+}

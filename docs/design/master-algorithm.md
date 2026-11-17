@@ -270,23 +270,33 @@ x_next = x + h/6 * (k1 + 2k2 + 2k3 + k4)
 
 ## 5. SE 主循环（FMI 3）
 
-Scheduled Execution 把模型划分为由时钟驱动的分区。主算法职责更接近“调度器”：
+Scheduled Execution 把模型划分为由时钟驱动的分区。主算法职责更接近“调度器”。
 
-1. 从模型描述收集 Clock 变量及其 `intervalVariability`、`interval`、`shift`、`priority`。
-2. 初始化后确定每个 Clock 的下一次激活时间。
+### 5.1 已实现语义（`src/sim/se.mbt`）
+
+1. 加载时从模型描述收集输入 Clock 的 `intervalVariability`、`intervalDecimal`、`shiftDecimal`、`priority`（`SeClock`，见 `fmu_loader.mbt`）；输出 Clock 单独记录，只观察不驱动。
+2. 调度器在 `start + shift + k*period` 激活 `constant` 时钟；`countdown`/动态时钟每轮通过 `fmi3GetIntervalDecimal` 轮询，`Changed` 时按 `t + interval` 重新定时，`NotYetKnown` 时跳过。
 3. 到点调用 `fmi3ActivateModelPartition(clockReference, activationTime)`。
-4. 读取/写入该分区关联的变量。
-5. 通过 `fmi3GetIntervalDecimal` / `GetIntervalFraction` 获取动态间隔，通过 `SetInterval*` / `SetShift*` 调整。
-6. 处理 `fmi3Clock` 的激活状态。
+4. 同一时刻到期的多个分区按 `priority` 升序执行（值小者优先，符合 3.0.2 §2.4.2“Smaller values signal higher priorities”）。
+5. `triggered` 输入时钟由宿主策略决定：`SeConfig::trigger` 回调在给定仿真时刻返回要触发的时钟值引用；`trigger_all_each_step` 是“每步全触发”的确定性默认策略。
+6. 每轮激活后轮询输出 Clock（`fmi3GetClock`）；Reference 实现读即清零，因此 `SimulationResult.events` 记录分区激活次数，`clock_update_count` 单独暴露 FMU 的 `clockUpdate` 通知数。
+7. 分区可能激活其它时钟（Clocks 参考模型在 t=4 由分区 1 武装 countdown 时钟），调度器在同一网格点内做多轮结算，`max_rounds` 上限防死循环。
 
-约束：
+### 5.2 约束与边界
 
-- SE 的时钟语义复杂，首版只支持固定间隔、单速率/少量多速率模型；
-- 不支持可被外部触发且无固定周期的 Clock，除非宿主显式提供触发；
-- 分区之间共享变量时，必须按规范保证一致性与执行顺序；
-- `priority` 只作为调度提示，不保证实时性。
+- 无实时性保证：`priority` 只决定同刻激活顺序，不映射到 OS 优先级；
+- 输入时钟必须声明 `priority`（SE FMU 里缺失由 MD-037 报错）；输出时钟不得声明（MD-036）；
+- `fmi3SetClock` 支持显式激活/去激活（`SeInstance::set_clock`），CLI 暂不暴露脚本化触发通道；
+- 与 CS/ME 的变量交换一致性仍由模型侧保证，调度器只负责按时激活；
+- 记录器目前只记录 Float64 输出（Clocks 的计数器是 Int32，因此 CLI JSON 的 `outputs` 为空，属已知限制）。
 
-SE 放到 FMI 3 完善阶段，不在首个可用版本中承诺。
+### 5.3 验收
+
+`tests/integration/se_wbtest.mbt`：
+- Reference-FMUs `Clocks.fmu`（SE-only；constant/triggered/countdown 输入时钟 + 输出时钟）驱动 10 s：分区激活 15 次（inClock1 10 + inClock2 4 + inClock3 1），计数器 10/4/1/15 与模型描述中的参考时间线一致，`clock_update` 通知 4 次；
+- mock 单测：同刻激活按 priority 排序、countdown 级联、非法配置拒绝。
+
+CLI：`moonfmi simulate <fmu> --interface se --start-time 0 --stop-time 10 --step-size 1`。
 
 ---
 
