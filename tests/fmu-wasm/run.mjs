@@ -104,8 +104,14 @@ function log(message) {
   process.stdout.write(message + '\n');
 }
 
+const HOME_BIN = join(
+  process.env.USERPROFILE || process.env.HOME || '',
+  '.moonfmi',
+  'bin',
+);
+
 function findTool(name) {
-  const envDir = process.env.MOONFMI_WASM_BIN;
+  const envDir = process.env.MOONFMI_WASM_BIN || HOME_BIN;
   if (envDir) {
     const candidates =
       process.platform === 'win32'
@@ -415,6 +421,22 @@ function commandClean() {
 
 const command = process.argv[2] ?? 'test';
 try {
+  // `build-export <dir>` builds a Wasm FMU produced by the MoonFMI exporter
+  // (F-08): the exported tree ships its own build.mjs, so delegate to it.
+  if (command === 'build-export') {
+    const dir = process.argv[3];
+    if (!dir) {
+      console.error('usage: node run.mjs build-export <export-dir>');
+      process.exit(2);
+    }
+    const script = join(resolve(dir), 'build.mjs');
+    if (!existsSync(script)) {
+      throw new Error('no build.mjs in ' + dir);
+    }
+    run(requireTool('node'), [script], { cwd: dir });
+    log('build-export done: ' + dir);
+    process.exit(0);
+  }
   const built = spikes.map(buildOne);
   switch (command) {
     case 'build':
@@ -439,7 +461,7 @@ try {
       break;
     default:
       console.error(`unknown command: ${command}`);
-      console.error('usage: node run.mjs [build|test|package|setup-jco|clean]');
+      console.error('usage: node run.mjs [build|test|package|build-export|setup-jco|clean]');
       process.exit(2);
   }
 } catch (error) {

@@ -356,7 +356,7 @@ pub fn export_model(ir : &ModelIr, options : ExportOptions) -> ExportResult rais
 | E2 | FMI 3 源码 FMU | 数组/新类型最小模型 |
 | E3 | native 二进制（纯 C 路径） | Windows/Linux 各一个可加载 DLL/so |
 | E4 | WASM POC | 浏览器/Wasmtime 能实例化并步进 |
-| E5 | WASM FMU 正式导出 | LS-WASM manifest + 交叉测试 |
+| E5 ✅ | WASM FMU 正式导出 | `export_wasm_fmu`(F-08):Float64 标量子集,布局+轨迹已验证 |
 
 ---
 

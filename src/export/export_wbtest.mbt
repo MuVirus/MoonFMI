@@ -88,3 +88,62 @@ test "fmi 3 arrays emit dimension elements and fmi 2 rejects them" {
     Err(error) => assert_true(error.message().contains("dimension"))
   }
 }
+
+///|
+test "wasm export writes the component tree" {
+  let ir = dahlquist_ir()
+  let result = export_wasm_fmu(
+    ir,
+    ExportOptions::new(
+      fmi_version=@schema.FmiVersion::V3,
+      output_dir=Some(".moonfmi-tmp/wasm-export-unit"),
+      write_fmu=false,
+    ),
+  )
+  let names = result.files.map(fn(entry) { entry.0 })
+  assert_true(names.contains("modelDescription.xml"))
+  assert_true(names.contains("wit/moonfmidahlquist.wit"))
+  assert_true(names.contains("guest/fmu_impl.mbt"))
+  assert_true(names.contains("extra/org.modelica.fmi-ls-wasm/manifest.xml"))
+  assert_true(names.contains("build.mjs"))
+  // The model description is the FMI 3 one (LS-WASM is FMI 3 only).
+  let xml = @utf8.decode_lossy(result.files[0].1.exact_view())
+  assert_true(xml.contains("fmiVersion=\"3.0\""))
+  // The WIT world carries the CS resource and the host log import.
+  let wit = @utf8.decode_lossy(result.files[1].1.exact_view())
+  assert_true(wit.contains("world moonfmidahlquist"))
+  assert_true(wit.contains("resource fmu"))
+  assert_true(wit.contains("do-step"))
+  assert_true(wit.contains("log: func"))
+  // The guest implements Euler integration and the output equation.
+  let guest = @utf8.decode_lossy(result.files[2].1.exact_view())
+  assert_true(guest.contains("fn State::integrate"))
+  assert_true(guest.contains("dx[0]"))
+  assert_true(guest.contains("s.v_y = s.v_x"))
+}
+
+///|
+test "wasm export rejects non-float and array variables" {
+  let ir = dahlquist_ir()
+  ignore(ir.add_int_parameter(name="n", start=1L))
+  let outcome : Result[ExportResult, ExportError] = Ok(
+    export_wasm_fmu(
+      ir,
+      ExportOptions::new(
+        fmi_version=@schema.FmiVersion::V3,
+        output_dir=Some(".moonfmi-tmp/wasm-export-reject"),
+        write_fmu=false,
+      ),
+    ),
+  ) catch {
+    error => Err(error)
+  }
+  match outcome {
+    Ok(_) => abort("non-float variable must be rejected")
+    Err(error) =>
+      assert_true(
+        error.message().contains("EX-030"),
+        msg="error carries EX-030: " + error.message(),
+      )
+  }
+}

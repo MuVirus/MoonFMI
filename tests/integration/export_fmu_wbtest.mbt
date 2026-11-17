@@ -522,3 +522,50 @@ test "exported fmi2 fmu reports missing fmu state capability" {
   }
   loaded.dispose()
 }
+
+///|
+/// F-08: the WASM exporter's tree must build with the external component
+/// toolchain and package a loadable-by-inspection FMU. Skips when node or
+/// wit-bindgen is absent (the main gate never depends on them).
+test "wasm export builds a component fmu end to end" {
+  if run_shell("node --version") != 0L {
+    println("SKIP: node not on PATH")
+    return
+  }
+  if run_shell("wit-bindgen --version") != 0L &&
+    run_shell("\"%USERPROFILE%/.moonfmi/bin/wit-bindgen.exe\" --version") != 0L {
+    println("SKIP: wit-bindgen not available")
+    return
+  }
+  let ir = @export.dahlquist_example_ir()
+  let result = @export.export_wasm_fmu(
+    ir,
+    @export.ExportOptions::new(
+      fmi_version=@schema.FmiVersion::V3,
+      output_dir=Some(".moonfmi-tmp/wasm-e2e-\{@env.now()}"),
+      write_fmu=false,
+    ),
+  ) catch {
+    error => abort("wasm export failed: " + error.message())
+  }
+  let command = "node tests/fmu-wasm/run.mjs build-export \"\{result.output_dir}\""
+  if run_shell(command) != 0L {
+    abort("wasm build failed: " + command)
+  }
+  let fmu_path = "\{result.output_dir}/MoonfmiDahlquist.fmu"
+  let data = @fs.read_file_to_bytes(fmu_path) catch {
+    error => abort("reading built wasm fmu failed: " + io_message(error))
+  }
+  let archive = @zip.ZipArchive::open(data) catch {
+    error => abort("wasm fmu is not a valid zip: " + error.message())
+  }
+  assert_true(archive.contains("modelDescription.xml"))
+  assert_true(archive.contains("binaries/wasm32-wasip2/MoonfmiDahlquist.wasm"))
+  assert_true(archive.contains("extra/org.modelica.fmi-ls-wasm/manifest.xml"))
+  let xml = archive.read("modelDescription.xml")
+  let (_, report) = @schema.parse_and_validate(xml)
+  assert_eq(report.error_count(), 0)
+  if report.error_count() > 0 {
+    abort("wasm model description failed: \{report.diagnostics[0].render()}")
+  }
+}

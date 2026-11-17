@@ -23,6 +23,8 @@ pub fn dahlquist_example_ir() -> ModelIr
 
 pub fn export_source_fmu(ModelIr, ExportOptions) -> ExportResult raise ExportError
 
+pub fn export_wasm_fmu(ModelIr, ExportOptions) -> ExportResult raise ExportError
+
 pub fn generate_cmake(ModelIr, @schema.FmiVersion) -> String
 
 pub fn generate_fmi2_entry(ModelIr) -> String
@@ -37,11 +39,17 @@ pub fn generate_model_c(ModelIr) -> String
 
 pub fn generate_model_header(ModelIr) -> String
 
+pub fn generate_wasm_guest(ModelIr) -> String
+
+pub fn generate_wasm_wit(ModelIr) -> String
+
 pub fn generated_c_source_names(ModelIr) -> Array[String]
 
 pub fn ir_sha256_hex(String) -> String
 
 pub fn model_description_xml(ModelIr, @schema.FmiVersion) -> String raise ExportError
+
+pub fn wasm_package_name(ModelIr) -> String
 
 // Errors
 pub(all) suberror ExportError {

@@ -125,7 +125,7 @@
 | F-05 ✅ | wasmtime 宿主 + 回调 | P2 | L | F-04 | jco/Node 日志回调通道 |
 | F-06 | `jco` 浏览器 POC | P3 | L | F-04 | Chrome/Firefox(待验证) |
 | F-07 ✅ | WASM FMU 打包/manifest | P2 | M | F-04 | LS-WASM 布局,MoonFMI 校验 |
-| F-08 | WASM 导出器 | P3 | XL | F-04/E-01 | 生成可加载 FMU(未启动;F-07 已手工验证布局) |
+| F-08 ✅ | WASM 导出器 | P3 | XL | F-04/E-01 | `export_wasm_fmu` 生成 wit/guest/build.mjs;e2e 构建+Dahlquist 轨迹验证 |
 
 > F-01 / F-03 是 P0 第四周的探针，结论见 [`p0-report.md`](p0-report.md) §3 和 [`../../tests/spikes/wasm-component/`](../../tests/spikes/wasm-component/README.md)。F-02 起进入 P7。
 
