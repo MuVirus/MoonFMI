@@ -82,7 +82,22 @@ pub impl @fmi.CsInstance for Fmi3Instance with fn initialize(self) {
 }
 
 ///|
-pub impl @fmi.CsInstance for Fmi3Instance with fn step(self, t, h) {
+/// The FMI 3 co-simulation step body shared by `step` and `try_step`:
+/// loop `fmi3DoStep` until the FMU reaches `t + h`, handling event mode
+/// requests and early returns on the way (master-algorithm.md §3.3/§3.4).
+/// Returns the time the FMU actually reached.
+///
+/// A `Discard` status is not swallowed: it raises `Discarded` with the
+/// FMU-confirmed `lastSuccessfulTime` so the master algorithm can roll
+/// back or continue from the confirmed time (master-algorithm.md §3.5,
+/// task C-11). While a rollback point is armed, `fmi3DoStep` runs with
+/// `noSetFMUStatePrior = fmi3False` because the master may restore the
+/// captured state after a discard.
+fn Fmi3Instance::fmi3_cs_advance(
+  self : Fmi3Instance,
+  t : Double,
+  h : Double,
+) -> Double raise @fmi.SimulationError {
   let target = t + h
   let mut current = t
   let mut attempts = 0
@@ -94,14 +109,30 @@ pub impl @fmi.CsInstance for Fmi3Instance with fn step(self, t, h) {
         detail="early return did not converge within \{fmi3_max_step_retries} attempts at t=\{t}",
       )
     }
-    let result = Fmi3Instance::do_step(self, current, target - current) catch {
+    let rollback_armed = self.saved_state is Some(_)
+    let result = Fmi3Instance::do_step(
+      self,
+      current,
+      target - current,
+      no_set_fmu_state_prior=!rollback_armed,
+    ) catch {
       error =>
         raise @fmi.FmiCall(operation="fmi3DoStep", detail=error.message())
     }
     if result.terminate_simulation {
       // The master treats the step as done; the next read/record reflects
       // the terminated state (FMI 2 behaves the same way).
-      return
+      return target
+    }
+    if result.status is Discard {
+      // The FMU could not reach the requested time; it confirmed progress
+      // up to `lastSuccessfulTime`. Hand the decision to the master
+      // (rollback with capture, continue from the confirmed time without)
+      // rather than pretending the step completed (master-algorithm.md §3.5).
+      raise @fmi.Discarded(
+        detail="fmi3DoStep reported Discard at t=\{current}",
+        last_successful_time=Some(result.last_successful_time),
+      )
     }
     if result.event_handling_needed {
       // Event mode loop: EnterEventMode → UpdateDiscreteStates until
@@ -123,7 +154,7 @@ pub impl @fmi.CsInstance for Fmi3Instance with fn step(self, t, h) {
             )
         }
         if info.terminate_simulation {
-          return
+          return target
         }
         if !info.new_discrete_states_needed {
           break
@@ -156,6 +187,69 @@ pub impl @fmi.CsInstance for Fmi3Instance with fn step(self, t, h) {
     } else {
       current = target
     }
+  }
+  target
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn step(self, t, h) {
+  let _ = Fmi3Instance::fmi3_cs_advance(self, t, h)
+}
+
+///|
+/// `try_step` runs the same step body but reports the reached time, and
+/// surfaces a `Discard` status as `Discarded` with the FMU-confirmed
+/// progress instead of treating the step as complete (C-11).
+pub impl @fmi.CsInstance for Fmi3Instance with fn try_step(self, t, h) -> Double raise @fmi.SimulationError {
+  Fmi3Instance::fmi3_cs_advance(self, t, h)
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn supports_state_capture(self) -> Bool {
+  Fmi3Instance::supports_fmu_state(self)
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn begin_rollback_point(self) -> Unit raise @fmi.SimulationError {
+  let state = Fmi3Instance::get_fmu_state(self) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3GetFMUState", detail=error.message())
+  }
+  self.saved_state = Some(state)
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn rollback(self) -> Unit raise @fmi.SimulationError {
+  match self.saved_state {
+    Some(state) =>
+      Fmi3Instance::set_fmu_state(self, state) catch {
+        error =>
+          raise @fmi.FmiCall(
+            operation="fmi3SetFMUState",
+            detail=error.message(),
+          )
+      }
+    None =>
+      raise @fmi.Config(
+        detail="rollback requested but no FMU state was captured",
+      )
+  }
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn commit_rollback_point(self) -> Unit raise @fmi.SimulationError {
+  match self.saved_state {
+    Some(state) => {
+      Fmi3Instance::free_fmu_state(self, state) catch {
+        error =>
+          raise @fmi.FmiCall(
+            operation="fmi3FreeFMUState",
+            detail=error.message(),
+          )
+      }
+      self.saved_state = None
+    }
+    None => ()
   }
 }
 

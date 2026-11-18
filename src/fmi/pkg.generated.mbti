@@ -41,6 +41,7 @@ pub(all) suberror SimulationError {
   Config(detail~ : String)
   FmiCall(operation~ : String, detail~ : String)
   Timeout(detail~ : String)
+  Discarded(detail~ : String, last_successful_time~ : Double?)
 }
 pub fn SimulationError::message(Self) -> String
 
@@ -116,6 +117,11 @@ pub(open) trait CsInstance {
   fn setup_experiment(Self, start~ : Double, stop~ : Double?) -> Unit raise SimulationError
   fn initialize(Self) -> Unit raise SimulationError
   fn step(Self, Double, Double) -> Unit raise SimulationError
+  fn try_step(Self, Double, Double) -> Double raise SimulationError = _
+  fn supports_state_capture(Self) -> Bool = _
+  fn begin_rollback_point(Self) -> Unit raise SimulationError = _
+  fn rollback(Self) -> Unit raise SimulationError = _
+  fn commit_rollback_point(Self) -> Unit raise SimulationError = _
   fn read_real(Self, UInt32) -> Double raise SimulationError
   fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
   fn finish(Self) -> Unit raise SimulationError

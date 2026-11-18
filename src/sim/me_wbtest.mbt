@@ -356,6 +356,7 @@ fn me_config_rejected(mock : MockMe, config : MeConfig) -> Bool {
         Config(_) => { times: [], series: [], steps: -1, events: 0, }
         Timeout(_) => { times: [], series: [], steps: -2, events: 0, }
         FmiCall(..) => { times: [], series: [], steps: -2, events: 0, }
+        Discarded(..) => { times: [], series: [], steps: -2, events: 0, }
       }
   }
   result.steps() == -1

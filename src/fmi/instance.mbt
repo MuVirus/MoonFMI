@@ -13,6 +13,32 @@ pub(open) trait CsInstance {
   /// Advance one communication step from `t` by `h`.
   fn step(self : Self, t : Double, h : Double) -> Unit raise SimulationError
 
+  /// Advance one communication step from `t` by at most `h` and report the
+  /// time the FMU actually reached. Normally that is `t + h`; the method
+  /// exists so backends can report a `Discard` precisely instead of
+  /// guessing (master-algorithm.md §3.5, task C-11). The default
+  /// implementation runs `step` and assumes it reached `t + h`.
+  fn try_step(self : Self, t : Double, h : Double) -> Double raise SimulationError = _
+
+  /// Whether the backend can capture and restore FMU state (`C-09`
+  /// primitives) so the master can roll back a discarded step. The default
+  /// implementation reports `false`.
+  fn supports_state_capture(self : Self) -> Bool = _
+
+  /// Capture the FMU state as a rollback point for the step in progress.
+  /// The default implementation refuses because `supports_state_capture`
+  /// reports `false`.
+  fn begin_rollback_point(self : Self) -> Unit raise SimulationError = _
+
+  /// Restore the FMU to the state captured by `begin_rollback_point`.
+  fn rollback(self : Self) -> Unit raise SimulationError = _
+
+  /// Release the captured state after the step settled successfully. The
+  /// default implementation is a no-op: without capture there is nothing
+  /// to release. A backend that overrides `begin_rollback_point` must
+  /// override this one as well, or captured state leaks.
+  fn commit_rollback_point(self : Self) -> Unit raise SimulationError = _
+
   /// Read one real output by value reference.
   fn read_real(self : Self, value_reference : UInt32) -> Double raise SimulationError
 
@@ -24,12 +50,48 @@ pub(open) trait CsInstance {
 }
 
 ///|
+/// Default `try_step`: run `step` and report `t + h`. Backends that can
+/// observe a `Discard` override this to raise `Discarded` instead.
+impl CsInstance with fn try_step(self, t, h) -> Double raise SimulationError {
+  self.step(t, h)
+  t + h
+}
+
+///|
+/// Default state-capture surface: unsupported. Backends implementing the
+/// `C-09` primitives override all four rollback methods together.
+impl CsInstance with fn supports_state_capture(_self) -> Bool {
+  false
+}
+
+///|
+impl CsInstance with fn begin_rollback_point(_self) -> Unit raise SimulationError {
+  raise Config(detail="FMU state capture is not supported by this backend")
+}
+
+///|
+impl CsInstance with fn rollback(_self) -> Unit raise SimulationError {
+  raise Config(detail="FMU state capture is not supported by this backend")
+}
+
+///|
+impl CsInstance with fn commit_rollback_point(_self) -> Unit raise SimulationError {
+  // no default capture, nothing to release
+}
+
+///|
 /// Master-algorithm failures, normalized across backends.
 pub(all) suberror SimulationError {
   Config(detail~ : String)
   FmiCall(operation~ : String, detail~ : String)
   /// The run exceeded its wall-clock deadline.
   Timeout(detail~ : String)
+  /// The FMU discarded a communication step. `last_successful_time`
+  /// carries the progress the FMU confirmed; FMI 3 reports it explicitly,
+  /// FMI 2 has no such report and the field is `None`. The master reacts
+  /// by rolling back (when state capture is available) or by continuing
+  /// from the confirmed time (master-algorithm.md §3.5).
+  Discarded(detail~ : String, last_successful_time~ : Double?)
 }
 
 ///|
@@ -38,6 +100,12 @@ pub fn SimulationError::message(self : SimulationError) -> String {
     Config(detail~) => "invalid simulation configuration: \{detail}"
     FmiCall(operation~, detail~) => "\{operation} failed: \{detail}"
     Timeout(detail~) => "simulation timed out: \{detail}"
+    Discarded(detail~, last_successful_time~) =>
+      match last_successful_time {
+        Some(confirmed) =>
+          "the FMU discarded the step (confirmed up to t=\{confirmed}): \{detail}"
+        None => "the FMU discarded the step: \{detail}"
+      }
   }
 }
 

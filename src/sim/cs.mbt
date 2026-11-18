@@ -64,9 +64,27 @@ pub fn SimulationResult::events(self : SimulationResult) -> Int32 {
 let time_epsilon : Double = 0.000000001
 
 ///|
+/// How often a discarded communication step may be retried before the run
+/// is aborted (master-algorithm.md §3.5). The retry halves the step, so
+/// the cap bounds the work to a constant factor of the original grid.
+let max_discard_retries : Int32 = 5
+
+///|
+/// A retried step never shrinks below this size. Below it the numbers are
+/// numerically meaningless and retrying would only burn the attempt cap.
+let min_retry_step : Double = 0.000000000001
+
+///|
 /// The FMI 2 co-simulation master algorithm:
 /// `setup → initialize → record(t0) → loop { doStep; record(t+h) } → finish`.
 /// The final step is truncated to `stop_time`; errors abort the run.
+///
+/// A `Discard` from the FMU is not treated as success (master-algorithm.md
+/// §3.5): with FMU state capture available the step is rolled back and
+/// retried with a halved step size (capped at `max_discard_retries`);
+/// without capture, an FMI 3 FMU that confirms `lastSuccessfulTime`
+/// progress lets the run continue from there, and anything else aborts
+/// with a diagnostic instead of recording a fictitious time.
 pub fn run_cs_simulation(
   instance : &@fmi.CsInstance,
   config~ : CsConfig,
@@ -110,8 +128,85 @@ pub fn run_cs_simulation(
     if t + h > config.stop_time {
       h = config.stop_time - t
     }
-    instance.step(t, h)
-    t = t + h
+    // Rollback state is armed once per grid point and reused for every
+    // retry of that point (master-algorithm.md §3.5 strategy 1).
+    let can_capture = instance.supports_state_capture()
+    let mut attempts = 0
+    let mut reached = t
+    while true {
+      attempts += 1
+      if attempts > max_discard_retries {
+        raise @fmi.Config(
+          detail="the step at t=\{t} was discarded \{max_discard_retries} times without converging",
+        )
+      }
+      if can_capture {
+        instance.begin_rollback_point()
+      }
+      let mut discarded = false
+      let outcome = instance.try_step(t, h) catch {
+        error =>
+          match error {
+            Discarded(detail~, last_successful_time~) => {
+              discarded = true
+              if can_capture {
+                instance.rollback()
+                let retried = h / 2.0
+                if !(retried >= min_retry_step) {
+                  raise @fmi.Config(
+                    detail="discarded step at t=\{t}: halved step \{retried} is below the \{min_retry_step} retry floor",
+                  )
+                }
+                h = retried
+              } else {
+                match last_successful_time {
+                  Some(confirmed) =>
+                    if confirmed > t + time_epsilon {
+                      // FMI 3 confirmed real progress; continue the run
+                      // from there instead of recording a fictitious
+                      // t + h. The next grid point uses the full
+                      // configured step again.
+                      reached = confirmed
+                    } else {
+                      raise @fmi.Config(
+                        detail="the FMU discarded the step at t=\{t}, confirmed no progress, and FMU state capture is unavailable: \{detail}",
+                      )
+                    }
+                  None =>
+                    raise @fmi.Config(
+                      detail="the FMU discarded the step at t=\{t} and FMU state capture is unavailable: \{detail}",
+                    )
+                }
+              }
+              t
+            }
+            other => {
+              // The run aborts; release the armed capture so the FMU
+              // state handle does not outlive the step (backends also
+              // free an armed state when the instance is torn down).
+              if can_capture {
+                instance.commit_rollback_point() catch {
+                  _ => ()
+                }
+              }
+              raise other
+            }
+          }
+      }
+      if discarded {
+        if reached > t + time_epsilon {
+          break
+        }
+        // capture path: retry this grid point with the halved step
+        continue
+      }
+      if can_capture {
+        instance.commit_rollback_point()
+      }
+      reached = outcome
+      break
+    }
+    t = reached
     record(t)
     steps += 1
   }

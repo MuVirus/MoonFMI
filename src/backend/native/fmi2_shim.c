@@ -124,6 +124,13 @@ typedef struct moonfmi_fmi2_library {
   fmi2DoStepTYPE *do_step;
   fmi2GetRealTYPE *get_real;
   fmi2SetRealTYPE *set_real;
+  /* Integer/Boolean value group. Required by FMI 2 but resolved as a group
+     so a partial export reports an explicit capability error instead of a
+     missing-symbol failure at load time. */
+  fmi2GetIntegerTYPE *get_integer;
+  fmi2SetIntegerTYPE *set_integer;
+  fmi2GetBooleanTYPE *get_boolean;
+  fmi2SetBooleanTYPE *set_boolean;
   /* Model Exchange symbols; an FMU may legally export only one interface
      group, so these resolve optionally and `has_model_exchange` records
      whether the group is complete. */
@@ -150,6 +157,7 @@ typedef struct moonfmi_fmi2_library {
   int32_t has_model_exchange;
   int32_t has_fmu_state;
   int32_t has_serialized_fmu_state;
+  int32_t has_integer_boolean;
   /* Retired instances keep their context alive until the library is released,
      so a callback from a buggy FMU cannot touch freed memory. */
   struct moonfmi_fmi2_instance *retired;
@@ -277,6 +285,15 @@ moonfmi_fmi2_library_new(void *handle) {
   library->has_serialized_fmu_state =
       (library->serialize_fmu_state != NULL &&
        library->deserialize_fmu_state != NULL)
+          ? 1
+          : 0;
+  library->get_integer = moonfmi_resolve(handle, "fmi2GetInteger");
+  library->set_integer = moonfmi_resolve(handle, "fmi2SetInteger");
+  library->get_boolean = moonfmi_resolve(handle, "fmi2GetBoolean");
+  library->set_boolean = moonfmi_resolve(handle, "fmi2SetBoolean");
+  library->has_integer_boolean =
+      (library->get_integer != NULL && library->set_integer != NULL &&
+       library->get_boolean != NULL && library->set_boolean != NULL)
           ? 1
           : 0;
   if (!library->has_co_simulation && !library->has_model_exchange) {
@@ -575,6 +592,80 @@ moonfmi_fmi2_set_real(void *handle,
   return (int32_t)instance->library->set_real(
       instance->component, (const fmi2ValueReference *)references,
       (size_t)count, (const fmi2Real *)values);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_get_integer(void *handle,
+                         const uint32_t *references,
+                         int32_t *values,
+                         int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->get_integer(
+      instance->component, (const fmi2ValueReference *)references,
+      (size_t)count, (fmi2Integer *)values);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_set_integer(void *handle,
+                         const uint32_t *references,
+                         const int32_t *values,
+                         int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  if (references != NULL && count > 0) {
+  }
+  return (int32_t)instance->library->set_integer(
+      instance->component, (const fmi2ValueReference *)references,
+      (size_t)count, (const fmi2Integer *)values);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_get_boolean(void *handle,
+                         const uint32_t *references,
+                         int32_t *values,
+                         int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->get_boolean(
+      instance->component, (const fmi2ValueReference *)references,
+      (size_t)count, (fmi2Boolean *)values);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_set_boolean(void *handle,
+                         const uint32_t *references,
+                         const int32_t *values,
+                         int32_t count) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL || count < 0) {
+    return (int32_t)fmi2Error;
+  }
+  return (int32_t)instance->library->set_boolean(
+      instance->component, (const fmi2ValueReference *)references,
+      (size_t)count, (const fmi2Boolean *)values);
+}
+
+/* Capability flags for the typed value groups; mirrors the FMU-state flag
+   query. Bit 1: fmi2Get/SetInteger + fmi2Get/SetBoolean resolved. */
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_library_typed_value_support(void *library_handle) {
+  moonfmi_fmi2_library *library = (moonfmi_fmi2_library *)library_handle;
+  if (library == NULL) {
+    return 0;
+  }
+  return library->has_integer_boolean;
 }
 
 /* ------------------------------------------------------------------------- */

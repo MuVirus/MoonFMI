@@ -65,8 +65,11 @@ struct Fmi3LogSink {
 ///|
 /// The result of one `fmi3DoStep` call. `early_return` and
 /// `last_successful_time` only carry information when early return was
-/// allowed at instantiation; this host never allows it.
+/// allowed at instantiation; this host never allows it. The call status
+/// travels with the result because `Discard` is not a failure: the caller
+/// decides how to react (master-algorithm.md §3.5).
 pub(all) struct Fmi3DoStepResult {
+  status : @fmi.FmiStatus
   event_handling_needed : Bool
   terminate_simulation : Bool
   early_return : Bool
@@ -85,6 +88,12 @@ pub struct Fmi3Instance {
   /// capability verdict must come from the model description instead.
   mut declared_fmu_state : Bool
   mut declared_serialized : Bool
+  /// FMU state captured by `begin_rollback_point` for the step in
+  /// progress (C-11 rollback, master-algorithm.md §3.5). `None` unless a
+  /// rollback point is armed; while armed, `fmi3DoStep` is called with
+  /// `noSetFMUStatePrior = fmi3False` because the master may roll the
+  /// step back through `fmi3SetFMUState`.
+  mut saved_state : @c.Pointer[Unit]?
   /// `fmi3EnterInitializationMode` arguments, stored by
   /// `setup_experiment` and applied by `initialize`.
   mut pending_tolerance : Double?
@@ -626,6 +635,7 @@ fn Fmi3Library::instantiate_common(
     freed: false,
     declared_fmu_state: false,
     declared_serialized: false,
+    saved_state: None,
     pending_tolerance: None,
     pending_start: 0.0,
     pending_stop: None,
@@ -805,6 +815,7 @@ pub fn Fmi3Instance::do_step(
   )
   fmi3_fail_on_failure(status, "fmi3DoStep")
   {
+    status,
     event_handling_needed: fmi3_out_flag(event_needed),
     terminate_simulation: fmi3_out_flag(terminate),
     early_return: fmi3_out_flag(early_return),
@@ -1438,7 +1449,7 @@ pub fn Fmi3Instance::get_boolean(
   )
   self.ensure_live("fmi3GetBoolean")
   let refs = fmi3_refs_fixed(references)
-  let raw : FixedArray[Byte] = FixedArray::make(refs.length(), b' ')
+  let raw : FixedArray[Byte] = FixedArray::make(refs.length(), b'\x00')
   let status = @fmi.FmiStatus::from_int32(
     fmi3_get_boolean(self.handle, refs, raw, refs.length(), raw.length()),
   )
@@ -1467,7 +1478,7 @@ pub fn Fmi3Instance::set_boolean(
     raise Fmi3StatusFailed(operation="fmi3SetBoolean", status=Error)
   }
   let refs = fmi3_refs_fixed(references)
-  let raw : FixedArray[Byte] = FixedArray::make(values.length(), b' ')
+  let raw : FixedArray[Byte] = FixedArray::make(values.length(), b'\x00')
   for index, value in values {
     raw[index] = (if value { 1 } else { 0 }).to_byte()
   }
@@ -1579,7 +1590,7 @@ pub fn Fmi3Instance::get_clock_one(
   )
   self.ensure_live("fmi3GetClock")
   let refs : FixedArray[UInt32] = FixedArray::make(1, reference)
-  let raw : FixedArray[Byte] = FixedArray::make(1, b' ')
+  let raw : FixedArray[Byte] = FixedArray::make(1, b'\x00')
   let status = @fmi.FmiStatus::from_int32(
     fmi3_get_clock(self.handle, refs, raw, 1),
   )
@@ -1698,6 +1709,15 @@ pub fn Fmi3Instance::is_freed(self : Fmi3Instance) -> Bool {
 pub fn Fmi3Instance::free(self : Fmi3Instance) -> Unit {
   if self.freed {
     return
+  }
+  // Release an armed rollback state (C-11) before the instance dies; the
+  // run is tearing down either way, so this is best effort.
+  match self.saved_state {
+    Some(state) => {
+      fmi3_free_fmu_state(self.handle, state)
+      self.saved_state = None
+    }
+    None => ()
   }
   self.sink.active = false
   fmi3_instance_free(self.handle)

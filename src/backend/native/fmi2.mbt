@@ -23,6 +23,8 @@ pub(all) suberror Fmi2Error {
   Fmi2InstancesAlive(count~ : Int32)
   // The FMU does not declare the capability the call needs.
   Fmi2CapabilityMissing(operation~ : String, capability~ : String)
+  // The call arguments are inconsistent (e.g. length mismatch).
+  Fmi2InvalidArgument(operation~ : String, detail~ : String)
 }
 
 ///|
@@ -40,6 +42,8 @@ pub fn Fmi2Error::message(self : Fmi2Error) -> String {
       operation + " failed with status " + status.name()
     Fmi2CapabilityMissing(operation~, capability~) =>
       operation + " is not available: the FMU does not declare " + capability
+    Fmi2InvalidArgument(operation~, detail~) =>
+      operation + " called with invalid arguments: " + detail
     Fmi2InstancesAlive(count~) =>
       "the library still owns " +
       count.to_string() +
@@ -81,6 +85,10 @@ pub struct Fmi2Instance {
   mut declared_fmu_state : Bool
   /// Whether the model description declares canSerializeFMUstate.
   mut declared_serialized : Bool
+  /// FMU state captured by `begin_rollback_point` for the step in
+  /// progress (C-11 rollback, master-algorithm.md §3.5). `None` unless a
+  /// rollback point is armed.
+  mut saved_state : @c.Pointer[Unit]?
 }
 
 ///|
@@ -162,6 +170,47 @@ extern "C" fn fmi2_set_real(
   values : FixedArray[Double],
   count : Int32,
 ) -> Int32 = "moonfmi_fmi2_set_real"
+
+///|
+#borrow(references, values)
+extern "C" fn fmi2_get_integer(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Int32],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_get_integer"
+
+///|
+#borrow(references, values)
+extern "C" fn fmi2_set_integer(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Int32],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_set_integer"
+
+///|
+#borrow(references, values)
+extern "C" fn fmi2_get_boolean_group(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Int32],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_get_boolean"
+
+///|
+#borrow(references, values)
+extern "C" fn fmi2_set_boolean_group(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Int32],
+  count : Int32,
+) -> Int32 = "moonfmi_fmi2_set_boolean"
+
+///|
+extern "C" fn fmi2_library_typed_value_support(
+  library : @c.Pointer[Unit],
+) -> Int32 = "moonfmi_fmi2_library_typed_value_support"
 
 ///|
 extern "C" fn fmi2_last_error() -> Bytes = "moonfmi_fmi2_last_error"
@@ -375,6 +424,7 @@ pub fn Fmi2Library::instantiate(
     freed: false,
     declared_fmu_state: false,
     declared_serialized: false,
+    saved_state: None,
   }
 }
 
@@ -429,6 +479,7 @@ pub fn Fmi2Library::instantiate_me(
     freed: false,
     declared_fmu_state: false,
     declared_serialized: false,
+    saved_state: None,
   }
 }
 
@@ -595,6 +646,170 @@ pub fn Fmi2Instance::set_real_one(
 }
 
 ///|
+/// Whether the library exports the `fmi2Get/SetInteger` and
+/// `fmi2Get/SetBoolean` group. Required by FMI 2 but resolved as a group:
+/// a partial export reports an explicit capability error on use instead
+/// of failing at load time (C-08).
+pub fn Fmi2Instance::supports_integer_boolean(self : Fmi2Instance) -> Bool {
+  fmi2_library_typed_value_support(self.library.shim) != 0
+}
+
+///|
+fn Fmi2Instance::require_integer_boolean(
+  self : Fmi2Instance,
+  operation~ : String,
+) -> Unit raise Fmi2Error {
+  self.ensure_live(operation)
+  if !self.supports_integer_boolean() {
+    raise Fmi2CapabilityMissing(
+      operation~,
+      capability="fmi2GetInteger/fmi2SetInteger/fmi2GetBoolean/fmi2SetBoolean",
+    )
+  }
+}
+
+///|
+/// Reads Integer variables (`fmi2GetInteger`; `fmi2Integer` is a C `int`).
+pub fn Fmi2Instance::get_integer(
+  self : Fmi2Instance,
+  references : Array[UInt32],
+) -> Array[Int32] raise Fmi2Error {
+  self.require_integer_boolean(operation="fmi2GetInteger")
+  let count = references.length()
+  let refs = FixedArray::make(count, 0U)
+  for index, reference in references {
+    refs[index] = reference
+  }
+  let values = FixedArray::make(count, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_get_integer(self.handle, refs, values, count),
+  )
+  fail_on_failure(status, "fmi2GetInteger")
+  let result = Array(capacity=count)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+pub fn Fmi2Instance::get_integer_one(
+  self : Fmi2Instance,
+  reference : UInt32,
+) -> Int32 raise Fmi2Error {
+  self.get_integer([reference])[0]
+}
+
+///|
+/// Writes Integer variables (`fmi2SetInteger`).
+pub fn Fmi2Instance::set_integer(
+  self : Fmi2Instance,
+  references : Array[UInt32],
+  values : Array[Int32],
+) -> Unit raise Fmi2Error {
+  self.require_integer_boolean(operation="fmi2SetInteger")
+  if references.length() != values.length() {
+    raise Fmi2InvalidArgument(
+      operation="fmi2SetInteger",
+      detail="got \{references.length()} value references but \{values.length()} values",
+    )
+  }
+  let count = references.length()
+  let refs = FixedArray::make(count, 0U)
+  for index, reference in references {
+    refs[index] = reference
+  }
+  let buffer = FixedArray::make(count, 0)
+  for index, value in values {
+    buffer[index] = value
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_set_integer(self.handle, refs, buffer, count),
+  )
+  fail_on_failure(status, "fmi2SetInteger")
+}
+
+///|
+pub fn Fmi2Instance::set_integer_one(
+  self : Fmi2Instance,
+  reference : UInt32,
+  value : Int32,
+) -> Unit raise Fmi2Error {
+  self.set_integer([reference], [value])
+}
+
+///|
+/// Reads Boolean variables (`fmi2GetBoolean`; `fmi2Boolean` is a C `int`,
+/// unlike FMI 3's one-byte `bool`).
+pub fn Fmi2Instance::get_boolean(
+  self : Fmi2Instance,
+  references : Array[UInt32],
+) -> Array[Bool] raise Fmi2Error {
+  self.require_integer_boolean(operation="fmi2GetBoolean")
+  let count = references.length()
+  let refs = FixedArray::make(count, 0U)
+  for index, reference in references {
+    refs[index] = reference
+  }
+  let values = FixedArray::make(count, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_get_boolean_group(self.handle, refs, values, count),
+  )
+  fail_on_failure(status, "fmi2GetBoolean")
+  let result = Array(capacity=count)
+  for value in values {
+    result.push(value != 0)
+  }
+  result
+}
+
+///|
+pub fn Fmi2Instance::get_boolean_one(
+  self : Fmi2Instance,
+  reference : UInt32,
+) -> Bool raise Fmi2Error {
+  self.get_boolean([reference])[0]
+}
+
+///|
+/// Writes Boolean variables (`fmi2SetBoolean`).
+pub fn Fmi2Instance::set_boolean(
+  self : Fmi2Instance,
+  references : Array[UInt32],
+  values : Array[Bool],
+) -> Unit raise Fmi2Error {
+  self.require_integer_boolean(operation="fmi2SetBoolean")
+  if references.length() != values.length() {
+    raise Fmi2InvalidArgument(
+      operation="fmi2SetBoolean",
+      detail="got \{references.length()} value references but \{values.length()} values",
+    )
+  }
+  let count = references.length()
+  let refs = FixedArray::make(count, 0U)
+  for index, reference in references {
+    refs[index] = reference
+  }
+  let buffer = FixedArray::make(count, 0)
+  for index, value in values {
+    buffer[index] = if value { 1 } else { 0 }
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi2_set_boolean_group(self.handle, refs, buffer, count),
+  )
+  fail_on_failure(status, "fmi2SetBoolean")
+}
+
+///|
+pub fn Fmi2Instance::set_boolean_one(
+  self : Fmi2Instance,
+  reference : UInt32,
+  value : Bool,
+) -> Unit raise Fmi2Error {
+  self.set_boolean([reference], [value])
+}
+
+///|
 pub fn Fmi2Instance::terminate(self : Fmi2Instance) -> Unit raise Fmi2Error {
   self.ensure_live("fmi2Terminate")
   let status = @fmi.FmiStatus::from_int32(fmi2_terminate(self.handle))
@@ -626,6 +841,17 @@ pub fn Fmi2Instance::is_freed(self : Fmi2Instance) -> Bool {
 pub fn Fmi2Instance::free(self : Fmi2Instance) -> Unit {
   if self.freed {
     return
+  }
+  // Release an armed rollback state (C-11) before the instance dies; the
+  // run is tearing down either way, so this is best effort.
+  match self.saved_state {
+    Some(state) => {
+      let _ = @fmi.FmiStatus::from_int32(
+        fmi2_free_fmu_state(self.handle, state),
+      )
+      self.saved_state = None
+    }
+    None => ()
   }
   self.sink.active = false
   fmi2_instance_free(self.handle)
