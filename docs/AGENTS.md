@@ -11,7 +11,15 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 3. **FMU 导出**（先源码 FMU，再 WASM FMU）
 4. **验证、打包与交叉测试**
 
-> 当前阶段：P1 已完成；P2 核心路径已打通（2026-11-07）。`moonfmi simulate` 可对真实 FMI 2 CS FMU 运行主算法并输出 CSV/JSON，BouncingBall 300 步与 C 参考宿主 1e-9 一致。P0 的导入侧与 WASM 探针结论见 [`roadmap/p0-report.md`](roadmap/p0-report.md)、[`records/2026-11-02.md`](records/2026-11-02.md)。P1 交付了 `schema` 包的 FMI 2/3 类型化模型与解析器、MD-001…063 语义校验、`moonfmi validate/info` CLI（文本/JSON/退出码）、四类测试样品、固定种子 fuzz 回归与 10k 变量性能闸门；8 个真实 Reference-FMUs 全部零诊断通过。实施记录见 [`records/2026-11-07.md`](records/2026-11-07.md)。XML 的 1 MB/100 ms 目标仍未达到（1.6 MB/10k 变量实测 278 ms），已登记为风险；B-19（XSD 字段覆盖脚本）顺延到 P2。P2 剩余项：Dahlquist 对照、多实例隔离、Linux CI 确认；然后进入 P3（FMI 2 ME）。P1/P2 实施记录见 [`records/2026-11-07.md`](records/2026-11-07.md)。
+> 当前阶段（2026-11-18）：路线图 P0–P8 全部完成。`moonfmi` 支持 FMI 2.0.4/3.0.2 的
+> CS/ME 仿真、FMI 3 Scheduled Execution（完整时钟语义）、`validate/info/package/doctor`
+> CLI、源码 FMU 导出（FMI 2/3，含 FMPy XSD 校验对照）与实验性 WASM 导出器/浏览器
+> POC。交叉检查（9 个 Reference-FMUs 样品 × 接口矩阵 + FMI 2/3 轨迹对照 + FMPy
+> 外检）见 [`reports/crosscheck.md`](reports/crosscheck.md)。首轮硬化（fuzz、性能
+> 基线、安全审查、发布清单 + SBOM、FMI 2 状态序列化）随 P8 完成；R-24（CI 首跑）
+> 已关闭。当前进入硬化/补强阶段：开放项集中在 CS 主算法的 Discard 回滚（C-11）、
+> FMI 2 Integer/Boolean 绑定（C-08 余项）、多 FMU 耦合（README 已知限制）、导出器
+> 数组方程、FMI 3 字段覆盖（68%）。各阶段实施记录见 [`records/README.md`](records/README.md)。
 
 ---
 
@@ -88,12 +96,20 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | P0 ABI 基线 | ✅ 完成 | `tests/abi/baselines/x86_64-{windows,linux}.json`，CI 逐字段比较 |
 | P0 C 参考宿主 | ✅ 完成 | BouncingBall 300 步、6 个采样点，作为 MoonBit 后端的对照答案 |
 | P0 FMI 2 CS 端到端 | ✅ 完成 | MoonBit 加载真实 FMU，与 C 宿主逐点一致（1e-9 时间 / 1e-12 变量） |
-| P0 真实 FMU 集成 | ✅ 部分完成 | 5 个 FMU 打开并解析；`7z` 逐文件对比待补 |
-| 9 包骨架与依赖检查 | ✅ 完成 | `src/`、`tools/check-deps.mbtx`；native 45 / wasm 30 个测试通过（含集成测试） |
-| Windows + Linux CI | 🟡 已配置，待首跑 | `.github/workflows/ci.yml` |
+| P0 真实 FMU 集成 | ✅ 完成 | 8 个 Reference-FMUs 全部打开/解析/仿真；交叉检查矩阵见 [`reports/crosscheck.md`](reports/crosscheck.md) |
+| 9 包骨架与依赖检查 | ✅ 完成 | `src/`、`tools/check-deps.mbtx`；native 140 个测试通过（含集成测试） |
+| Windows + Linux CI | ✅ 首跑通过 | `.github/workflows/ci.yml`，run 44003079369（R-24 已关闭，2026-11-17） |
 | 真实 FMU 测试语料 | ✅ 完成 | 8 个 Reference-FMUs v0.0.42，清单 + SHA-256 + 离线缓存 |
-| 官方 XSD 对照 | ✅ 完成（可选） | 5 个样品，5/5 按预期；不实现 XSD 引擎 |
-| FMI-LS-WASM POC | 🟡 G1–G3 通过 | MoonBit → component → wasmtime/jco 可行；G4 Adder FMU、G5 浏览器、G6 回调、G7 native 对照未做；见 [`records/2026-11-02.md`](records/2026-11-02.md) §9 |
+| 官方 XSD 对照 | ✅ 完成（可选） | `tests/data/validate-xsd.ps1`，CI Windows 步骤；不实现 XSD 引擎 |
+| P1 解析与校验 | ✅ 完成（2026-11-07） | MD-001…063、validate/info CLI、四类样品、fuzz、性能闸门；见 [`records/2026-11-07.md`](records/2026-11-07.md) |
+| P2 FMI 2 CS MVP | ✅ 完成（2026-11-15） | 真实 FMU 仿真、CSV/JSON、参考对照；C-08 余项（Integer/Boolean 绑定）待补 |
+| P3 FMI 2 ME | ✅ 完成 | Euler/RK4、事件检测、参考轨迹 |
+| P4 FMI 3 CS/ME/SE | ✅ 完成（2026-11-17） | 数组、新类型、Clock/SE 完整时钟语义 |
+| P5 CLI/打包 | ✅ 完成 | info/doctor/package、JSON 契约、退出码矩阵 |
+| P6 源码导出 | ✅ 完成（2026-11-17） | FMI 2/3 导出、可复现打包、FMPy XSD 对照 |
+| P7 WASM/LS-WASM | ✅ 完成（2026-11-17，实验性） | CS component、浏览器 POC（F-06）、WASM 导出器（F-08） |
+| P8 硬化 | ✅ 首轮完成 | fuzz、性能基线、安全审查、发布清单/SBOM；持续项见 roadmap |
+| FMI-LS-WASM POC | ✅ G1–G7 收口 | component/宿主/浏览器均可运行；全量 SE/ME world 不在范围；见 [`records/2026-11-17-b.md`](records/2026-11-17-b.md) |
 | P0 总结报告 | ✅ 完成 | [`roadmap/p0-report.md`](roadmap/p0-report.md)，五个决定已定 |
 
 状态图例：✅ 完成，🟡 进行中，⬜ 未开始，⚠️ 有阻塞或待验证。

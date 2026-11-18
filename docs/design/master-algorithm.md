@@ -176,13 +176,26 @@ FMI 3 CS 可能通过 `earlyReturn` 提前返回：
 
 ### 3.5 Discard 与回滚
 
-`Discard` 表示该步被丢弃，FMU 状态可能处于不确定位置。策略：
+`Discard` 表示该步被丢弃，FMU 状态可能处于不确定位置。**已实现**（C-11，
+2026-11-18）的策略：
 
-1. 若支持 `get/set FMUState`：在每步前保存状态，Discard 后恢复，缩小步长重试。
-2. 若不支持：使用 `lastSuccessfulTime`；若无法回到一致状态，终止并报告。
-3. 不把 `Discard` 当成成功继续。
+1. 若 FMU 支持 `canGetAndSetFMUstate`（`C-09` 原语可用）：在每个通信点前
+   `begin_rollback_point` 捕获状态，Discard 后 `rollback` 恢复，步长减半重试；
+   成功后 `commit_rollback_point` 释放。重试上限 5 次，减半到 `1e-12` 以下
+   报错终止。
+2. 若不支持状态捕获：FMI 3 的 `Discard` 携带 `lastSuccessfulTime`，主算法
+   从确认时刻继续（下一个网格点用完整步长）；FMI 2 没有该报告，终止并给出
+   明确诊断（不把 Discard 当成成功继续）。
+3. 实现位置：`CsInstance` trait 的 `try_step` 返回 FMU 实际到达的时刻，
+   `Discarded` 错误变体携带确认进度；回滚表面为
+   `supports_state_capture`/`begin_rollback_point`/`rollback`/
+   `commit_rollback_point` 四个方法，默认实现为"不支持"。FMI 2/FMI 3 后端
+   均已覆盖；实例释放时会兜底释放未提交的捕获状态。
+4. FMI 3 细节：回滚点武装期间 `fmi3DoStep` 以
+   `noSetFMUStatePriorToCurrentPoint = fmi3False` 调用，因为主算法可能在本步
+   之后调用 `fmi3SetFMUState` 回滚。
 
-重试要有上限（例如 5 次），避免死循环。
+重试上限 5 次，避免死循环。
 
 ---
 

@@ -23,7 +23,7 @@
 | A-01 | 建立 `zip`、`xml`、`schema`、`fmi`、`backend/*`、`sim`、`export`、`cli` 包骨架 | P0 | S | — | `moon check` 通过，依赖方向符合架构 |
 | A-02 | CI：fmt/info/test + Windows/Linux | P0 | M | A-01 | PR 必须全绿 |
 | A-03 | 测试语料清单与校验和 | P0 | S | — | `tests/data/README` 记录来源/许可 |
-| A-04 | XSD 对照检查（可选，外部工具 xmllint/lxml） | P0 | S | A-03 | 四类样品预期结果写死；工具可用时能复现 |
+| A-04 ✅ | XSD 对照检查（可选，外部工具 xmllint/lxml） | P0 | S | A-03 | 四类样品预期结果写死；工具可用时能复现（`tests/data/validate-xsd.ps1`，CI Windows 步骤） |
 | A-05 | Spike：`dl` 加载自建动态库 | P0 | S | — | Windows/Linux 调用成功 |
 | A-06 | Spike：C shim 链接 MoonBit native | P0 | M | — | 明确可行/退路并记录 |
 | A-07 | Spike：MoonBit wasm → component | P0 | M | — | wasmtime 调用成功 |
@@ -54,7 +54,7 @@
 | B-16 ✅ | MD-060…063 安全规则 | P1 | M | B-03/B-04 | 恶意语料 |
 | B-17 ✅ | 诊断对象/排序/去重 | P1 | M | B-11…B-16 | golden 快照 |
 | B-18 ✅ | `moonfmi validate` 文本/JSON | P1 | M | B-17 | 退出码/JSON 稳定 |
-| B-19 | 字段覆盖脚本（XSD vs 模型） | P2 | M | B-07/B-08 | CI 报告差异 |
+| B-19 ✅ | 字段覆盖脚本（XSD vs 模型） | P2 | M | B-07/B-08 | `tools/field-coverage.mjs` + `docs/reports/field-coverage.md`（FMI 2 97% / FMI 3 68%，缺口清单见报告） |
 | B-20 ✅ | fuzz 固定种子回归 | P2 | M | B-02/B-04 | 无 panic/OOM |
 
 ---
@@ -69,11 +69,11 @@
 | C-04 ✅ | 动态库加载（绝对路径/依赖） | P0 | M | A-05/C-03 | Windows/Linux |
 | C-05 ✅ | 符号表绑定/可选符号 | P0 | M | C-04 ✅ | 缺失符号可定位 |
 | C-06 ✅ | C shim：回调/结构体/日志 | P0 | L | A-06 | 日志测试 |
-| C-07 | FMI 2 实例化/释放 | P1 | M | C-05/C-06 | 真实 FMU |
-| C-08 | FMI 2 get/set/状态码 | P1 | L | C-07 | 类型/布尔测试 |
-| C-09 | FMI 2 状态保存/序列化 | P2 | M | C-08 | 能力缺失报错 |
+| C-07 ✅ | FMI 2 实例化/释放 | P1 | M | C-05/C-06 | 真实 FMU（P2 核心路径，2026-11-07） |
+| C-08 ✅ | FMI 2 get/set/状态码 | P1 | L | C-07 | Real（P2）+ Integer/Boolean 数组/单值绑定（2026-11-18，Feedthrough 真实 FMU roundtrip）；String 通道未做（FMI 2/3 一致，导入侧暂无需求） |
+| C-09 ✅ | FMI 2 状态保存/序列化 | P2 | M | C-08 | 能力缺失报错（commit 21ebba1，Get/Set/Free/Serialize/Deserialize 全链路） |
 | C-10 ✅ | CS 主算法 | P1 | L | C-08 | BouncingBall |
-| C-11 | CS 事件/回滚/早退 | P1 | L | C-10 ✅ | 事件测试 |
+| C-11 ✅ | CS 事件/回滚/早退 | P1 | L | C-10 ✅ | Discard 回滚+步长减半重试(上限 5)+FMI 3 lastSuccessfulTime 续跑;FMI 3 早退收敛已存在于绑定层;见 master-algorithm.md §3.5 与 2026-11-18 记录 |
 | C-12 ✅ | 结果记录 CSV/内存 | P1 | M | C-10 ✅ | 列稳定 |
 | C-13 ✅ | ME 主算法（Euler/RK4） | P2 | L | C-08 | VanDerPol |
 | C-14 ✅ | ME 事件检测 | P2 | L | C-13 | 事件时间测试 |
@@ -82,6 +82,7 @@
 | C-17 ✅ | FMI 3 CS | P1 | M | C-15/C-16 | 事件/早退 |
 | C-18 ✅ | FMI 3 ME | P2 | M | C-15/C-16 | 参考轨迹 |
 | C-19 ✅ | FMI 3 SE 实现 | P3 | L | C-15 | 调度器(constant/countdown/triggered + priority + 输出时钟);Clocks.fmu 参考时间线通过 |
+| C-20 ✅ | 多 FMU 耦合 MVP | P3 | L | C-10 ✅ | 参与者+连接+拓扑序步进(常量外推,无滞后);代数环拒绝;端到端:导出 Dahlquist+Gain 耦合与解析解一致;见 design/coupling.md |
 
 ---
 
@@ -111,6 +112,7 @@
 | E-06 ✅ | 纯 C native FMU | P2 | M | E-04 | Windows 实测 + Linux CI 首跑通过(clang) |
 | E-07 ✅ | 生成 FMU 回读/对比 | P2 | M | E-04 | CS/ME 与解析解一致;数组 roundtrip |
 | E-08 ✅ | 可复现打包 | P3 | M | B-05/E-04 | 两次导出 sha256 相同 |
+| E-09 ✅ | 导出器数组方程 | P3 | L | E-03 ✅ | FMI 3 元素级数组方程(DerivativeElement/OutputElement + IrExpr::Element);EX-018/019 校验;StateSpace 对角例子端到端 (0.9/0.8/0.7)^n 一致;见 2026-11-18 记录 |
 
 ---
 

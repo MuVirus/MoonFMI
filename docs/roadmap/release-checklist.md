@@ -24,7 +24,7 @@
 ## 3. 发布产物
 
 - [ ] `moon build --target native --release cmd/main` 产出 CLI
-- [ ] 附 sha256:`main.exe` / `main` 二进制
+- [ ] 附 sha256:`main.exe` / `main` 二进制。可复现性(2026-11-18 实测):两次 `moon clean` + `moon build --target native --release` 的 main.exe 在 1,058,816 字节中仅 2 字节不同——PE 头 COFF TimeDateStamp(0x108)与调试目录时间戳(0xE8034),均为链接时间;其余字节逐位一致。逐字节可复现需链接器支持 SOURCE_DATE_EPOCH(上游未提供),发布时以附 sha256 为准。
 - [ ] 若发布源码导出样例 FMU:构建产物 + 生成 FMU 的 sha256
 - [ ] 版本号:遵守 roadmap 发布节奏表(`0.x` 对应阶段)
 

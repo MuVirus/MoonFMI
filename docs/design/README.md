@@ -24,6 +24,7 @@
 | [`architecture.md`](architecture.md) | 总体架构、包布局、依赖规则、公共 API |
 | [`importer.md`](importer.md) | FMU 加载、平台选择、符号绑定、实例生命周期 |
 | [`master-algorithm.md`](master-algorithm.md) | CS/ME/SE 主算法、事件、输入输出、结果 |
+| [`coupling.md`](coupling.md) | 多 FMU 耦合主算法（参与者、连接、拓扑序步进、代数环拒绝） |
 | [`exporter.md`](exporter.md) | 源码 FMU / native FMU / WASM FMU 导出 |
 | [`wasm-strategy.md`](wasm-strategy.md) | LS-WASM、component 化、浏览器/宿主 |
 | [`xsd-and-validation.md`](xsd-and-validation.md) | 解析器、语义校验、诊断、CI |

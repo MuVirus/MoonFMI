@@ -16,6 +16,7 @@
 
 | 日期 | 内容 |
 | --- | --- |
+| [`2026-11-18`](2026-11-18.md) | 按优先级完善:C-11 CS 回滚、C-08 Integer/Boolean 绑定(修 ABI 参数序缺陷)、C-20 多 FMU 耦合 MVP、E-09 数组方程、MD-038 + 字段覆盖 100%、CLI 可复现性实测 |
 | [`2026-11-15`](2026-11-15.md) | P2 收尾(Dahlquist 对照、多实例)、P3 FMI 2 ME、P4 FMI 3 CS/ME、P5 CLI/诊断/打包 |
 | [`2026-11-17-b`](2026-11-17-b.md) | FMI 3 SE 实现、F-08 WASM 导出器、F-06 浏览器实测、cross-check 跨版本对照、FMPy 实测、Linux CI 首跑(R-24 关闭) |
 | [`2026-11-17`](2026-11-17.md) | P6 源码 FMU 导出、P7 WASM CS 组件与打包、C-09 FMI 2 状态序列化、P8 首轮硬化(bench/fuzz/crosscheck/安全审查/发布清单) |

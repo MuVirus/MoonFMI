@@ -142,12 +142,12 @@ fn run_ball(fmu_path : String) -> Unit {
 - 模型交换（ME）的积分器只有定步长 Euler 与经典 RK4。MoonFMI 不是通用
   ME 求解器：刚性系统、大型 DAE 与自适应步长控制不在范围内（见
   [`docs/design/master-algorithm.md`](docs/design/master-algorithm.md)）。
-- 每次运行只支持单个 FMU；多 FMU 耦合（连接、代数环）属于后续工作。
+- 多个 CS FMU 的耦合已作为 library 级主算法支持（`MuVirus/fmi/src/sim`：参与者、连接、按拓扑序步进 + 常量外推；代数环会被拒绝，见 [`docs/design/coupling.md`](docs/design/coupling.md)）。Discard 时的多 FMU 协同回滚、Integer/Boolean 信号连接与 CLI 入口属于后续工作。
 - FMI 3 Scheduled Execution 支持固定、动态与 countdown 输入时钟、宿主
   触发时钟以及输出时钟级联，但不提供实时保证：priority 只决定同一时刻
   的激活顺序。
 - 源码 FMU 导出器只生成受限的显式模型（连续状态、直通输出、参数与
-  输入）；它不是 Modelica 编译器，也暂不生成数组方程。
+  输入）；它不是 Modelica 编译器。FMI 3 数组变量支持按元素的方程(DerivativeElement/OutputElement),稠密矩阵运算暂不生成。
 - WebAssembly 后端为实验性：已验证最小 CS 组件与 LS-WASM 打包（见
   [`tests/fmu-wasm/README.md`](tests/fmu-wasm/README.md)），完整的
   LS-WASM world 与浏览器导入属于后续工作。`simulate --backend wasm`

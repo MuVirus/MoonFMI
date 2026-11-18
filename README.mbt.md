@@ -151,14 +151,20 @@ directory. FMI 3 uses the same shape through `load_fmi3_fmu`.
   MoonFMI is not a general-purpose ME solver: stiff systems, large DAEs, and
   adaptive step control are out of scope (see
   [`docs/design/master-algorithm.md`](docs/design/master-algorithm.md)).
-- One FMU per run; coupling several FMUs (connections, algebraic loops) is
+- Coupling several CS FMUs is supported as a library-level master
+  (`MuVirus/fmi/src/sim`: participants, connections, topological stepping
+  with constant extrapolation; algebraic loops are rejected — see
+  [`docs/design/coupling.md`](docs/design/coupling.md)). Multi-FMU rollback
+  on `Discard`, Integer/Boolean signal connections, and a CLI front end are
   future work.
 - FMI 3 Scheduled Execution supports fixed, calculated and countdown input
   clocks, host-triggered clocks, and output-clock cascades, but gives no
   real-time guarantee: priority only orders activations at the same instant.
 - The source-FMU exporter emits restricted explicit models (continuous
   states, feedthrough outputs, parameters and inputs); it is not a Modelica
-  compiler, and array equations are not generated yet.
+  compiler. FMI 3 array variables support element-wise equations
+  (DerivativeElement/OutputElement); dense matrix array arithmetic is not
+  generated.
 - The WebAssembly backend is experimental: a minimal CS component and
   LS-WASM packaging are verified (see
   [`tests/fmu-wasm/README.md`](tests/fmu-wasm/README.md)), while the full
