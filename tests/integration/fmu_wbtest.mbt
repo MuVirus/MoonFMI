@@ -129,9 +129,7 @@ test "one megabyte model description parses within 100 ms" {
   }
   let mut warmup_count = 0
   while true {
-    let event = warmup.read_event() catch {
-      error => abort(xml_message(error))
-    }
+    let event = warmup.read_event() catch { error => abort(xml_message(error)) }
     if event is Eof {
       break
     }
