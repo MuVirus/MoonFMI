@@ -82,5 +82,64 @@ test "zz mismatch" {
     _ => rejected_boolean = true
   }
   assert_true(rejected_boolean)
+  let mut rejected_string = false
+  instance.set_string([29U], ["a", "b"]) catch {
+    _ => rejected_string = true
+  }
+  assert_true(rejected_string)
+  loaded.dispose()
+}
+
+///|
+test "fmi2 string channel roundtrips through feedthrough" {
+  let loaded = open_feedthrough()
+  let instance = loaded.instance()
+  // String_input vr 29 -> String_output vr 30; non-ASCII content exercises
+  // the UTF-8 copy in the shim and the UTF-8 decode on the MoonBit side.
+  let text = "你好，world 🎯"
+  instance.set_string_one(29U, text)
+  instance.setup_experiment(start_time=0.0, stop_time=1.0)
+  instance.enter_initialization_mode()
+  instance.exit_initialization_mode()
+  let status = instance.do_step(0.0, 0.1)
+  assert_true(status is Ok)
+  assert_eq(instance.get_string_one(30U), text)
+  // A second value while the run continues; the channel stays live.
+  instance.set_string_one(29U, "二次写入")
+  let status2 = instance.do_step(0.1, 0.1)
+  assert_true(status2 is Ok)
+  assert_eq(instance.get_string_one(30U), "二次写入")
+  // Array form: input and output read in one call.
+  assert_eq(instance.get_string([29U, 30U]), ["二次写入", "二次写入"])
+  loaded.dispose()
+}
+
+///|
+test "fmi3 string channel roundtrips through feedthrough" {
+  let loaded = load_fmi3("fmi3/Feedthrough.fmu", "fmi3-ft-string")
+  let instance = loaded.instance()
+  instance.setup_experiment(start_time=0.0, stop_time=1.0)
+  init_fmi3_cs(instance)
+  let text = "字符串 🎯 roundtrip"
+  instance.set_string([29U], [text])
+  instance.step(0.0, 0.1)
+  assert_eq(instance.get_string([30U]), [text])
+  instance.terminate()
+  loaded.dispose()
+}
+
+///|
+test "fmi3 binary channel roundtrips through feedthrough" {
+  let loaded = load_fmi3("fmi3/Feedthrough.fmu", "fmi3-ft-binary")
+  let instance = loaded.instance()
+  instance.setup_experiment(start_time=0.0, stop_time=1.0)
+  init_fmi3_cs(instance)
+  // Raw bytes with an embedded NUL: copied by length, never interpreted as
+  // UTF-8 or C text, and not truncated at the NUL byte.
+  let payload = b"bin\x00ary 中"
+  instance.set_binary([31U], [payload])
+  instance.step(0.0, 0.1)
+  assert_eq(instance.get_binary([32U]), [payload])
+  instance.terminate()
   loaded.dispose()
 }

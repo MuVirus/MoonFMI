@@ -131,6 +131,9 @@ typedef struct moonfmi_fmi2_library {
   fmi2SetIntegerTYPE *set_integer;
   fmi2GetBooleanTYPE *get_boolean;
   fmi2SetBooleanTYPE *set_boolean;
+  /* String value group, resolved like the Integer/Boolean group. */
+  fmi2GetStringTYPE *get_string;
+  fmi2SetStringTYPE *set_string;
   /* Model Exchange symbols; an FMU may legally export only one interface
      group, so these resolve optionally and `has_model_exchange` records
      whether the group is complete. */
@@ -158,6 +161,7 @@ typedef struct moonfmi_fmi2_library {
   int32_t has_fmu_state;
   int32_t has_serialized_fmu_state;
   int32_t has_integer_boolean;
+  int32_t has_string;
   /* Retired instances keep their context alive until the library is released,
      so a callback from a buggy FMU cannot touch freed memory. */
   struct moonfmi_fmi2_instance *retired;
@@ -170,6 +174,15 @@ typedef void (*moonfmi_log_thunk)(void *closure,
                                   moonbit_bytes_t category,
                                   moonbit_bytes_t message);
 
+/* fmi2SetString lets the FMU retain the passed `fmi2String` pointer until the
+   next call to fmi2SetString for the same value reference or until
+   fmi2FreeInstance, so the shim keeps its own NUL-terminated copy per value
+   reference. MoonBit never sees the pointer. */
+typedef struct moonfmi_fmi2_string_slot {
+  fmi2ValueReference reference;
+  char *text;
+} moonfmi_fmi2_string_slot;
+
 struct moonfmi_fmi2_instance {
   moonfmi_fmi2_library *library;
   fmi2Component component;
@@ -181,6 +194,11 @@ struct moonfmi_fmi2_instance {
   int32_t logging_enabled;
   int32_t freed;
   fmi2CallbackFunctions callbacks;
+  /* Shown-owned copies of strings passed to fmi2SetString, one slot per value
+     reference; freed when the instance is released. */
+  moonfmi_fmi2_string_slot *string_slots;
+  uint64_t string_slot_count;
+  uint64_t string_slot_capacity;
   moonfmi_fmi2_instance *next_retired;
 };
 
@@ -296,6 +314,11 @@ moonfmi_fmi2_library_new(void *handle) {
        library->get_boolean != NULL && library->set_boolean != NULL)
           ? 1
           : 0;
+  /* fmi2GetString/fmi2SetString resolve as a group as well. */
+  library->get_string = moonfmi_resolve(handle, "fmi2GetString");
+  library->set_string = moonfmi_resolve(handle, "fmi2SetString");
+  library->has_string =
+      (library->get_string != NULL && library->set_string != NULL) ? 1 : 0;
   if (!library->has_co_simulation && !library->has_model_exchange) {
     moonfmi_set_error(
         "the shared library exports neither fmi2DoStep nor a complete "
@@ -454,6 +477,8 @@ moonfmi_fmi2_instance_new(void *library_handle,
   return instance;
 }
 
+static void moonfmi_fmi2_free_strings(moonfmi_fmi2_instance *instance);
+
 /* Marks the instance dead, retires its context and releases everything that
  * the FMU may still reach during `fmi2FreeInstance`. */
 MOONBIT_FFI_EXPORT
@@ -467,6 +492,9 @@ moonfmi_fmi2_instance_free(void *handle) {
     instance->library->free_instance(instance->component);
     instance->component = NULL;
   }
+  /* Release the shim-owned fmi2SetString copies: after fmi2FreeInstance the
+     FMU no longer retains any pointer we gave it. */
+  moonfmi_fmi2_free_strings(instance);
   instance->freed = 1;
   instance->logging_enabled = 0;
   if (instance->log_closure != NULL) {
@@ -654,6 +682,120 @@ moonfmi_fmi2_set_boolean(void *handle,
   return (int32_t)instance->library->set_boolean(
       instance->component, (const fmi2ValueReference *)references,
       (size_t)count, (const fmi2Boolean *)values);
+}
+
+/* ------------------------------------------------------------------------- */
+/* Value access: strings                                                     */
+/* ------------------------------------------------------------------------- */
+
+/* Releases every shim-owned fmi2SetString copy of an instance. */
+static void
+moonfmi_fmi2_free_strings(moonfmi_fmi2_instance *instance) {
+  for (uint64_t i = 0; i < instance->string_slot_count; i++) {
+    free(instance->string_slots[i].text);
+  }
+  free(instance->string_slots);
+  instance->string_slots = NULL;
+  instance->string_slot_count = 0;
+  instance->string_slot_capacity = 0;
+}
+
+/* Stores `text` as the shim-owned copy for `reference`, replacing any earlier
+   copy for the same reference (which is freed). `text` must be a fresh
+   NUL-terminated allocation; on allocation failure it is freed by the caller
+   and the error is already recorded. */
+static int
+moonfmi_fmi2_set_string_slot(moonfmi_fmi2_instance *instance,
+                             fmi2ValueReference reference,
+                             char *text) {
+  for (uint64_t i = 0; i < instance->string_slot_count; i++) {
+    if (instance->string_slots[i].reference == reference) {
+      free(instance->string_slots[i].text);
+      instance->string_slots[i].text = text;
+      return 1;
+    }
+  }
+  if (instance->string_slot_count == instance->string_slot_capacity) {
+    uint64_t capacity = instance->string_slot_capacity == 0 ? 8 : instance->string_slot_capacity * 2;
+    moonfmi_fmi2_string_slot *slots = (moonfmi_fmi2_string_slot *)realloc(
+        instance->string_slots,
+        capacity * sizeof(moonfmi_fmi2_string_slot));
+    if (slots == NULL) {
+      moonfmi_set_error("out of memory while growing fmi2 string slots");
+      return 0;
+    }
+    instance->string_slots = slots;
+    instance->string_slot_capacity = capacity;
+  }
+  instance->string_slots[instance->string_slot_count].reference = reference;
+  instance->string_slots[instance->string_slot_count].text = text;
+  instance->string_slot_count += 1;
+  return 1;
+}
+
+MOONBIT_FFI_EXPORT
+moonbit_bytes_t
+moonfmi_fmi2_get_string(void *handle,
+                        uint32_t reference,
+                        int32_t *status_out) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    *status_out = (int32_t)fmi2Error;
+    return moonfmi_bytes_from_text("");
+  }
+  fmi2ValueReference refs[1] = { (fmi2ValueReference)reference };
+  fmi2String strings[1] = { NULL };
+  /* Note: this project's FMI 2 header drops the `nValue` parameter from
+     fmi2GetString/fmi2SetString; one value reference maps to one value. */
+  fmi2Status status = instance->library->get_string(
+      instance->component, refs, 1, strings);
+  *status_out = (int32_t)status;
+  /* strings[0] is borrowed from the FMU; copy the bytes out before it can
+     change. A NULL value becomes an empty byte sequence. */
+  return moonfmi_bytes_from_text(strings[0]);
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_set_string(void *handle,
+                        uint32_t reference,
+                        moonbit_bytes_t value) {
+  moonfmi_fmi2_instance *instance = moonfmi_live(handle);
+  if (instance == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  /* Copy the caller's bytes into a NUL-terminated allocation the FMU may
+     retain; MoonBit's bytes are consumed by this call and need no lifetime
+     management after it returns. */
+  char *copy = moonfmi_copy_bytes(value);
+  if (copy == NULL) {
+    return (int32_t)fmi2Error;
+  }
+  if (!moonfmi_fmi2_set_string_slot(instance, (fmi2ValueReference)reference,
+                                    copy)) {
+    free(copy);
+    return (int32_t)fmi2Error;
+  }
+  fmi2ValueReference refs[1] = { (fmi2ValueReference)reference };
+  fmi2String strings[1] = { copy };
+  fmi2Status status = instance->library->set_string(
+      instance->component, refs, 1, strings);
+  /* The copy stays owned by the shim: FMI 2 allows the FMU to retain the
+     pointer until the next fmi2SetString for the same reference or until
+     fmi2FreeInstance, so it must not be freed here. It is released by
+     moonfmi_fmi2_free_strings when the slot is replaced or the instance
+     is freed. */
+  return (int32_t)status;
+}
+
+MOONBIT_FFI_EXPORT
+int32_t
+moonfmi_fmi2_library_string_support(void *library_handle) {
+  moonfmi_fmi2_library *library = (moonfmi_fmi2_library *)library_handle;
+  if (library == NULL) {
+    return 0;
+  }
+  return library->has_string;
 }
 
 /* Capability flags for the typed value groups; mirrors the FMU-state flag

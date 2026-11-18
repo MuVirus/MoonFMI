@@ -1578,6 +1578,96 @@ pub fn Fmi3Instance::set_binary_one(
 }
 
 ///|
+/// Reads String values for the references, one value per reference
+/// (`fmi3GetString`; UTF-8 on the wire, decoded into MoonBit Strings).
+pub fn Fmi3Instance::get_string(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+) -> Array[String] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_string_capability(),
+    "fmi3GetString",
+    "fmi3GetString",
+  )
+  self.ensure_live("fmi3GetString")
+  let result = Array(capacity=references.length())
+  for reference in references {
+    result.push(self.get_string_one(reference))
+  }
+  result
+}
+
+///|
+/// Writes String values, one per reference (`fmi3SetString`; UTF-8 on the
+/// wire).
+pub fn Fmi3Instance::set_string(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  values : Array[String],
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_string_capability(),
+    "fmi3SetString",
+    "fmi3SetString",
+  )
+  self.ensure_live("fmi3SetString")
+  if references.is_empty() || values.is_empty() {
+    raise Fmi3StatusFailed(operation="fmi3SetString", status=Error)
+  }
+  if references.length() != values.length() {
+    raise Fmi3StatusFailed(operation="fmi3SetString", status=Error)
+  }
+  for index, reference in references {
+    self.set_string_one(reference, values[index])
+  }
+}
+
+///|
+/// Reads Binary values for the references, one value per reference
+/// (`fmi3GetBinary`; raw bytes, no encoding).
+pub fn Fmi3Instance::get_binary(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+) -> Array[Bytes] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_binary_capability(),
+    "fmi3GetBinary",
+    "fmi3GetBinary",
+  )
+  self.ensure_live("fmi3GetBinary")
+  let result = Array(capacity=references.length())
+  for reference in references {
+    result.push(self.get_binary_one(reference))
+  }
+  result
+}
+
+///|
+/// Writes Binary values, one per reference (`fmi3SetBinary`; raw bytes, no
+/// encoding).
+pub fn Fmi3Instance::set_binary(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  values : Array[Bytes],
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_binary_capability(),
+    "fmi3SetBinary",
+    "fmi3SetBinary",
+  )
+  self.ensure_live("fmi3SetBinary")
+  if references.is_empty() || values.is_empty() {
+    raise Fmi3StatusFailed(operation="fmi3SetBinary", status=Error)
+  }
+  if references.length() != values.length() {
+    raise Fmi3StatusFailed(operation="fmi3SetBinary", status=Error)
+  }
+  for index, reference in references {
+    self.set_binary_one(reference, values[index])
+  }
+}
+
+///|
 /// Reads one clock state.
 pub fn Fmi3Instance::get_clock_one(
   self : Fmi3Instance,
