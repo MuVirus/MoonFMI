@@ -757,3 +757,41 @@ test "fuzz regression extension covers fmi3 and both full samples (G-01)" {
     }
   }
 }
+
+///|
+test "MD-038 validates the children of FMI 3 Annotations" {
+  // Annotations is the last child of fmiModelDescription; inject it
+  // before the closing tag.
+  fn with_annotations(base : String, block : String) -> String {
+    base.replace(
+      old="</fmiModelDescription>",
+      new=block + "</fmiModelDescription>",
+    )
+  }
+  let variables = "\n    <Float64 name=\"x\" valueReference=\"0\" causality=\"output\" variability=\"continuous\" initial=\"calculated\"/>\n"
+  // A valid Annotations block (Annotation with the required type
+  // attribute) passes.
+  let good = with_annotations(
+    fmi3_doc(variables~, structure=""),
+    "  <Annotations>\n    <Annotation type=\"vendor\">anything goes</Annotation>\n  </Annotations>\n",
+  )
+  assert_false(rule_codes(good).contains("MD-038"))
+  // A foreign child inside Annotations is rejected.
+  let foreign = with_annotations(
+    fmi3_doc(variables~, structure=""),
+    "  <Annotations>\n    <Vendor name=\"x\"/>\n  </Annotations>\n",
+  )
+  assert_true(rule_codes(foreign).contains("MD-038"))
+  // An Annotation without the required type attribute is rejected.
+  let missing_type = with_annotations(
+    fmi3_doc(variables~, structure=""),
+    "  <Annotations>\n    <Annotation>no type</Annotation>\n  </Annotations>\n",
+  )
+  assert_true(rule_codes(missing_type).contains("MD-038"))
+  // The same rule applies to per-variable Annotations.
+  let variable_level = fmi3_doc(
+    variables="\n    <Float64 name=\"x\" valueReference=\"0\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Annotations>\n        <NotAnAnnotation/>\n      </Annotations>\n    </Float64>\n",
+    structure="",
+  )
+  assert_true(rule_codes(variable_level).contains("MD-038"))
+}

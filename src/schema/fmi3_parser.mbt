@@ -14,6 +14,77 @@ let fmi3_structure_order : Array[String] = [
 ]
 
 ///|
+/// FMI 3 substitution-group heads the parser accepts implicitly: variables
+/// appear in documents as the concrete element names (Float64, Int32,
+/// Clock, ...), never as these abstract heads. Listed so the field
+/// coverage report can distinguish "accepted by design" from "missing".
+pub let fmi3_abstract_variable_heads : Array[String] = [
+  "fmi3IntegerBaseAttributes", "fmi3RealBaseAttributes", "fmi3RealVariableAttributes",
+  "fmi3Float32Attributes", "fmi3Float64Attributes", "fmi3Int8Attributes", "fmi3UInt8Attributes",
+  "fmi3Int16Attributes", "fmi3UInt16Attributes", "fmi3Int32Attributes", "fmi3UInt32Attributes",
+  "fmi3Int64Attributes", "fmi3UInt64Attributes", "fmi3EnumerationAttributes", "fmi3ClockAttributes",
+]
+
+///|
+/// MD-038: inside `<Annotations>`, every child must be an
+/// `<Annotation>` element carrying the required `type` attribute
+/// (fmi3Annotation.xsd). The vendor payload inside an Annotation is not
+/// validated and is skipped. `at_start` is true when the cursor still
+/// sits on the `Start("Annotations")` event.
+fn validate_fmi3_annotations_children(
+  cursor : Cursor,
+  context~ : String,
+  at_start~ : Bool,
+) -> Unit raise SchemaError {
+  if at_start {
+    let _ = cursor.next()
+  }
+  while true {
+    match cursor.peek() {
+      Eof =>
+        raise cursor.fail(
+          code="MD-038",
+          message="unexpected end of document inside <Annotations> (\{context})",
+        )
+      End(name) =>
+        if name == "Annotations" {
+          let _ = cursor.next()
+          return
+        } else {
+          // Deeper end tags cannot occur: each Annotation subtree is
+          // consumed whole. Consume defensively.
+          let _ = cursor.next()
+        }
+      Start(element) | Empty(element) => {
+        if element.name != "Annotation" {
+          raise cursor.fail(
+            code="MD-038",
+            message="unexpected element <\{element.name}> inside <Annotations> (\{context})",
+            hint="every child of <Annotations> must be an <Annotation> element",
+          )
+        }
+        if optional_attr(element, "type", path=cursor.path) is None {
+          raise cursor.fail(
+            code="MD-038",
+            message="<Annotation> inside <Annotations> (\{context}) is missing the required 'type' attribute",
+            hint="fmi3Annotation.xsd requires type on every Annotation",
+          )
+        }
+        cursor.skip_subtree("Annotation")
+      }
+      Text(_)
+      | CData(_)
+      | Declaration(..)
+      | Comment(_)
+      | ProcessingInstruction(..)
+      | DocType => {
+        let _ = cursor.next()
+      }
+    }
+  }
+}
+
+///|
 fn parse_fmi3_model(
   cursor : Cursor,
   root : XmlElement,
@@ -150,7 +221,11 @@ fn parse_fmi3_model(
           }
           "Annotations" =>
             if event is Start(_) {
-              cursor.skip_subtree("Annotations")
+              validate_fmi3_annotations_children(
+                cursor,
+                context="fmiModelDescription",
+                at_start=false,
+              )
             }
           _ => abort("unreachable")
         }
@@ -942,8 +1017,11 @@ fn parse_fmi3_variable_children(
               )
             }
             seen_annotations = true
-            let _ = cursor.next()
-            cursor.skip_subtree("Annotations")
+            validate_fmi3_annotations_children(
+              cursor,
+              context="\{variable.type_kind.name()}",
+              at_start=false,
+            )
           }
           other =>
             raise cursor.fail(

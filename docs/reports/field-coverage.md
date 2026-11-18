@@ -4,6 +4,12 @@
 > schema parser or model in `src/schema` mentions it as a string literal —
 > i.e. the typed model carries the field or the parser rejects it explicitly.
 
+> Scope note (2026-11-18): the headline numbers only count names from the
+> runtime model-description XSDs. Names from fmi3BuildDescription.xsd,
+> fmi3TerminalsAndIcons.xsd, fmi3Terminal.xsd and
+> fmi3LayeredStandardManifest.xsd are separate artifacts the parser never
+> consumes; they are listed at the end instead of being counted as gaps.
+
 ## FMI 2
 
 - declared in XSD: 92
@@ -16,76 +22,20 @@ Missing names (candidates for future P1-style rule work):
 - `fmi2IntegerAttributes`
 - `fmi2RealAttributes`
 
-## FMI 3
+## FMI 3 (model-description scope)
 
-- declared in XSD: 195
-- covered by the typed model: 133 (68%)
-- not covered: 62
+- declared in model-description XSDs: 144
+- covered by the typed model: 144 (100%)
+- not covered: 0
 
-Missing names (candidates for future P1-style rule work):
+- all-FMI-3-XSD coverage (previous headline): 150/195 (77%)
 
-- `ALayeredStandardManifest`
-- `Annotation`
-- `BuildConfiguration`
-- `CoordinateSystem`
-- `GraphicalRepresentation`
-- `Icon`
-- `IncludeDirectory`
-- `Library`
-- `Option`
-- `PreprocessorDefinition`
-- `SourceFile`
-- `SourceFileSet`
-- `Terminal`
-- `TerminalGraphicalRepresentation`
-- `TerminalMemberVariable`
-- `TerminalStreamMemberVariable`
-- `Terminals`
-- `compiler`
-- `compilerOptions`
-- `defaultConnectionColor`
-- `defaultConnectionStrokeSize`
-- `external`
-- `fmi-ls-description`
-- `fmi-ls-name`
-- `fmi-ls-version`
-- `fmi3ClockAttributes`
-- `fmi3EnumerationAttributes`
-- `fmi3Float32Attributes`
-- `fmi3Float64Attributes`
-- `fmi3Int16Attributes`
-- `fmi3Int32Attributes`
-- `fmi3Int64Attributes`
-- `fmi3Int8Attributes`
-- `fmi3IntegerBaseAttributes`
-- `fmi3RealBaseAttributes`
-- `fmi3RealVariableAttributes`
-- `fmi3UInt16Attributes`
-- `fmi3UInt32Attributes`
-- `fmi3UInt64Attributes`
-- `fmi3UInt8Attributes`
-- `fmiBuildDescription`
-- `fmiLayeredStandardManifest`
-- `fmiTerminalsAndIcons`
-- `iconBaseName`
-- `inStreamMemberName`
-- `inStreamVariableName`
-- `language`
-- `matchingRule`
-- `memberName`
-- `optional`
-- `outStreamMemberName`
-- `outStreamVariableName`
-- `platform`
-- `suggestedScalingFactorTo_mm`
-- `terminalKind`
-- `type`
-- `variableKind`
-- `variableName`
-- `x1`
-- `x2`
-- `y1`
-- `y2`
+## FMI 3 out-of-scope names (separate standard artifacts)
+
+- fmi3BuildDescription.xsd: 20 names
+- fmi3LayeredStandardManifest.xsd: 5 names
+- fmi3Terminal.xsd: 20 names
+- fmi3TerminalsAndIcons.xsd: 6 names
 
 
 > 注:`missing` 不是缺陷清单——部分 XSD 名称(枚举值、类型名)由语义层处理,

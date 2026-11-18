@@ -27,6 +27,8 @@ pub fn default_xml_limits() -> @xml.XmlLimits
 
 pub fn derive_initial(Causality, Variability) -> Initial?
 
+pub let fmi3_abstract_variable_heads : Array[String]
+
 pub fn is_safe_internal_path(String) -> Bool
 
 pub fn is_safe_model_identifier(String) -> Bool
