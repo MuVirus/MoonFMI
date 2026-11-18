@@ -772,7 +772,9 @@ fn parse_simulate_options(
                 Some("'--timeout' needs a positive number of seconds"),
               )
             } else {
-              options.timeout_seconds = Some(@env.now() + seconds.to_uint64())
+              options.timeout_seconds = Some(
+                @env.now() + seconds.to_uint64() * 1_000_000_000UL,
+              )
             }
           None => return (options, Some("'" + value + "' is not a number"))
         }
@@ -1583,7 +1585,9 @@ fn parse_couple_options(
               Some("'--timeout' needs a positive number of seconds"),
             )
           } else {
-            options.timeout_seconds = Some(@env.now() + seconds.to_uint64())
+            options.timeout_seconds = Some(
+              @env.now() + seconds.to_uint64() * 1_000_000_000UL,
+            )
           }
         None =>
           return (options, Some("'" + args[index + 1] + "' is not a number"))
