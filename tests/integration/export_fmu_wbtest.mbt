@@ -40,7 +40,7 @@ fn host() -> @fmi.HostPlatform {
 ///|
 /// Create `path` and any missing parents (@fs.create_dir needs parents).
 fn ensure_test_dir(path : String) -> Unit {
-  let mut prefix = if path.starts_with("/") { "/" } else { "" }
+  let mut prefix = if path.has_prefix("/") { "/" } else { "" }
   for segment in path.split("/") {
     let segment = segment.to_owned()
     if segment.is_empty() {
