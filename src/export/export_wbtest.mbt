@@ -147,3 +147,65 @@ test "wasm export rejects non-float and array variables" {
       )
   }
 }
+
+///|
+test "diagonal state space ir passes the self check" {
+  let ir = diagonal_state_space_example_ir()
+  assert_eq(ir.check().length(), 0)
+  // Flattened layout: three element equations -> three slots.
+  assert_eq(ir.state_slots().length(), 3)
+  assert_eq(ir.state_slots()[2].element, 2L)
+}
+
+///|
+test "ir check rejects out-of-range element equations" {
+  let ir = diagonal_state_space_example_ir()
+  ir.add_derivative_element(
+    state="x",
+    element=7L,
+    expr=IrExpr::mul(IrExpr::c(-1.0), IrExpr::elem("x", 0L)),
+  )
+  let diagnostics = ir.check()
+  assert_true(diagnostics.length() > 0)
+  let mut has_range_error = false
+  for d in diagnostics {
+    if d.code == "EX-018" || d.code == "EX-019" {
+      has_range_error = true
+    }
+  }
+  assert_true(has_range_error)
+}
+
+///|
+test "ir check requires every array state element to be covered" {
+  let ir = diagonal_state_space_example_ir()
+  // Equations are 3 derivative elements then 3 output elements; pop four
+  // times to drop the last derivative element equation (x[2]).
+  ignore(ir.equations.pop())
+  ignore(ir.equations.pop())
+  ignore(ir.equations.pop())
+  ignore(ir.equations.pop())
+  let diagnostics = ir.check()
+  let mut has_coverage_error = false
+  for d in diagnostics {
+    if d.code == "EX-019" {
+      has_coverage_error = true
+    }
+  }
+  assert_true(has_coverage_error)
+}
+
+///|
+test "ir check rejects element references of scalars" {
+  let ir = dahlquist_ir()
+  // y = x[0] where x is scalar: EX-018 via the element walk.
+  ir.add_output_equation(output="y", expr=IrExpr::elem("x", 0L))
+  let diagnostics = ir.check()
+  let mut has_element_error = false
+  for d in diagnostics {
+    if d.code == "EX-018" {
+      has_element_error = true
+    }
+  }
+  assert_true(has_element_error)
+}

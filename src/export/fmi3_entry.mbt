@@ -60,8 +60,15 @@ fn fmi3_size_cases(ir : ModelIr, data_type : IrDataType) -> Array[String] {
     let declared_count = ir.variables.length()
     let mut i = 0
     for name in ir.state_names() {
+      // One der(x) VR per state variable; an array state's der(x) carries
+      // the same dimensions as the state, so the required count is its
+      // scalar element count.
+      let count = match ir.index_of(name) {
+        Some(state_index) => ir_element_count(ir.variables[state_index])
+        None => 1
+      }
       lines.push(
-        "        case \{(declared_count + i).to_string()}: total += 1; break; /* der(\{name}) */",
+        "        case \{(declared_count + i).to_string()}: total += \{count.to_string()}; break; /* der(\{name}) */",
       )
       i += 1
     }
@@ -152,6 +159,18 @@ fn fmi3_copy_cases(
     let declared_count = ir.variables.length()
     let mut i = 0
     for name in ir.state_names() {
+      // Flattened dx offset of this state among the derivative equations.
+      let mut flat = 0
+      for slot in ir.state_slots() {
+        if slot.name == name {
+          break
+        }
+        flat += 1
+      }
+      let count = match ir.index_of(name) {
+        Some(state_index) => ir_element_count(ir.variables[state_index])
+        None => 1
+      }
       lines.push(
         "            case \{(declared_count + i).to_string()}: /* der(\{name}) */",
       )
@@ -160,8 +179,15 @@ fn fmi3_copy_cases(
       lines.push(
         "                MoonfmiModel_compute_derivatives(m, inst->time, dx);",
       )
-      lines.push("                values[offset] = dx[\{i.to_string()}];")
-      lines.push("                offset += 1;")
+      if count == 1 {
+        lines.push("                values[offset] = dx[\{flat.to_string()}];")
+        lines.push("                offset += 1;")
+      } else {
+        lines.push(
+          "                for (size_t k = 0; k < \{count.to_string()}; ++k) { values[offset + k] = dx[\{flat.to_string()} + k]; }",
+        )
+        lines.push("                offset += \{count.to_string()};")
+      }
       lines.push("            }")
       lines.push("            break;")
       i += 1
@@ -287,7 +313,7 @@ fn fmi3_type_pairs(ir : ModelIr) -> Array[IrDataType] {
 pub fn generate_fmi3_entry(ir : ModelIr) -> String {
   let cs = ir_find_interface(ir, @schema.InterfaceKind::CoSimulation)
   let me = ir_find_interface(ir, @schema.InterfaceKind::ModelExchange)
-  let states = ir.state_names()
+  let states = ir.state_slots()
   let string_variables = ir.variables
     .iter()
     .filter(fn(v) { v.data_type is IrDataType::Str })
@@ -390,9 +416,22 @@ pub fn generate_fmi3_entry(ir : ModelIr) -> String {
     writer.line("    double dx[MOONFMI_STATE_COUNT];")
     writer.line("    MoonfmiModel_compute_derivatives(m, t, dx);")
     let mut i = 0
-    for name in states {
-      let cfield = c_member_of(name)
-      writer.line("    m->\{cfield} = m->\{cfield} + h * dx[\{i.to_string()}];")
+    for slot in states {
+      let cfield = c_member_of(slot.name)
+      let is_array = match ir.index_of(slot.name) {
+        Some(variable_index) =>
+          ir.variables[variable_index].dimensions.length() > 0
+        None => false
+      }
+      if is_array {
+        writer.line(
+          "    m->\{cfield}[\{slot.element.to_string()}] = m->\{cfield}[\{slot.element.to_string()}] + h * dx[\{i.to_string()}];",
+        )
+      } else {
+        writer.line(
+          "    m->\{cfield} = m->\{cfield} + h * dx[\{i.to_string()}];",
+        )
+      }
       i += 1
     }
     writer.line("}")
@@ -673,7 +712,7 @@ pub fn generate_fmi3_entry(ir : ModelIr) -> String {
       writer.line("    if (nContinuousStates != MOONFMI_STATE_COUNT) {")
       writer.line("        return fmi3Error;")
       writer.line("    }")
-      emit_fmi3_state_reads(writer, states, "continuousStates")
+      emit_fmi3_state_reads(writer, ir, states, "continuousStates")
       writer.line("    return fmi3OK;")
       writer.line("}")
       writer.line("")
@@ -687,7 +726,7 @@ pub fn generate_fmi3_entry(ir : ModelIr) -> String {
       writer.line("    if (nContinuousStates != MOONFMI_STATE_COUNT) {")
       writer.line("        return fmi3Error;")
       writer.line("    }")
-      emit_fmi3_state_writes(writer, states, "continuousStates")
+      emit_fmi3_state_writes(writer, ir, states, "continuousStates")
       writer.line("    return fmi3OK;")
       writer.line("}")
       writer.line("")
@@ -966,14 +1005,25 @@ pub fn generate_fmi3_entry(ir : ModelIr) -> String {
 ///|
 fn emit_fmi3_state_reads(
   writer : XmlWriter,
-  states : Array[String],
+  ir : ModelIr,
+  states : Array[StateSlot],
   buffer : String,
 ) -> Unit {
   let mut i = 0
-  for name in states {
-    writer.line(
-      "    \{buffer}[\{i.to_string()}] = inst->model.\{c_member_of(name)};",
-    )
+  for slot in states {
+    let cfield = c_member_of(slot.name)
+    let is_array = match ir.index_of(slot.name) {
+      Some(variable_index) =>
+        ir.variables[variable_index].dimensions.length() > 0
+      None => false
+    }
+    if is_array {
+      writer.line(
+        "    \{buffer}[\{i.to_string()}] = inst->model.\{cfield}[\{slot.element.to_string()}];",
+      )
+    } else {
+      writer.line("    \{buffer}[\{i.to_string()}] = inst->model.\{cfield};")
+    }
     i += 1
   }
 }
@@ -981,14 +1031,25 @@ fn emit_fmi3_state_reads(
 ///|
 fn emit_fmi3_state_writes(
   writer : XmlWriter,
-  states : Array[String],
+  ir : ModelIr,
+  states : Array[StateSlot],
   buffer : String,
 ) -> Unit {
   let mut i = 0
-  for name in states {
-    writer.line(
-      "    inst->model.\{c_member_of(name)} = \{buffer}[\{i.to_string()}];",
-    )
+  for slot in states {
+    let cfield = c_member_of(slot.name)
+    let is_array = match ir.index_of(slot.name) {
+      Some(variable_index) =>
+        ir.variables[variable_index].dimensions.length() > 0
+      None => false
+    }
+    if is_array {
+      writer.line(
+        "    inst->model.\{cfield}[\{slot.element.to_string()}] = \{buffer}[\{i.to_string()}];",
+      )
+    } else {
+      writer.line("    inst->model.\{cfield} = \{buffer}[\{i.to_string()}];")
+    }
     i += 1
   }
 }

@@ -169,6 +169,14 @@ pub fn ModelIr::signature(self : ModelIr) -> String {
         buf.write_string("d[\{name}]=\{expr.render_ir()};")
       IrEquation::Output(name, expr) =>
         buf.write_string("o[\{name}]=\{expr.render_ir()};")
+      IrEquation::DerivativeElement(name, element, expr) =>
+        buf.write_string(
+          "d[\{name}[\{element.to_string()}]]=\{expr.render_ir()};",
+        )
+      IrEquation::OutputElement(name, element, expr) =>
+        buf.write_string(
+          "o[\{name}[\{element.to_string()}]]=\{expr.render_ir()};",
+        )
     }
   }
   for unit in self.units {
@@ -192,6 +200,7 @@ fn IrExpr::render_ir(self : IrExpr) -> String {
     IrExpr::Const(value) => xml_double(value)
     IrExpr::Time => "time"
     IrExpr::Var(name) => name
+    IrExpr::Element(name, index) => "\{name}[\{index.to_string()}]"
     IrExpr::Add(a, b) => "(\{a.render_ir()}+\{b.render_ir()})"
     IrExpr::Sub(a, b) => "(\{a.render_ir()}-\{b.render_ir()})"
     IrExpr::Mul(a, b) => "(\{a.render_ir()}*\{b.render_ir()})"
@@ -772,9 +781,27 @@ fn fmi3_model_description_xml(ir : ModelIr) -> String {
     match ir.value_reference(name) {
       Some(state_vr) => {
         let der_vr = ir_vr(synthetic)
-        writer.line(
-          "<Float64 name=\"der(\{XmlWriter::escape(name)})\" valueReference=\"\{der_vr.to_string()}\" causality=\"local\" variability=\"continuous\" initial=\"calculated\" derivative=\"\{state_vr.to_string()}\"/>",
-        )
+        // An array state's synthetic der(x) carries the same dimensions so
+        // hosts count the same number of scalar derivatives.
+        let state_index = ir.index_of(name)
+        let dims = match state_index {
+          Some(i) => ir.variables[i].dimensions
+          None => []
+        }
+        if dims.length() > 0 {
+          let attributes = "<Float64 name=\"der(\{XmlWriter::escape(name)})\" valueReference=\"\{der_vr.to_string()}\" causality=\"local\" variability=\"continuous\" initial=\"calculated\" derivative=\"\{state_vr.to_string()}\">"
+          writer.line(attributes)
+          writer.indent += 1
+          for dim in dims {
+            writer.line("<Dimension start=\"\{dim.to_string()}\"/>")
+          }
+          writer.indent -= 1
+          writer.line("</Float64>")
+        } else {
+          writer.line(
+            "<Float64 name=\"der(\{XmlWriter::escape(name)})\" valueReference=\"\{der_vr.to_string()}\" causality=\"local\" variability=\"continuous\" initial=\"calculated\" derivative=\"\{state_vr.to_string()}\"/>",
+          )
+        }
         derivative_vrs.push(der_vr)
         synthetic += 1
       }

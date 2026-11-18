@@ -609,3 +609,136 @@ test "wasm export builds a component fmu end to end" {
     abort("wasm model description failed: \{report.diagnostics[0].render()}")
   }
 }
+
+///|
+/// Exports the diagonal state-space IR (FMI 3), compiles it with clang and
+/// packages a deterministic FMU (same pipeline as build_source_fmu).
+fn build_state_space_fmu(tag : String) -> Bytes {
+  let ir = @export.diagonal_state_space_example_ir()
+  let options = @export.ExportOptions::new(
+    fmi_version=@schema.FmiVersion::V3,
+    output_dir=Some(".moonfmi-tmp/export-\{tag}-\{@env.now()}"),
+  )
+  let result = @export.export_source_fmu(ir, options) catch {
+    error => abort("state-space export failed: " + error.message())
+  }
+  let xml_bytes = result.files[0].1
+  let (_, report) = @schema.parse_and_validate(xml_bytes)
+  if report.error_count() > 0 {
+    abort(
+      "state-space modelDescription.xml failed validation: \{report.diagnostics[0].render()}",
+    )
+  }
+  let host_platform = host()
+  let platform = @fmi.fmi3_platform_dir(host_platform)
+  ensure_test_dir("\{result.output_dir}/binaries/\{platform}")
+  let flags = match host_platform.os {
+    @fmi.Windows => "-O1 -shared"
+    @fmi.Darwin => "-O1 -dynamiclib"
+    @fmi.Linux => "-O1 -shared -fPIC"
+  }
+  let extension = match host_platform.os {
+    @fmi.Windows => "dll"
+    @fmi.Darwin => "dylib"
+    @fmi.Linux => "so"
+  }
+  let binary_path = "\{result.output_dir}/binaries/\{platform}/MoonfmiStateSpace.\{extension}"
+  let command = "clang \{flags} -o \"\{binary_path}\" \"\{result.output_dir}/sources/moonfmi_model.c\" \"\{result.output_dir}/sources/fmi3Functions.c\""
+  if run_shell(command) != 0L {
+    abort("clang failed for the state-space model: \{command}")
+  }
+  let binary = @fs.read_file_to_bytes(binary_path) catch {
+    error => abort("reading state-space binary failed: " + io_message(error))
+  }
+  let entries : Array[(String, Bytes)] = []
+  for entry in result.files {
+    entries.push(entry)
+  }
+  entries.push(("binaries/\{platform}/MoonfmiStateSpace.\{extension}", binary))
+  @zip.build_deterministic_zip(entries) catch {
+    error => abort("state-space packaging failed: " + error.message())
+  }
+}
+
+///|
+test "exported fmi3 array-equation state space matches the analytic solution" {
+  match compiler_probe_skip() {
+    Some(reason) => {
+      println("SKIP: \{reason}")
+      return
+    }
+    None => ()
+  }
+  let archive = build_state_space_fmu("fmi3-statespace")
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let directory = absolute_path(".moonfmi-tmp/load-ss-\{@env.now()}")
+  let fmu_logs : Array[String] = []
+  let loaded = @native_backend.load_fmi3_fmu(
+    archive,
+    host=host(),
+    temp_directory=directory,
+    on_log=fn(message) {
+      fmu_logs.push(message.category + ": " + message.message)
+    },
+  ) catch {
+    error => abort("loading state-space FMU failed: " + error.message())
+  }
+  // VRs follow declaration order: x = 0 (array), y = 1 (array). The CS
+  // master records scalars only, so this test drives the FMU through the
+  // typed FMI 3 array API (like the passthrough test).
+  let instance = loaded.instance()
+  // Route through the CsInstance trait: the direct method only enters
+  // initialization mode, while the trait method settles the event loop and
+  // enters step mode, which fmi3DoStep requires.
+  let cs_instance : &@fmi.CsInstance = instance
+  cs_instance.setup_experiment(start=0.0, stop=Some(1.0))
+  cs_instance.initialize() catch {
+    error =>
+      abort(
+        "state-space initialize failed: " +
+        error.message() +
+        " | fmu logs: " +
+        fmu_logs.join(" | "),
+      )
+  }
+  // One Euler step per communication interval: x_i,n = (1 + a_i*h)^n with
+  // a = [-1, -2, -3], h = 0.1 -> (0.9)^n, (0.8)^n, (0.7)^n.
+  let factors = [0.9, 0.8, 0.7]
+  let expected = [1.0, 1.0, 1.0]
+  for n in 0..<=10 {
+    let x = instance.get_float64_values([0U], 3) catch {
+      error => abort("reading x failed: " + error.message())
+    }
+    let y = instance.get_float64_values([1U], 3) catch {
+      error => abort("reading y failed: " + error.message())
+    }
+    for element in 0..<3 {
+      let reference = expected[element]
+      assert_true(
+        (x[element] - reference).abs() <= 0.000000000001,
+        msg="x[\{element}][\{n}] = \{x[element]}, expected \{reference}",
+      )
+      assert_true(
+        (y[element] - reference).abs() <= 0.000000000001,
+        msg="y[\{element}][\{n}] = \{y[element]}, expected \{reference}",
+      )
+    }
+    if n < 10 {
+      instance.step(n.to_double() * 0.1, 0.1) catch {
+        error =>
+          abort(
+            "state-space step failed: " +
+            error.message() +
+            " | fmu logs: " +
+            fmu_logs.join(" | "),
+          )
+      }
+      for element in 0..<3 {
+        expected[element] = expected[element] * factors[element]
+      }
+    }
+  }
+  loaded.dispose()
+}

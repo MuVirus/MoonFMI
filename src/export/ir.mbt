@@ -136,6 +136,13 @@ pub fn IrVariable::new(
 pub(all) enum IrEquation {
   Derivative(String, IrExpr)
   Output(String, IrExpr)
+  /// One flattened element of an array state (FMI 3 only; FMI 2 rejects
+  /// arrays). `element` is the 0-based index within the variable. Each
+  /// element of an array state must be covered by exactly one equation,
+  /// and every element equation consumes exactly one slot of the
+  /// flattened continuous-state vector (same rule as scalar derivatives).
+  DerivativeElement(String, Int64, IrExpr)
+  OutputElement(String, Int64, IrExpr)
 }
 
 ///|
@@ -145,6 +152,8 @@ pub(all) enum IrExpr {
   Const(Double)
   Time
   Var(String)
+  /// One element of an array variable (FMI 3 only; 0-based index).
+  Element(String, Int64)
   Add(IrExpr, IrExpr)
   Sub(IrExpr, IrExpr)
   Mul(IrExpr, IrExpr)
@@ -282,10 +291,40 @@ pub fn ModelIr::output_equation_names(self : ModelIr) -> Array[String] {
   for eq in self.equations {
     match eq {
       IrEquation::Output(name, _) => names.push(name)
+      IrEquation::OutputElement(name, _, _) => names.push(name)
       _ => ()
     }
   }
   names
+}
+
+///|
+/// The flattened continuous-state layout in derivative-equation order: a
+/// scalar `Derivative` consumes one slot, and a `DerivativeElement`
+/// consumes exactly one slot as well — the array variable's elements are
+/// covered by their own element equations. The slot order defines the
+/// `dx[]` indexing shared by the generated integrator, the
+/// get/set-continuous-states entry points, and the synthetic `der(x)`
+/// value references.
+pub(all) struct StateSlot {
+  /// Owning variable name.
+  name : String
+  /// Element index within the variable; 0 for scalar states.
+  element : Int64
+}
+
+///|
+pub fn ModelIr::state_slots(self : ModelIr) -> Array[StateSlot] {
+  let slots = []
+  for eq in self.equations {
+    match eq {
+      IrEquation::Derivative(name, _) => slots.push({ name, element: 0L, })
+      IrEquation::DerivativeElement(name, element, _) =>
+        slots.push({ name, element, })
+      _ => ()
+    }
+  }
+  slots
 }
 
 ///|
@@ -294,6 +333,7 @@ fn IrExpr::walk(self : IrExpr, visit : (String) -> Unit) -> Unit {
     IrExpr::Const(_) => ()
     IrExpr::Time => ()
     IrExpr::Var(name) => visit(name)
+    IrExpr::Element(name, _) => visit(name)
     IrExpr::Add(a, b)
     | IrExpr::Sub(a, b)
     | IrExpr::Mul(a, b)
@@ -318,6 +358,7 @@ fn IrExpr::render(self : IrExpr) -> String {
       value.to_string()
     IrExpr::Time => "t"
     IrExpr::Var(name) => "m->\{c_member(name)}"
+    IrExpr::Element(name, index) => "m->\{c_member(name)}[\{index.to_string()}]"
     IrExpr::Add(a, b) => "(\{a.render()} + \{b.render()})"
     IrExpr::Sub(a, b) => "(\{a.render()} - \{b.render()})"
     IrExpr::Mul(a, b) => "(\{a.render()} * \{b.render()})"
@@ -334,6 +375,32 @@ fn IrExpr::render(self : IrExpr) -> String {
       }
       "\{mapped}(\{rendered.join(", ")})"
     }
+  }
+}
+
+///|
+/// Visits every `Element(name, index)` reference in the expression.
+fn IrExpr::walk_elements(
+  self : IrExpr,
+  visit : (String, Int64) -> Unit,
+) -> Unit {
+  match self {
+    IrExpr::Const(_) => ()
+    IrExpr::Time => ()
+    IrExpr::Var(_) => ()
+    IrExpr::Element(name, index) => visit(name, index)
+    IrExpr::Add(a, b)
+    | IrExpr::Sub(a, b)
+    | IrExpr::Mul(a, b)
+    | IrExpr::Div(a, b) => {
+      a.walk_elements(visit)
+      b.walk_elements(visit)
+    }
+    IrExpr::Neg(a) => a.walk_elements(visit)
+    IrExpr::Call(_, args) =>
+      for arg in args {
+        arg.walk_elements(visit)
+      }
   }
 }
 
@@ -507,9 +574,13 @@ pub fn ModelIr::check(self : ModelIr) -> Array[@schema.Diagnostic] {
     }
   }
   for eq in self.equations {
-    let (target, expr) = match eq {
-      IrEquation::Derivative(name, expr) => (name, expr)
-      IrEquation::Output(name, expr) => (name, expr)
+    let (target, element, expr) = match eq {
+      IrEquation::Derivative(name, expr) => (name, None, expr)
+      IrEquation::Output(name, expr) => (name, None, expr)
+      IrEquation::DerivativeElement(name, element, expr) =>
+        (name, Some(element), expr)
+      IrEquation::OutputElement(name, element, expr) =>
+        (name, Some(element), expr)
     }
     match self.index_of(target) {
       None =>
@@ -523,15 +594,35 @@ pub fn ModelIr::check(self : ModelIr) -> Array[@schema.Diagnostic] {
             None,
           )
         }
-        if v.dimensions.length() > 0 {
-          fail(
-            "EX-012",
-            "equation target '\{target}' is an array; the first codegen only computes scalar equations",
-            None,
-          )
+        match (v.dimensions.length() > 0, element) {
+          (true, Some(e)) => {
+            // Element equation: the index must address a real element.
+            let size : Int64 = v.dimensions[0].to_int64()
+            if e < 0L || e >= size {
+              fail(
+                "EX-018",
+                "equation element \{e} is out of range for '\{target}' (size \{size})",
+                None,
+              )
+            }
+          }
+          (true, None) =>
+            fail(
+              "EX-012",
+              "equation target '\{target}' is an array; use per-element equations (DerivativeElement/OutputElement)",
+              None,
+            )
+          (false, Some(e)) =>
+            fail(
+              "EX-018",
+              "equation targets element \{e} of scalar variable '\{target}'",
+              None,
+            )
+          (false, None) => ()
         }
         match eq {
-          IrEquation::Derivative(_, _) =>
+          IrEquation::Derivative(_, _)
+          | IrEquation::DerivativeElement(_, _, _) =>
             if !(v.variability is @schema.Variability::Continuous) {
               fail(
                 "EX-013",
@@ -539,7 +630,7 @@ pub fn ModelIr::check(self : ModelIr) -> Array[@schema.Diagnostic] {
                 None,
               )
             }
-          IrEquation::Output(_, _) =>
+          IrEquation::Output(_, _) | IrEquation::OutputElement(_, _, _) =>
             if !(v.causality is @schema.Causality::Output) {
               fail(
                 "EX-014",
@@ -550,6 +641,29 @@ pub fn ModelIr::check(self : ModelIr) -> Array[@schema.Diagnostic] {
         }
       }
     }
+    // Element references inside expressions must address real elements.
+    expr.walk_elements(fn(name, index) {
+      match self.index_of(name) {
+        None =>
+          fail("EX-010", "equation references unknown variable '\{name}'", None)
+        Some(i) => {
+          let v = self.variables[i]
+          if v.dimensions.length() == 0 {
+            fail(
+              "EX-018",
+              "expression references element \{index} of scalar variable '\{name}'",
+              None,
+            )
+          } else if index < 0L || index >= v.dimensions[0].to_int64() {
+            fail(
+              "EX-018",
+              "expression element \{index} is out of range for '\{name}' (size \{v.dimensions[0]})",
+              None,
+            )
+          }
+        }
+      }
+    })
     expr.walk(fn(name) {
       match self.index_of(name) {
         None =>
@@ -557,6 +671,66 @@ pub fn ModelIr::check(self : ModelIr) -> Array[@schema.Diagnostic] {
         Some(_) => ()
       }
     })
+  }
+  // Element coverage: a scalar derivative target takes exactly one scalar
+  // equation; an array target must have every element covered exactly once
+  // (EX-019). The flattened dx[] indexing depends on this invariant.
+  let derivative_counts : Map[String, Map[Int64, Int32]] = Map([])
+  for eq in self.equations {
+    let (target, element) = match eq {
+      IrEquation::Derivative(name, _) => (name, 0L)
+      IrEquation::DerivativeElement(name, element, _) => (name, element)
+      _ => continue
+    }
+    let per_target = match derivative_counts.get(target) {
+      Some(existing) => existing
+      None => {
+        let fresh : Map[Int64, Int32] = Map([])
+        derivative_counts[target] = fresh
+        fresh
+      }
+    }
+    per_target[element] = per_target.get(element).unwrap_or(0) + 1
+  }
+  for target, per_target in derivative_counts {
+    match self.index_of(target) {
+      Some(index) => {
+        let v = self.variables[index]
+        let size : Int64 = if v.dimensions.length() > 0 {
+          v.dimensions[0].to_int64()
+        } else {
+          1L
+        }
+        for e in 0L..<size {
+          match per_target.get(e) {
+            Some(count) =>
+              if count > 1 {
+                fail(
+                  "EX-019",
+                  "derivative element \{e.to_string()} of '\{target}' has \{count.to_string()} equations; every element must be covered exactly once",
+                  None,
+                )
+              }
+            None =>
+              fail(
+                "EX-019",
+                "derivative element \{e.to_string()} of '\{target}' has no equation; array states need one DerivativeElement per element",
+                None,
+              )
+          }
+        }
+        for e, _ in per_target {
+          if e < 0L || e >= size {
+            fail(
+              "EX-019",
+              "derivative element \{e.to_string()} of '\{target}' is out of range (size \{size.to_string()})",
+              None,
+            )
+          }
+        }
+      }
+      None => ()
+    }
   }
   match self.expr_call_diagnostics() {
     Some(diagnostic) => diagnostics.push(diagnostic)
@@ -587,6 +761,8 @@ fn ModelIr::expr_call_diagnostics(self : ModelIr) -> @schema.Diagnostic? {
     let expr = match eq {
       IrEquation::Derivative(_, expr) => expr
       IrEquation::Output(_, expr) => expr
+      IrEquation::DerivativeElement(_, _, expr) => expr
+      IrEquation::OutputElement(_, _, expr) => expr
     }
     let bad : StringBuilder = StringBuilder()
     check_expr_calls(expr, allowed, bad)
@@ -610,6 +786,10 @@ fn equation_target(eq : IrEquation) -> String {
   match eq {
     IrEquation::Derivative(name, _) => name
     IrEquation::Output(name, _) => name
+    IrEquation::DerivativeElement(name, element, _) =>
+      "\{name}[\{element.to_string()}]"
+    IrEquation::OutputElement(name, element, _) =>
+      "\{name}[\{element.to_string()}]"
   }
 }
 
@@ -642,6 +822,7 @@ fn check_expr_calls(
       check_expr_calls(b, allowed, bad)
     }
     IrExpr::Neg(a) => check_expr_calls(a, allowed, bad)
+    IrExpr::Element(_, _) => ()
     _ => ()
   }
 }
@@ -860,6 +1041,32 @@ pub fn ModelIr::add_real_input_array(
 }
 
 ///|
+/// Adds an array continuous state (FMI 3 only). Every element needs its
+/// own `DerivativeElement` equation; the start list length must match the
+/// declared size.
+pub fn ModelIr::add_real_state_array(
+  self : ModelIr,
+  name~ : String,
+  size~ : UInt32,
+  start~ : Array[Double],
+  nominal? : Double,
+  description? : String,
+) -> IrVariable {
+  let v = IrVariable::new(
+    name~,
+    data_type=IrDataType::Float64,
+    causality=@schema.Causality::Output,
+  )
+  v.initial = Some(@schema.Initial::Exact)
+  v.start = Some(IrValue::RealArray(start))
+  v.nominal = nominal
+  v.description = description
+  v.dimensions.push(size)
+  self.add_variable(v)
+  v
+}
+
+///|
 pub fn ModelIr::add_real_output_array(
   self : ModelIr,
   name~ : String,
@@ -951,6 +1158,34 @@ pub fn IrExpr::call(name : String, args : Array[IrExpr]) -> IrExpr {
 }
 
 ///|
+/// One element of an array variable (FMI 3; 0-based index).
+pub fn IrExpr::elem(name : String, index : Int64) -> IrExpr {
+  IrExpr::Element(name, index)
+}
+
+///|
+/// Adds a derivative equation for one element of an array state (FMI 3).
+pub fn ModelIr::add_derivative_element(
+  self : ModelIr,
+  state~ : String,
+  element~ : Int64,
+  expr~ : IrExpr,
+) -> Unit {
+  self.equations.push(IrEquation::DerivativeElement(state, element, expr))
+}
+
+///|
+/// Adds an output equation for one element of an array output (FMI 3).
+pub fn ModelIr::add_output_equation_element(
+  self : ModelIr,
+  output~ : String,
+  element~ : Int64,
+  expr~ : IrExpr,
+) -> Unit {
+  self.equations.push(IrEquation::OutputElement(output, element, expr))
+}
+
+///|
 /// Example model: `x' = -k*x, y = x` (Dahlquist). Used by the exporter tests
 /// and the docs; one parameter, one continuous state, one output. Value
 /// references follow declaration order: k = 0, x = 1, y = 2.
@@ -1007,6 +1242,66 @@ pub fn array_passthrough_example_ir() -> ModelIr {
   )
   ignore(
     ir.add_real_output_array(name="y", size=3U, description="output vector"),
+  )
+  ir
+}
+
+///|
+/// Example model: diagonal state space `x'[i] = a_i * x[i]`, `y[i] = x[i]`
+/// with `a = [-1, -2, -3]` (FMI 3 array equations). Every element has its
+/// own `DerivativeElement` equation, so one Euler step of size h moves
+/// `x[i]` to `(1 + a_i*h) * x[i]` — the analytic reference used by the
+/// export tests. Value references follow declaration order: x = 0, y = 1.
+pub fn diagonal_state_space_example_ir() -> ModelIr {
+  let ir = ModelIr::new(
+    model_name="MoonfmiStateSpace",
+    generation_tool="MoonFMI source exporter",
+    description="diagonal x'[i] = a[i]*x[i] with array equations",
+  )
+  ir.add_interface(
+    kind=@schema.InterfaceKind::CoSimulation,
+    model_identifier="MoonfmiStateSpace",
+  )
+  ignore(
+    ir.add_real_state_array(
+      name="x",
+      size=3U,
+      start=[1.0, 1.0, 1.0],
+      description="state vector",
+    ),
+  )
+  ignore(ir.add_real_output_array(name="y", size=3U, description="state copy"))
+  // The parameter `a` is a scalar placeholder; per-element rates are baked
+  // into the equations so the analytic reference stays simple.
+  ir.add_derivative_element(
+    state="x",
+    element=0L,
+    expr=IrExpr::mul(IrExpr::c(-1.0), IrExpr::elem("x", 0L)),
+  )
+  ir.add_derivative_element(
+    state="x",
+    element=1L,
+    expr=IrExpr::mul(IrExpr::c(-2.0), IrExpr::elem("x", 1L)),
+  )
+  ir.add_derivative_element(
+    state="x",
+    element=2L,
+    expr=IrExpr::mul(IrExpr::c(-3.0), IrExpr::elem("x", 2L)),
+  )
+  ir.add_output_equation_element(
+    output="y",
+    element=0L,
+    expr=IrExpr::elem("x", 0L),
+  )
+  ir.add_output_equation_element(
+    output="y",
+    element=1L,
+    expr=IrExpr::elem("x", 1L),
+  )
+  ir.add_output_equation_element(
+    output="y",
+    element=2L,
+    expr=IrExpr::elem("x", 2L),
   )
   ir
 }

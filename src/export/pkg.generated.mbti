@@ -21,6 +21,8 @@ pub fn c_vr_macro(String) -> String
 
 pub fn dahlquist_example_ir() -> ModelIr
 
+pub fn diagonal_state_space_example_ir() -> ModelIr
+
 pub fn export_source_fmu(ModelIr, ExportOptions) -> ExportResult raise ExportError
 
 pub fn export_wasm_fmu(ModelIr, ExportOptions) -> ExportResult raise ExportError
@@ -101,6 +103,8 @@ pub fn IrDefaultExperiment::new(start_time~ : Double, stop_time~ : Double, step_
 pub(all) enum IrEquation {
   Derivative(String, IrExpr)
   Output(String, IrExpr)
+  DerivativeElement(String, Int64, IrExpr)
+  OutputElement(String, Int64, IrExpr)
 }
 
 #derive(Eq, @debug.Debug)
@@ -108,6 +112,7 @@ pub(all) enum IrExpr {
   Const(Double)
   Time
   Var(String)
+  Element(String, Int64)
   Add(IrExpr, IrExpr)
   Sub(IrExpr, IrExpr)
   Mul(IrExpr, IrExpr)
@@ -120,6 +125,7 @@ pub fn IrExpr::allowed_calls() -> Array[String]
 pub fn IrExpr::c(Double) -> Self
 pub fn IrExpr::call(String, Array[Self]) -> Self
 pub fn IrExpr::div(Self, Self) -> Self
+pub fn IrExpr::elem(String, Int64) -> Self
 pub fn IrExpr::equal(Self, Self) -> Bool
 pub fn IrExpr::mul(Self, Self) -> Self
 pub fn IrExpr::neg(Self) -> Self
@@ -184,11 +190,13 @@ pub struct ModelIr {
 }
 pub fn ModelIr::add_boolean_input(Self, name~ : String, start~ : Bool, description? : String) -> IrVariable
 pub fn ModelIr::add_derivative(Self, state~ : String, expr~ : IrExpr) -> Unit
+pub fn ModelIr::add_derivative_element(Self, state~ : String, element~ : Int64, expr~ : IrExpr) -> Unit
 pub fn ModelIr::add_int_input(Self, name~ : String, start~ : Int64, description? : String) -> IrVariable
 pub fn ModelIr::add_int_parameter(Self, name~ : String, start~ : Int64, description? : String) -> IrVariable
 pub fn ModelIr::add_interface(Self, kind~ : @schema.InterfaceKind, model_identifier~ : String) -> Unit
 pub fn ModelIr::add_log_category(Self, name~ : String, description~ : String) -> Unit
 pub fn ModelIr::add_output_equation(Self, output~ : String, expr~ : IrExpr) -> Unit
+pub fn ModelIr::add_output_equation_element(Self, output~ : String, element~ : Int64, expr~ : IrExpr) -> Unit
 pub fn ModelIr::add_real_input(Self, name~ : String, start~ : Double, unit? : String, description? : String) -> IrVariable
 pub fn ModelIr::add_real_input_array(Self, name~ : String, size~ : UInt32, start~ : Array[Double], description? : String) -> IrVariable
 pub fn ModelIr::add_real_local(Self, name~ : String, start~ : Double, description? : String) -> IrVariable
@@ -196,6 +204,7 @@ pub fn ModelIr::add_real_output(Self, name~ : String, unit? : String, descriptio
 pub fn ModelIr::add_real_output_array(Self, name~ : String, size~ : UInt32, description? : String) -> IrVariable
 pub fn ModelIr::add_real_parameter(Self, name~ : String, start~ : Double, unit? : String, description? : String) -> IrVariable
 pub fn ModelIr::add_real_state(Self, name~ : String, start~ : Double, unit? : String, description? : String, nominal? : Double) -> IrVariable
+pub fn ModelIr::add_real_state_array(Self, name~ : String, size~ : UInt32, start~ : Array[Double], nominal? : Double, description? : String) -> IrVariable
 pub fn ModelIr::add_string_output(Self, name~ : String, start~ : String, description? : String) -> IrVariable
 pub fn ModelIr::add_unit(Self, @schema.UnitDef) -> Unit
 pub fn ModelIr::add_variable(Self, IrVariable) -> Unit
@@ -209,7 +218,13 @@ pub fn ModelIr::new(model_name~ : String, generation_tool~ : String, description
 pub fn ModelIr::output_equation_names(Self) -> Array[String]
 pub fn ModelIr::signature(Self) -> String
 pub fn ModelIr::state_names(Self) -> Array[String]
+pub fn ModelIr::state_slots(Self) -> Array[StateSlot]
 pub fn ModelIr::value_reference(Self, String) -> UInt32?
+
+pub(all) struct StateSlot {
+  name : String
+  element : Int64
+}
 
 pub struct XmlWriter {
   mut indent : Int32

@@ -84,6 +84,9 @@ fn IrExpr::render_wasm(self : IrExpr) -> String {
     IrExpr::Const(value) => value.to_string()
     IrExpr::Time => "s.time"
     IrExpr::Var(name) => "s.\{c_member(name)}"
+    // Unreachable: the WASM exporter rejects element references up front
+    // (EX-030, Float64 scalar subset).
+    IrExpr::Element(name, index) => "s.\{c_member(name)}[\{index.to_string()}]"
     IrExpr::Add(a, b) => "(\{a.render_wasm()} + \{b.render_wasm()})"
     IrExpr::Sub(a, b) => "(\{a.render_wasm()} - \{b.render_wasm()})"
     IrExpr::Mul(a, b) => "(\{a.render_wasm()} * \{b.render_wasm()})"
