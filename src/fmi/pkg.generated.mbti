@@ -124,6 +124,10 @@ pub(open) trait CsInstance {
   fn commit_rollback_point(Self) -> Unit raise SimulationError = _
   fn read_real(Self, UInt32) -> Double raise SimulationError
   fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
+  fn read_integer(Self, UInt32) -> Int32 raise SimulationError = _
+  fn write_integer(Self, UInt32, Int32) -> Unit raise SimulationError = _
+  fn read_boolean(Self, UInt32) -> Bool raise SimulationError = _
+  fn write_boolean(Self, UInt32, Bool) -> Unit raise SimulationError = _
   fn finish(Self) -> Unit raise SimulationError
 }
 
