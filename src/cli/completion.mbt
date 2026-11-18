@@ -7,7 +7,7 @@ fn completion_script(shell : String) -> String {
     "bash" =>
       "# bash completion for moonfmi\n" +
       "_moonfmi_completions() {\n" +
-      "  local commands=\"validate info simulate package doctor completion version\"\n" +
+      "  local commands=\"validate info simulate couple package doctor completion version\"\n" +
       "  local cur=\"\\${COMP_WORDS[COMP_CWORD]}\"\n" +
       "  if [ \"$COMP_CWORD\" -eq 1 ]; then\n" +
       "    COMPREPLY=( $(compgen -W \"$commands\" -- \"$cur\") )\n" +
@@ -20,13 +20,13 @@ fn completion_script(shell : String) -> String {
       "#compdef moonfmi\n" +
       "# zsh completion for moonfmi\n" +
       "_arguments -C \\\n" +
-      "  '1:command:(validate info simulate package doctor completion version)' \\\n" +
+      "  '1:command:(validate info simulate couple package doctor completion version)' \\\n" +
       "  '*:file:_files'\n"
     "pwsh" =>
       "# PowerShell completion for moonfmi (source this file or add to $PROFILE)\n" +
       "Register-ArgumentCompleter -Native -CommandName moonfmi -ScriptBlock {\n" +
       "  param($wordToComplete, $commandAst, $cursorPosition)\n" +
-      "  $commands = 'validate', 'info', 'simulate', 'package', 'doctor', 'completion', 'version'\n" +
+      "  $commands = 'validate', 'info', 'simulate', 'couple', 'package', 'doctor', 'completion', 'version'\n" +
       "  $commands | Where-Object { $_ -like \"$wordToComplete*\" } |\n" +
       "    ForEach-Object { [System.Management.Automation.CompletionResult]::new($_) }\n" +
       "}\n"

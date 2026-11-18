@@ -98,3 +98,68 @@ test "json outputs carry their schema versions" {
 test "doctor reports a healthy environment" {
   assert_eq(run(["doctor"], _path => b""), 0)
 }
+
+///|
+test "couple help and usage" {
+  assert_eq(run(["couple", "--help"], _path => b""), 0)
+  assert_true(usage().contains("couple"))
+  assert_true(usage().contains("--connect"))
+  assert_true(command_help("couple").contains("moonfmi.couple/v1"))
+}
+
+///|
+test "couple missing fmu is a usage error" {
+  assert_eq(run(["couple"], _path => b""), 2)
+  assert_eq(run(["couple", "--connect", "a.x=b.y"], _path => b""), 2)
+}
+
+///|
+/// `resolve_real_scalar` is pure, so it can be unit-tested without loading
+/// any FMU.
+test "resolve_real_scalar accepts Real outputs and rejects the rest" {
+  let xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?><fmiModelDescription fmiVersion=\"2.0\" modelName=\"T\" guid=\"{11111111-1111-1111-1111-111111111111}\"><CoSimulation modelIdentifier=\"T\"/><ModelVariables><ScalarVariable name=\"out\" valueReference=\"7\" causality=\"output\"><Real start=\"0\"/></ScalarVariable><ScalarVariable name=\"inp\" valueReference=\"8\" causality=\"input\"><Real start=\"0\"/></ScalarVariable><ScalarVariable name=\"num\" valueReference=\"9\" causality=\"output\"><Integer start=\"0\"/></ScalarVariable></ModelVariables><ModelStructure/></fmiModelDescription>"
+  let (model, report) = @schema.parse_and_validate(xml)
+  assert_true(
+    model is Some(_),
+    msg="fixture model description failed to parse: " +
+      report.diagnostics().map(fn(d) { d.render() }).join(" | "),
+  )
+  let model = match model {
+    Some(model) => model
+    None => abort("unreachable: fixture model description is valid")
+  }
+  match resolve_real_scalar(model, "out", Output) {
+    Ok(reference) => assert_eq(reference, 7U)
+    Err(message) => abort("expected to resolve 'out', got: " + message)
+  }
+  match resolve_real_scalar(model, "inp", Input) {
+    Ok(reference) => assert_eq(reference, 8U)
+    Err(message) => abort("expected to resolve 'inp', got: " + message)
+  }
+  // A non-Real output exists but cannot be coupled.
+  match resolve_real_scalar(model, "num", Output) {
+    Err(_) => ()
+    Ok(reference) =>
+      abort(
+        "'num' is an Integer output, expected an error, got " +
+        reference.to_string(),
+      )
+  }
+  // Wrong causality is rejected in both directions.
+  match resolve_real_scalar(model, "out", Input) {
+    Err(_) => ()
+    Ok(_) => abort("'out' is an output, expected an error for input")
+  }
+  match resolve_real_scalar(model, "inp", Output) {
+    Err(_) => ()
+    Ok(_) => abort("'inp' is an input, expected an error for output")
+  }
+  match resolve_real_scalar(model, "missing", Output) {
+    Err(_) => ()
+    Ok(reference) =>
+      abort(
+        "'missing' is undeclared, expected an error, got " +
+        reference.to_string(),
+      )
+  }
+}

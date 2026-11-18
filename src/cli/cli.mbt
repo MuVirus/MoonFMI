@@ -23,6 +23,9 @@ pub fn usage() -> String {
   "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
   "                  [--output out.csv] [--timeout SEC] [--backend native|wasm]\n" +
   "                  [--platform DIR] [--json]\n" +
+  "  moonfmi couple <fmu> [...] [--connect p.var=q.var ...]\n" +
+  "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
+  "                  [--output out.csv] [--json] [--timeout SEC]\n" +
   "  moonfmi package <dir> [--output model.fmu] [--platform DIR] [--json]\n" +
   "  moonfmi doctor [--json]\n" +
   "  moonfmi completion <bash|zsh|pwsh>\n" +
@@ -32,6 +35,7 @@ pub fn usage() -> String {
   "  validate     Static model description checks, rules MD-001..MD-063 (no FMU execution)\n" +
   "  info         Model summary: interfaces, variables, type distribution, binaries\n" +
   "  simulate     Run a co-simulation (cs) or model-exchange (me) simulation\n" +
+  "  couple       Run several FMUs as one coupled co-simulation\n" +
   "  package      Build a deterministic FMU archive from a directory\n" +
   "  doctor       Check the local environment\n" +
   "\n" +
@@ -40,6 +44,8 @@ pub fn usage() -> String {
   "  moonfmi info BouncingBall.fmu --json\n" +
   "  moonfmi simulate BouncingBall.fmu --stop-time 3 --step-size 0.01 --output ball.csv\n" +
   "  moonfmi simulate VanDerPol.fmu --interface me --solver rk4 --stop-time 5\n" +
+  "  moonfmi couple generator.fmu gain.fmu --connect generator.y=gain.u --stop-time 1\n" +
+  "                  --step-size 0.1 --output coupled.csv\n" +
   "  moonfmi package build/MyModel --output dist/MyModel.fmu\n" +
   "\n" +
   "Exit codes:\n" +
@@ -103,6 +109,30 @@ fn command_help(command : String) -> String {
       "\n" +
       "Exit codes: 0 success, 1 load error, 2 usage, 3 unreadable file, 4 unsupported,\n" +
       "5 simulation failure, 6 timeout\n"
+    "couple" =>
+      "moonfmi couple — run several FMUs as one coupled co-simulation\n" +
+      "\n" +
+      "Usage:\n" +
+      "  moonfmi couple <fmu> [...] [--connect p.var=q.var ...]\n" +
+      "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
+      "                  [--output out.csv] [--json] [--timeout SEC]\n" +
+      "\n" +
+      "Options:\n" +
+      "  --connect p.var=q.var  Drive input q.var of participant q with output p.var\n" +
+      "                         of participant p (repeatable)\n" +
+      "  --start-time T         Start time (default 0)\n" +
+      "  --stop-time T          Stop time (default 1.0)\n" +
+      "  --step-size H          Communication step size (default 0.01)\n" +
+      "  --output FILE          Write CSV to FILE instead of stdout\n" +
+      "  --timeout SEC          Abort when the run exceeds SEC seconds of wall clock\n" +
+      "  --json                 Stable JSON summary (schema moonfmi.couple/v1)\n" +
+      "\n" +
+      "Examples:\n" +
+      "  moonfmi couple generator.fmu gain.fmu --connect generator.y=gain.u --stop-time 1\n" +
+      "                  --step-size 0.1 --output coupled.csv\n" +
+      "\n" +
+      "Exit codes: 0 success, 1 load or configuration error, 2 usage error,\n" +
+      "3 unreadable file, 4 unsupported platform, 5 simulation failure, 6 timeout\n"
     "package" =>
       "moonfmi package — build a deterministic FMU archive from a directory\n" +
       "\n" +
@@ -342,6 +372,13 @@ pub fn run(
       return 0
     }
     return run_package(argv, 1)
+  }
+  if command == "couple" {
+    if argv.length() > 1 && (argv[1] == "--help" || argv[1] == "-h") {
+      println(command_help("couple"))
+      return 0
+    }
+    return run_couple(argv, 1, read_file)
   }
   if command == "doctor" {
     return run_doctor(argv, 1)
@@ -1357,5 +1394,725 @@ fn simulate_fmi3(
     }
     loaded.dispose()
     (names, result, step_size, stop_time)
+  }
+}
+
+///|
+/// `moonfmi couple` — run several FMUs as one coupled co-simulation.
+/// Each FMU is loaded as a co-simulation participant named after its file
+/// stem; `--connect` options wire a producer's Real output to a consumer's
+/// Real input and the coupled master steps all participants on one shared
+/// communication grid. The recorded signals are every participant's Real
+/// scalar outputs, in declaration order.
+
+///|
+/// Parsed options of the couple command.
+priv struct CoupleOptions {
+  fmus : Array[String]
+  /// `--connect` endpoints: (from participant, from variable, to participant, to variable).
+  connects : Array[(String, String, String, String)]
+  mut start_time : Double?
+  mut stop_time : Double?
+  mut step_size : Double?
+  mut output : String?
+  mut timeout_seconds : UInt64?
+  mut json : Bool
+}
+
+///|
+/// One loaded FMU, either FMI 2 or FMI 3, kept alive for the whole run
+/// because participants borrow its instance.
+priv enum LoadedFmu {
+  Fmu2(@native.LoadedFmu2)
+  Fmu3(@native.LoadedFmu3)
+}
+
+///|
+/// A loaded participant: name, source path, and typed model description
+/// used to resolve `--connect` variable names.
+priv struct CoupledFmuView {
+  name : String
+  path : String
+  model : @schema.ModelDescription
+}
+
+///|
+/// The stem of a file path: the final path component without its extension.
+/// Empty stems (for example `.fmu`) fall back to `fmu`.
+fn stem_of_path(path : String) -> String {
+  let mut slash = -1
+  for index, ch in path {
+    if ch == '/' || ch == '\\' {
+      slash = index
+    }
+  }
+  let base = if slash < 0 { path } else { path[slash + 1:].to_owned() }
+  let mut dot = -1
+  for index, ch in base {
+    if ch == '.' {
+      dot = index
+    }
+  }
+  let stem = if dot < 0 { base } else { base[:dot].to_owned() }
+  if stem.is_empty() {
+    "fmu"
+  } else {
+    stem
+  }
+}
+
+///|
+/// Split `participant.var` on the last dot: FMI variable names never
+/// contain dots, so `gain.u` is participant `gain`, variable `u`.
+fn split_participant_var(text : String) -> (String, String)? {
+  let mut dot = -1
+  for index, ch in text {
+    if ch == '.' {
+      dot = index
+    }
+  }
+  if dot < 0 {
+    None
+  } else {
+    Some((text[:dot].to_owned(), text[dot + 1:].to_owned()))
+  }
+}
+
+///|
+/// Parse one `--connect participant.var=participant.var` argument.
+fn parse_connect(text : String) -> (String, String, String, String)? {
+  let mut eq = -1
+  for index, ch in text {
+    if ch == '=' {
+      eq = index
+      break
+    }
+  }
+  if eq < 0 {
+    None
+  } else {
+    let left = text[:eq].to_owned()
+    let right = text[eq + 1:].to_owned()
+    match split_participant_var(left) {
+      None => None
+      Some((from_participant, from_var)) =>
+        match split_participant_var(right) {
+          None => None
+          Some((to_participant, to_var)) =>
+            Some((from_participant, from_var, to_participant, to_var))
+        }
+    }
+  }
+}
+
+///|
+/// Parse the couple command's operands; a missing FMU operand is a usage error.
+fn parse_couple_options(
+  args : Array[String],
+  skip : Int32,
+) -> (CoupleOptions, String?) {
+  let options : CoupleOptions = {
+    fmus: [],
+    connects: [],
+    start_time: None,
+    stop_time: None,
+    step_size: None,
+    output: None,
+    timeout_seconds: None,
+    json: false,
+  }
+  let mut index = skip
+  while index < args.length() {
+    let arg = args[index]
+    if arg == "--connect" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '--connect' needs a value"))
+      }
+      match parse_connect(args[index + 1]) {
+        Some(connect) => options.connects.push(connect)
+        None =>
+          return (
+            options,
+            Some(
+              "flag '--connect' needs 'participant.var=participant.var', got '" +
+              args[index + 1] +
+              "'",
+            ),
+          )
+      }
+      index += 2
+    } else if arg == "--start-time" ||
+      arg == "--stop-time" ||
+      arg == "--step-size" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '" + arg + "' needs a value"))
+      }
+      let number = parse_simulation_double(args[index + 1])
+      match number {
+        Some(number) =>
+          if arg == "--start-time" {
+            options.start_time = Some(number)
+          } else if arg == "--stop-time" {
+            options.stop_time = Some(number)
+          } else {
+            options.step_size = Some(number)
+          }
+        None =>
+          return (options, Some("'" + args[index + 1] + "' is not a number"))
+      }
+      index += 2
+    } else if arg == "--output" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '--output' needs a value"))
+      }
+      options.output = Some(args[index + 1])
+      index += 2
+    } else if arg == "--json" {
+      options.json = true
+      index += 1
+    } else if arg == "--timeout" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '--timeout' needs a value"))
+      }
+      let seconds = parse_simulation_double(args[index + 1])
+      match seconds {
+        Some(seconds) =>
+          if seconds <= 0.0 {
+            return (
+              options,
+              Some("'--timeout' needs a positive number of seconds"),
+            )
+          } else {
+            options.timeout_seconds = Some(@env.now() + seconds.to_uint64())
+          }
+        None =>
+          return (options, Some("'" + args[index + 1] + "' is not a number"))
+      }
+      index += 2
+    } else if arg.has_prefix("--") {
+      return (options, Some("unknown argument '" + arg + "'"))
+    } else {
+      options.fmus.push(arg)
+      index += 1
+    }
+  }
+  if options.fmus.is_empty() {
+    return (options, Some("missing fmu argument"))
+  }
+  (options, None)
+}
+
+///|
+/// Resolve a variable name on a typed model description to the value
+/// reference of a Real scalar variable with the required causality. This is
+/// the name resolution behind `moonfmi couple --connect`; it is pure so it
+/// can be tested without loading any FMU.
+fn resolve_real_scalar(
+  model : @schema.ModelDescription,
+  name : String,
+  want : @schema.Causality,
+) -> Result[UInt32, String] {
+  match model {
+    V2(m) => {
+      let index = @schema.build_fmi2_index(m)
+      match index.position_of_name(name) {
+        None =>
+          Err(
+            "variable '" + name + "' is not declared in the model description",
+          )
+        Some(position) => {
+          let variable = m.variables[position - 1]
+          let real = match variable.payload {
+            Real(_) => true
+            _ => false
+          }
+          if !real {
+            Err("variable '" + name + "' is not a Real scalar variable")
+          } else if variable.effective_causality() != want {
+            Err(
+              "variable '" +
+              name +
+              "' has causality '" +
+              @schema.Causality::name(variable.effective_causality()) +
+              "', expected '" +
+              @schema.Causality::name(want) +
+              "'",
+            )
+          } else {
+            Ok(variable.value_reference)
+          }
+        }
+      }
+    }
+    V3(m) => {
+      let index = @schema.build_fmi3_index(m)
+      match index.position_of_name(name) {
+        None =>
+          Err(
+            "variable '" + name + "' is not declared in the model description",
+          )
+        Some(position) => {
+          let variable = m.variables[position - 1]
+          let real_scalar = variable.type_kind is Float64 &&
+            variable.dimensions.is_empty()
+          if !real_scalar {
+            Err("variable '" + name + "' is not a Real scalar variable")
+          } else if variable.effective_causality() != want {
+            Err(
+              "variable '" +
+              name +
+              "' has causality '" +
+              @schema.Causality::name(variable.effective_causality()) +
+              "', expected '" +
+              @schema.Causality::name(want) +
+              "'",
+            )
+          } else {
+            Ok(variable.value_reference)
+          }
+        }
+      }
+    }
+  }
+}
+
+///|
+/// The value references recorded for one participant: every Real scalar
+/// output in document order, as `(value_reference, name)` pairs. Arrays and
+/// non-Real outputs are skipped; the returned notes describe what was
+/// skipped and why.
+fn collect_record_outputs(
+  model : @schema.ModelDescription,
+) -> (Array[(UInt32, String)], Array[String]) {
+  let outputs : Array[(UInt32, String)] = []
+  let notes : Array[String] = []
+  match model {
+    V2(m) =>
+      for variable in m.variables {
+        if variable.effective_causality() == Output {
+          match variable.payload {
+            Real(_) => outputs.push((variable.value_reference, variable.name))
+            _ =>
+              notes.push(
+                "skipping output '" +
+                variable.name +
+                "' (not a Real scalar variable)",
+              )
+          }
+        }
+      }
+    V3(m) =>
+      for variable in m.variables {
+        if variable.effective_causality() == Output {
+          if variable.type_kind is Float64 && variable.dimensions.is_empty() {
+            outputs.push((variable.value_reference, variable.name))
+          } else if !(variable.type_kind is Float64) {
+            notes.push(
+              "skipping output '" +
+              variable.name +
+              "' (not a Real scalar variable)",
+            )
+          } else {
+            notes.push(
+              "skipping array output '" +
+              variable.name +
+              "' (coupling records Real scalars only)",
+            )
+          }
+        }
+      }
+  }
+  (outputs, notes)
+}
+
+///|
+/// Resolve `participant.var` among the loaded participants. On failure a
+/// diagnostic (file path + variable name + problem) is printed and None is
+/// returned; the caller then exits with code 1.
+fn resolve_endpoint(
+  views : Array[CoupledFmuView],
+  participant : String,
+  variable : String,
+  want : @schema.Causality,
+) -> UInt32? {
+  let mut view : CoupledFmuView? = None
+  for candidate in views {
+    if candidate.name == participant {
+      view = Some(candidate)
+      break
+    }
+  }
+  match view {
+    None => {
+      let known = views.map(fn(v) { v.name }).join(", ")
+      println(
+        "moonfmi couple: endpoint '" +
+        participant +
+        "." +
+        variable +
+        "': participant '" +
+        participant +
+        "' is not loaded (loaded: " +
+        known +
+        ")",
+      )
+      None
+    }
+    Some(view) =>
+      match resolve_real_scalar(view.model, variable, want) {
+        Ok(value_reference) => Some(value_reference)
+        Err(message) => {
+          println(
+            "moonfmi couple: in '" +
+            view.path +
+            "' ('" +
+            participant +
+            "'): " +
+            message,
+          )
+          None
+        }
+      }
+  }
+}
+
+///|
+/// Load one FMU for a coupled run; loader rejections are propagated so the
+/// caller can phrase them as exit codes.
+fn load_fmu_for_couple(
+  _path : String,
+  data : Bytes,
+  host~ : @fmi.HostPlatform,
+  is_fmi3 : Bool,
+  directory~ : String,
+) -> LoadedFmu raise @native.LoaderError {
+  if is_fmi3 {
+    let loaded = @native.load_fmi3_fmu(data, host~, temp_directory=directory)
+    LoadedFmu::Fmu3(loaded)
+  } else {
+    let loaded = @native.load_fmi2_fmu(data, host~, temp_directory=directory)
+    LoadedFmu::Fmu2(loaded)
+  }
+}
+
+///|
+/// Render the coupled result as CSV: `time,<participant>.<var>` columns.
+fn couple_csv(names : Array[String], result : @sim.SimulationResult) -> String {
+  let builder = StringBuilder()
+  builder.write_string("time")
+  for name in names {
+    builder.write_string(",")
+    builder.write_string(name)
+  }
+  builder.write_string("\n")
+  for row, time in result.times() {
+    builder.write_string(csv_double(time))
+    for index = 0; index < names.length(); index = index + 1 {
+      builder.write_string(",")
+      builder.write_string(csv_double(result.series()[index][row]))
+    }
+    builder.write_string("\n")
+  }
+  builder.to_string()
+}
+
+///|
+/// Render the coupled result as the `moonfmi.couple/v1` JSON summary.
+fn couple_json(
+  files : Array[String],
+  start_time : Double,
+  stop_time : Double,
+  step_size : Double,
+  result : @sim.SimulationResult,
+  slots : Array[(String, String, UInt32)],
+) -> String {
+  let builder = StringBuilder()
+  builder.write_string(
+    "{\n  \"schema\": \"moonfmi.couple/v1\",\n  \"files\": [",
+  )
+  for index, file in files {
+    if index > 0 {
+      builder.write_string(", ")
+    }
+    builder.write_string(json_string(file))
+  }
+  builder.write_string("],\n  \"startTime\": ")
+  builder.write_string(csv_double(start_time))
+  builder.write_string(",\n  \"stopTime\": ")
+  builder.write_string(csv_double(stop_time))
+  builder.write_string(",\n  \"stepSize\": ")
+  builder.write_string(csv_double(step_size))
+  builder.write_string(",\n  \"steps\": ")
+  builder.write_string(result.steps().to_string())
+  builder.write_string(",\n  \"samples\": ")
+  builder.write_string(result.times().length().to_string())
+  builder.write_string(",\n  \"time\": [")
+  for index, time in result.times() {
+    if index > 0 {
+      builder.write_string(", ")
+    }
+    builder.write_string(csv_double(time))
+  }
+  builder.write_string("],\n  \"outputs\": [")
+  for index, slot in slots {
+    if index > 0 {
+      builder.write_string(", ")
+    }
+    builder.write_string("\n    {\"participant\": ")
+    builder.write_string(json_string(slot.0))
+    builder.write_string(", \"varName\": ")
+    builder.write_string(json_string(slot.1))
+    builder.write_string(", \"valueReference\": ")
+    builder.write_string(slot.2.to_string())
+    builder.write_string(", \"series\": [")
+    let series = result.series()[index]
+    for row, value in series {
+      if row > 0 {
+        builder.write_string(", ")
+      }
+      builder.write_string(csv_double(value))
+    }
+    builder.write_string("]\n    }")
+  }
+  builder.write_string("\n  ]\n}")
+  builder.to_string()
+}
+
+///|
+/// Entry point of `moonfmi couple`.
+fn run_couple(
+  argv : Array[String],
+  skip : Int32,
+  read_file : (String) -> Bytes raise ReadError,
+) -> Int32 {
+  let (options, error) = parse_couple_options(argv, skip)
+  if error is Some(message) {
+    println("moonfmi couple: " + message + "\n")
+    println(usage())
+    return 2
+  }
+  let host_name = @native.host_platform_name()
+  let host = match @fmi.parse_host_platform(host_name) {
+    Some(host) => host
+    None => {
+      println("moonfmi: unknown host platform '" + host_name + "'")
+      return 7
+    }
+  }
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let views : Array[CoupledFmuView] = []
+  let coupled : Array[@sim.CoupledParticipant] = []
+  let loaded_fmus : Array[LoadedFmu] = []
+  let records : Array[Array[(UInt32, String)]] = []
+  let notes : Array[String] = []
+  let taken : Map[String, Bool] = Map([])
+  for i = 0; i < options.fmus.length(); i = i + 1 {
+    let path = options.fmus[i]
+    let data = read_file(path) catch {
+      error =>
+        match error {
+          Failed(message) => {
+            println("moonfmi: cannot read '" + path + "': " + message)
+            return 3
+          }
+        }
+    }
+    let (probe, _probe_report) = @fmi.validate_fmu_bytes(data)
+    let is_fmi3 = match probe {
+      Some(@schema.V3(_)) => true
+      _ => false
+    }
+    let directory = ".moonfmi-tmp/couple-" +
+      i.to_string() +
+      "-" +
+      @env.now().to_string()
+    let loaded = match
+      (Ok(load_fmu_for_couple(path, data, host~, is_fmi3, directory~)) catch {
+        error => Err(error)
+      }) {
+      Ok(loaded) => loaded
+      Err(error) =>
+        match error {
+          @native.Rejected(detail~) => {
+            println("moonfmi: cannot load '" + path + "': " + detail)
+            return 4
+          }
+          @native.LoadFailed(detail~) => {
+            println("moonfmi: cannot load '" + path + "': " + detail)
+            return 1
+          }
+        }
+    }
+    // Participant name: file stem, deduplicated with `-2`, `-3`, ...
+    let mut name = stem_of_path(path)
+    let mut n = 2
+    while taken.contains(name) {
+      name = stem_of_path(path) + "-" + n.to_string()
+      n = n + 1
+    }
+    taken[name] = true
+    let model_of : @schema.ModelDescription = match loaded {
+      LoadedFmu::Fmu2(loaded) => V2(loaded.model())
+      LoadedFmu::Fmu3(loaded) => V3(loaded.model())
+    }
+    let (outputs, new_notes) = collect_record_outputs(model_of)
+    for note in new_notes {
+      notes.push("participant '" + name + "' ('" + path + "'): " + note)
+    }
+    match loaded {
+      LoadedFmu::Fmu2(loaded) =>
+        coupled.push(
+          @sim.CoupledParticipant::new(
+            name~,
+            instance=loaded.instance(),
+            record=outputs.map(fn(entry) { entry.0 }),
+          ),
+        )
+      LoadedFmu::Fmu3(loaded) =>
+        coupled.push(
+          @sim.CoupledParticipant::new(
+            name~,
+            instance=loaded.instance(),
+            record=outputs.map(fn(entry) { entry.0 }),
+          ),
+        )
+    }
+    views.push({ name, path, model: model_of, })
+    records.push(outputs)
+    loaded_fmus.push(loaded)
+  }
+  // Resolve every `--connect` endpoint before anything is stepped.
+  let connections : Array[@sim.Coupling] = []
+  for connect in options.connects {
+    let (from_participant, from_var, to_participant, to_var) = connect
+    let from_vr = match
+      resolve_endpoint(views, from_participant, from_var, Output) {
+      Some(value_reference) => value_reference
+      None => return 1
+    }
+    let to_vr = match resolve_endpoint(views, to_participant, to_var, Input) {
+      Some(value_reference) => value_reference
+      None => return 1
+    }
+    connections.push(
+      @sim.Coupling::new(
+        from=from_participant,
+        out_vr=from_vr,
+        to=to_participant,
+        in_vr=to_vr,
+      ),
+    )
+  }
+  let start_time = options.start_time.unwrap_or(0.0)
+  let stop_time = options.stop_time.unwrap_or(1.0)
+  let step_size = options.step_size.unwrap_or(0.01)
+  let config = @sim.CoupledConfig::new(
+    start_time~,
+    stop_time~,
+    step_size~,
+    participants=coupled,
+    connections~,
+    deadline=options.timeout_seconds,
+  )
+  let outcome = Ok(@sim.run_coupled_simulation(config~)) catch {
+    error => Err(error)
+  }
+  // Release every loaded FMU before reporting the result or the failure.
+  for loaded in loaded_fmus {
+    match loaded {
+      LoadedFmu::Fmu2(loaded) => loaded.dispose()
+      LoadedFmu::Fmu3(loaded) => loaded.dispose()
+    }
+  }
+  match outcome {
+    Ok(result) => {
+      if !options.json {
+        for note in notes {
+          println("note: " + note)
+        }
+      }
+      let names : Array[String] = []
+      let slots : Array[(String, String, UInt32)] = []
+      for index, view in views {
+        for entry in records[index] {
+          names.push(view.name + "." + entry.1)
+          slots.push((view.name, entry.1, entry.0))
+        }
+      }
+      let csv = couple_csv(names, result)
+      match options.output {
+        Some(file) => {
+          @fs.write_string_to_file(file, csv) catch {
+            error =>
+              match error {
+                @fs.IOError(message) => {
+                  println("moonfmi: cannot write '" + file + "': " + message)
+                  return 1
+                }
+              }
+          }
+          if options.json {
+            println(
+              couple_json(
+                options.fmus,
+                start_time,
+                stop_time,
+                step_size,
+                result,
+                slots,
+              ),
+            )
+          } else {
+            println(
+              "coupled " +
+              options.fmus.length().to_string() +
+              " FMUs: " +
+              result.steps().to_string() +
+              " steps from " +
+              start_time.to_string() +
+              " to " +
+              stop_time.to_string() +
+              ", " +
+              names.length().to_string() +
+              " output(s), CSV written to " +
+              file,
+            )
+          }
+        }
+        None =>
+          if options.json {
+            println(
+              couple_json(
+                options.fmus,
+                start_time,
+                stop_time,
+                step_size,
+                result,
+                slots,
+              ),
+            )
+          } else {
+            println(csv)
+          }
+      }
+      0
+    }
+    Err(error) =>
+      match error {
+        @fmi.Timeout(detail~) => {
+          println("moonfmi: simulation timed out after " + detail)
+          6
+        }
+        @fmi.Config(detail~) => {
+          println("moonfmi: coupling error: " + detail)
+          1
+        }
+        _ => {
+          println("moonfmi: simulation failed: " + error.message())
+          5
+        }
+      }
   }
 }
