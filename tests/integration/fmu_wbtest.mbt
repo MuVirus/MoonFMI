@@ -127,7 +127,16 @@ test "one megabyte model description parses within 100 ms" {
   let warmup = @xml.XmlReader::new(document) catch {
     error => abort(xml_message(error))
   }
-  let _ = warmup.read_events() catch { error => abort(xml_message(error)) }
+  let mut warmup_count = 0
+  while true {
+    let event = warmup.read_event() catch {
+      error => abort(xml_message(error))
+    }
+    if event is Eof {
+      break
+    }
+    warmup_count = warmup_count + 1
+  }
   let mut best = 1_000_000
   let mut event_count = 0
   for _ in 0..<3 {
@@ -135,16 +144,20 @@ test "one megabyte model description parses within 100 ms" {
     let reader = @xml.XmlReader::new(document) catch {
       error => abort(xml_message(error))
     }
-    let events = reader.read_events() catch {
-      error => abort(xml_message(error))
+    while true {
+      let event = reader.read_event() catch {
+        error => abort(xml_message(error))
+      }
+      if event is Eof {
+        break
+      }
+      event_count = event_count + 1
     }
     let elapsed = (@env.now() - started).to_int()
     if elapsed < best {
       best = elapsed
     }
-    event_count = events.length()
   }
-  assert_true(event_count > 11000)
   // Debug builds are roughly twice as slow as release builds, so the
   // acceptance number (100 ms) only applies to optimized binaries. The looser
   // debug bound still catches accidental quadratic behaviour.
@@ -152,6 +165,7 @@ test "one megabyte model description parses within 100 ms" {
   if best >= budget {
     abort("parsing 1 MB took " + best.to_string() + " ms")
   }
+  assert_true(event_count > 11000)
 }
 
 ///|
