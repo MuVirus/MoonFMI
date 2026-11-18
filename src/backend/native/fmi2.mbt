@@ -208,9 +208,28 @@ extern "C" fn fmi2_set_boolean_group(
 ) -> Int32 = "moonfmi_fmi2_set_boolean"
 
 ///|
+#borrow(status_out)
+extern "C" fn fmi2_get_string(
+  handle : @c.Pointer[Unit],
+  reference : UInt32,
+  status_out : FixedArray[Int32],
+) -> Bytes = "moonfmi_fmi2_get_string"
+
+///|
+#borrow(value)
+extern "C" fn fmi2_set_string(
+  handle : @c.Pointer[Unit],
+  reference : UInt32,
+  value : Bytes,
+) -> Int32 = "moonfmi_fmi2_set_string"
+
+///|
 extern "C" fn fmi2_library_typed_value_support(
   library : @c.Pointer[Unit],
 ) -> Int32 = "moonfmi_fmi2_library_typed_value_support"
+
+///|
+extern "C" fn fmi2_library_string_support(library : @c.Pointer[Unit]) -> Int32 = "moonfmi_fmi2_library_string_support"
 
 ///|
 extern "C" fn fmi2_last_error() -> Bytes = "moonfmi_fmi2_last_error"
@@ -807,6 +826,95 @@ pub fn Fmi2Instance::set_boolean_one(
   value : Bool,
 ) -> Unit raise Fmi2Error {
   self.set_boolean([reference], [value])
+}
+
+///|
+/// Whether the library exports `fmi2GetString`/`fmi2SetString`. FMI 2
+/// requires the group, but it is resolved as a group like
+/// `fmi2GetInteger`/`fmi2SetInteger`/`fmi2GetBoolean`/`fmi2SetBoolean`: a
+/// partial export reports an explicit capability error on use instead of
+/// failing at load time.
+pub fn Fmi2Instance::supports_string(self : Fmi2Instance) -> Bool {
+  fmi2_library_string_support(self.library.shim) != 0
+}
+
+///|
+fn Fmi2Instance::require_string(
+  self : Fmi2Instance,
+  operation~ : String,
+) -> Unit raise Fmi2Error {
+  self.ensure_live(operation)
+  if !self.supports_string() {
+    raise Fmi2CapabilityMissing(
+      operation~,
+      capability="fmi2GetString/fmi2SetString",
+    )
+  }
+}
+
+///|
+/// Reads String variables (`fmi2GetString`; `fmi2String` is a C `char*`
+/// carrying UTF-8 text, which this binding decodes into a MoonBit String).
+///
+/// One call per value reference: the shim copies the FMU's bytes out
+/// immediately, so the returned pointer never outlives the call.
+pub fn Fmi2Instance::get_string(
+  self : Fmi2Instance,
+  references : Array[UInt32],
+) -> Array[String] raise Fmi2Error {
+  self.require_string(operation="fmi2GetString")
+  let status_out : FixedArray[Int32] = FixedArray::make(1, 0)
+  let result = Array(capacity=references.length())
+  for reference in references {
+    let bytes = fmi2_get_string(self.handle, reference, status_out)
+    fail_on_failure(@fmi.FmiStatus::from_int32(status_out[0]), "fmi2GetString")
+    result.push(@utf8.decode_lossy(bytes.exact_view()))
+  }
+  result
+}
+
+///|
+pub fn Fmi2Instance::get_string_one(
+  self : Fmi2Instance,
+  reference : UInt32,
+) -> String raise Fmi2Error {
+  self.get_string([reference])[0]
+}
+
+///|
+/// Writes String variables (`fmi2SetString`).
+///
+/// The shim keeps a NUL-terminated copy per value reference, because FMI 2
+/// lets the FMU retain the passed pointer until the next
+/// `fmi2SetString` for the same reference or until the instance is freed;
+/// the copy is released when the slot is replaced or the instance is freed.
+pub fn Fmi2Instance::set_string(
+  self : Fmi2Instance,
+  references : Array[UInt32],
+  values : Array[String],
+) -> Unit raise Fmi2Error {
+  self.require_string(operation="fmi2SetString")
+  if references.length() != values.length() {
+    raise Fmi2InvalidArgument(
+      operation="fmi2SetString",
+      detail="got \{references.length()} value references but \{values.length()} values",
+    )
+  }
+  for index, reference in references {
+    let status = @fmi.FmiStatus::from_int32(
+      fmi2_set_string(self.handle, reference, @utf8.encode(values[index])),
+    )
+    fail_on_failure(status, "fmi2SetString")
+  }
+}
+
+///|
+pub fn Fmi2Instance::set_string_one(
+  self : Fmi2Instance,
+  reference : UInt32,
+  value : String,
+) -> Unit raise Fmi2Error {
+  self.set_string([reference], [value])
 }
 
 ///|
