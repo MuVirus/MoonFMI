@@ -6,6 +6,8 @@ import {
 }
 
 // Values
+pub fn run_coupled_simulation(config~ : CoupledConfig) -> SimulationResult raise @fmi.SimulationError
+
 pub fn run_cs_simulation(&@fmi.CsInstance, config~ : CsConfig) -> SimulationResult raise @fmi.SimulationError
 
 pub fn run_me_simulation(&@fmi.MeInstance, config~ : MeConfig) -> SimulationResult raise @fmi.SimulationError
@@ -15,6 +17,31 @@ pub fn run_se_simulation(&@fmi.SeInstance, clocks~ : Array[SeClockInfo], config~
 // Errors
 
 // Types and methods
+pub struct CoupledConfig {
+  start_time : Double
+  stop_time : Double
+  step_size : Double
+  participants : Array[CoupledParticipant]
+  connections : Array[Coupling]
+  deadline : UInt64?
+}
+pub fn CoupledConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, participants~ : Array[CoupledParticipant], connections~ : Array[Coupling], deadline? : UInt64?) -> Self
+
+pub struct CoupledParticipant {
+  name : String
+  instance : &@fmi.CsInstance
+  record : Array[UInt32]
+}
+pub fn CoupledParticipant::new(name~ : String, instance~ : &@fmi.CsInstance, record~ : Array[UInt32]) -> Self
+
+pub struct Coupling {
+  from : String
+  out_vr : UInt32
+  to : String
+  in_vr : UInt32
+}
+pub fn Coupling::new(from~ : String, out_vr~ : UInt32, to~ : String, in_vr~ : UInt32) -> Self
+
 pub struct CsConfig {
   start_time : Double
   stop_time : Double
