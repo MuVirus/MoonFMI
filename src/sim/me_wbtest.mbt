@@ -21,6 +21,8 @@ struct MockMe {
   mut initial_done : Bool
   mut settles : Int32
   mut reinits : Int32
+  /// Derivative evaluations performed by this mock (test instrumentation).
+  mut deriv_evals : Int32
   mut finished : Bool
 }
 
@@ -44,6 +46,7 @@ fn MockMe::make(
     initial_done: false,
     settles: 0,
     reinits: 0,
+    deriv_evals: 0,
     finished: false,
   }
 }
@@ -82,6 +85,7 @@ impl @fmi.MeInstance for MockMe with fn get_continuous_states(self, states) {
 
 ///|
 impl @fmi.MeInstance for MockMe with fn get_derivatives(self, derivatives) {
+  self.deriv_evals += 1
   derivatives[0] = if self.derivative_kind == 0 { -self.state } else { 1.0 }
 }
 
@@ -383,4 +387,106 @@ test "me rejects bad configurations" {
     event_indicator_count=0,
   )
   assert_true(me_config_rejected(mock, backwards))
+}
+
+///|
+/// dx/dt = -x, x(0) = 1: exact solution x(t) = e^-t. With tolerance 1e-6
+/// the adaptive run must land within tolerance magnitude of the analytic
+/// solution while using fewer derivative evaluations than fixed-step RK4
+/// at h = 0.01 (100 steps x 4 evals = 400).
+test "me adaptive integrates the exponential within tolerance" {
+  let mock = MockMe::make(derivative_kind=0, indicator_count=0)
+  mock.state = 1.0
+  let config = MeConfig::new(
+    start_time=0.0,
+    stop_time=1.0,
+    step_size=0.1,
+    record=[1U],
+    solver=Rk4,
+    state_count=1,
+    event_indicator_count=0,
+    adaptive=true,
+    tolerance=0.000001,
+  )
+  let result = run_me_simulation(mock, config~)
+  assert_true(mock.finished)
+  let last = result.times().length() - 1
+  // The last accepted step lands exactly on stop_time.
+  assert_true(
+    close(result.times()[last], 1.0, 0.000000001),
+    msg="final time \{result.times()[last]}",
+  )
+  assert_true(
+    close(result.series()[0][last], 0.36787944117144233, 0.0001),
+    msg="x(1)=\{result.series()[0][last]} vs e^-1=0.36787944117144233",
+  )
+  assert_true(mock.deriv_evals < 400, msg="deriv_evals=\{mock.deriv_evals}")
+  assert_true(result.steps() < 100, msg="steps=\{result.steps()}")
+}
+
+///|
+/// dx/dt = 1, indicator 1 - t crosses at t = 1, reinit to -5. The adaptive
+/// step must locate the event instead of crossing it, and the run ends at
+/// stop_time with x(2) = -4.
+test "me adaptive locates the event and keeps integrating after it" {
+  let mock = MockMe::make(
+    derivative_kind=1,
+    indicator_count=1,
+    reinit_value=-5.0,
+  )
+  let config = MeConfig::new(
+    start_time=0.0,
+    stop_time=2.0,
+    step_size=0.1,
+    record=[1U],
+    solver=Rk4,
+    state_count=1,
+    event_indicator_count=1,
+    adaptive=true,
+    tolerance=0.000001,
+  )
+  let result = run_me_simulation(mock, config~)
+  assert_eq(mock.settles, 2)
+  assert_eq(mock.reinits, 1)
+  assert_eq(result.events(), 1)
+  let last = result.times().length() - 1
+  assert_true(
+    close(result.times()[last], 2.0, 0.000000001),
+    msg="final time \{result.times()[last]}",
+  )
+  assert_true(
+    close(result.series()[0][last], -4.0, 0.000000001),
+    msg="x(2)=\{result.series()[0][last]} vs -4",
+  )
+}
+
+///|
+/// Adaptive configuration errors surface as `Config`.
+test "me rejects adaptive configurations" {
+  let mock = MockMe::make(derivative_kind=0, indicator_count=0)
+  mock.state = 1.0
+  let bad_tol = MeConfig::new(
+    start_time=0.0,
+    stop_time=1.0,
+    step_size=0.1,
+    record=[],
+    solver=Rk4,
+    state_count=1,
+    event_indicator_count=0,
+    adaptive=true,
+    tolerance=0.0,
+  )
+  assert_true(me_config_rejected(mock, bad_tol))
+  let bad_max = MeConfig::new(
+    start_time=0.0,
+    stop_time=1.0,
+    step_size=0.1,
+    record=[],
+    solver=Rk4,
+    state_count=1,
+    event_indicator_count=0,
+    adaptive=true,
+    max_step=Some(-1.0),
+  )
+  assert_true(me_config_rejected(mock, bad_max))
 }

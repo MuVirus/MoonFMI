@@ -1,4 +1,5 @@
 import {
   "MuVirus/fmi/src/fmi",
   "moonbitlang/core/env",
+  "moonbitlang/core/math",
 }
