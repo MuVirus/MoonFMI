@@ -24,8 +24,10 @@ pub struct CoupledConfig {
   participants : Array[CoupledParticipant]
   connections : Array[Coupling]
   deadline : UInt64?
+  max_loop_iterations : Int32?
+  loop_tolerance : Double
 }
-pub fn CoupledConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, participants~ : Array[CoupledParticipant], connections~ : Array[Coupling], deadline? : UInt64?) -> Self
+pub fn CoupledConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, participants~ : Array[CoupledParticipant], connections~ : Array[Coupling], deadline? : UInt64?, max_loop_iterations? : Int32?, loop_tolerance? : Double) -> Self
 
 pub struct CoupledParticipant {
   name : String
@@ -39,8 +41,9 @@ pub struct Coupling {
   out_vr : UInt32
   to : String
   in_vr : UInt32
+  signal : SignalType
 }
-pub fn Coupling::new(from~ : String, out_vr~ : UInt32, to~ : String, in_vr~ : UInt32) -> Self
+pub fn Coupling::new(from~ : String, out_vr~ : UInt32, to~ : String, in_vr~ : UInt32, signal? : SignalType) -> Self
 
 pub struct CsConfig {
   start_time : Double
@@ -91,6 +94,13 @@ pub struct SeConfig {
 }
 pub fn SeConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], deadline? : UInt64?, max_rounds? : Int32, trigger? : (Double) -> Array[UInt32], output_clocks? : Array[UInt32]) -> Self
 pub fn SeConfig::trigger_all_each_step(clocks~ : Array[SeClockInfo]) -> (Double) -> Array[UInt32]
+
+#derive(Eq)
+pub(all) enum SignalType {
+  Real
+  Integer
+  Boolean
+}
 
 pub(all) struct SimulationResult {
   times : Array[Double]

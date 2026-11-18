@@ -45,6 +45,20 @@ pub(open) trait CsInstance {
   /// Write one real input by value reference.
   fn write_real(self : Self, value_reference : UInt32, value : Double) -> Unit raise SimulationError
 
+  /// Read one Int32 output by value reference (typed signal connections,
+  /// C-20 follow-up). The default implementation refuses; backends with
+  /// typed channels override all four signal methods together.
+  fn read_integer(self : Self, value_reference : UInt32) -> Int32 raise SimulationError = _
+
+  /// Write one Int32 input by value reference.
+  fn write_integer(self : Self, value_reference : UInt32, value : Int32) -> Unit raise SimulationError = _
+
+  /// Read one Bool output by value reference.
+  fn read_boolean(self : Self, value_reference : UInt32) -> Bool raise SimulationError = _
+
+  /// Write one Bool input by value reference.
+  fn write_boolean(self : Self, value_reference : UInt32, value : Bool) -> Unit raise SimulationError = _
+
   /// Terminate the instance before freeing it.
   fn finish(self : Self) -> Unit raise SimulationError
 }
@@ -55,6 +69,30 @@ pub(open) trait CsInstance {
 impl CsInstance with fn try_step(self, t, h) -> Double raise SimulationError {
   self.step(t, h)
   t + h
+}
+
+///|
+/// Default typed signal surface: unsupported. A backend that routes
+/// Integer/Boolean channels overrides these four methods together; a
+/// coupled run only reaches them for connections declared with the
+/// matching `SignalType`.
+impl CsInstance with fn read_integer(_self, _value_reference) -> Int32 raise SimulationError {
+  raise Config(detail="Integer signal access is not supported by this backend")
+}
+
+///|
+impl CsInstance with fn write_integer(_self, _value_reference, _value) -> Unit raise SimulationError {
+  raise Config(detail="Integer signal access is not supported by this backend")
+}
+
+///|
+impl CsInstance with fn read_boolean(_self, _value_reference) -> Bool raise SimulationError {
+  raise Config(detail="Boolean signal access is not supported by this backend")
+}
+
+///|
+impl CsInstance with fn write_boolean(_self, _value_reference, _value) -> Unit raise SimulationError {
+  raise Config(detail="Boolean signal access is not supported by this backend")
 }
 
 ///|

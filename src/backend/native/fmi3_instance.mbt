@@ -285,6 +285,58 @@ pub impl @fmi.CsInstance for Fmi3Instance with fn finish(self) {
 }
 
 ///|
+/// Typed Int32 signal access over the existing `fmi3GetInt32` /
+/// `fmi3SetInt32` channels (C-20 follow-up).
+pub impl @fmi.CsInstance for Fmi3Instance with fn read_integer(
+  self,
+  value_reference,
+) {
+  let values = Fmi3Instance::get_int32(self, [value_reference]) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3GetInt32", detail=error.message())
+  }
+  values[0]
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn write_integer(
+  self,
+  value_reference,
+  value,
+) {
+  Fmi3Instance::set_int32_one(self, value_reference, value) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3SetInt32", detail=error.message())
+  }
+}
+
+///|
+/// Typed Boolean signal access over the existing `fmi3GetBoolean` /
+/// `fmi3SetBoolean` channels.
+pub impl @fmi.CsInstance for Fmi3Instance with fn read_boolean(
+  self,
+  value_reference,
+) {
+  let values = Fmi3Instance::get_boolean(self, [value_reference]) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3GetBoolean", detail=error.message())
+  }
+  values[0]
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn write_boolean(
+  self,
+  value_reference,
+  value,
+) {
+  Fmi3Instance::set_boolean_one(self, value_reference, value) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3SetBoolean", detail=error.message())
+  }
+}
+
+///|
 /// `Fmi3Instance` as a model-exchange `MeInstance` (task C-18). The
 /// operations map one to one onto the FMI 3 continuous-time functions.
 pub impl @fmi.MeInstance for Fmi3Instance with fn setup_experiment(

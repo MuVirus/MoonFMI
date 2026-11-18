@@ -1,7 +1,11 @@
 ///|
 /// Mock participant for the coupling tests: named channels with current
 /// values; `transfer` runs at every step and returns the channel updates
-/// (t, h) -> (vr, value) list; every written input is logged.
+/// (t, h) -> (vr, value) list; every written input is logged. Integer and
+/// Boolean signals share the same Double channels — Int32 values are exact
+/// in Double and booleans are stored as 1.0 / 0.0 — with the typed methods
+/// converting at the boundary, so a wrongly-routed Real value (e.g. 5.5
+/// through an Integer connection) stays visible to the tests.
 struct MockNode {
   channels : Map[UInt32, Double]
   stepped : Array[Double]
@@ -54,6 +58,40 @@ impl @fmi.CsInstance for MockNode with fn write_real(
   value,
 ) {
   self.channels[value_reference] = value
+}
+
+///|
+impl @fmi.CsInstance for MockNode with fn read_integer(self, value_reference) {
+  match self.channels.get(value_reference) {
+    Some(value) => value.to_int()
+    None => 0
+  }
+}
+
+///|
+impl @fmi.CsInstance for MockNode with fn write_integer(
+  self,
+  value_reference,
+  value,
+) {
+  self.channels[value_reference] = value.to_double()
+}
+
+///|
+impl @fmi.CsInstance for MockNode with fn read_boolean(self, value_reference) {
+  match self.channels.get(value_reference) {
+    Some(value) => value != 0.0
+    None => false
+  }
+}
+
+///|
+impl @fmi.CsInstance for MockNode with fn write_boolean(
+  self,
+  value_reference,
+  value,
+) {
+  self.channels[value_reference] = if value { 1.0 } else { 0.0 }
 }
 
 ///|
@@ -295,4 +333,249 @@ test "coupled run rejects invalid grids and truncates the final step" {
   assert_eq(result.steps(), 3)
   assert_eq(result.times()[3], 0.5)
   assert_eq(result.series()[0][3], 0.5)
+}
+
+///|
+test "coordinated rollback halves the whole grid and rolls back everyone" {
+  // Both participants can capture FMU state, so the coupled run switches
+  // to coordinated mode: one discard rolls EVERY participant back and the
+  // whole grid step is halved — no participant is halved on its own.
+  let a = DiscardMock::make(discards=1, capture=true)
+  let b = DiscardMock::make(discards=0, capture=true)
+  let config = CoupledConfig::new(
+    start_time=0.0,
+    stop_time=1.0,
+    step_size=0.5,
+    participants=[
+      CoupledParticipant::new(name="a", instance=a, record=[1U]),
+      CoupledParticipant::new(name="b", instance=b, record=[1U]),
+    ],
+    connections=[Coupling::new(from="a", out_vr=1U, to="b", in_vr=1U)],
+  )
+  let result = run_coupled_simulation(config~)
+  // The discarded first point is retried with the halved step; the grid
+  // becomes 0, 0.25, 0.75, 1.0 (the next points use the full step again).
+  assert_eq(result.steps(), 3)
+  assert_eq(result.times().length(), 4)
+  assert_eq(result.times()[1], 0.25)
+  assert_eq(result.times()[2], 0.75)
+  assert_eq(result.times()[3], 1.0)
+  // One begin per attempt (2 for the retried point, 1 for the other two),
+  // one rollback on EACH participant for the discard, one commit per
+  // settled point.
+  assert_eq(a.begins, 4)
+  assert_eq(b.begins, 4)
+  assert_eq(a.rollbacks, 1)
+  assert_eq(b.rollbacks, 1)
+  assert_eq(a.commits, 3)
+  assert_eq(b.commits, 3)
+  assert_false(a.armed)
+  assert_false(b.armed)
+}
+
+///|
+test "coordinated rollback requires capture on every participant" {
+  // a cannot capture: coordinated mode stays off, so the discard surfaces
+  // through a's own step semantics, aborts the run, and the capture
+  // protocol is never touched.
+  let a = DiscardMock::make(discards=1, capture=false)
+  let b = DiscardMock::make(discards=0, capture=true)
+  let config = CoupledConfig::new(
+    start_time=0.0,
+    stop_time=1.0,
+    step_size=0.5,
+    participants=[
+      CoupledParticipant::new(name="a", instance=a, record=[1U]),
+      CoupledParticipant::new(name="b", instance=b, record=[1U]),
+    ],
+    connections=[Coupling::new(from="a", out_vr=1U, to="b", in_vr=1U)],
+  )
+  let result = run_coupled_simulation(config~) catch {
+    error => {
+      assert_true(error.message().contains("discard"))
+      { times: [], series: [], steps: -1, events: 0, }
+    }
+  }
+  assert_eq(result.steps(), -1)
+  // No coordinated protocol ran: b was never armed, never finished.
+  assert_eq(b.begins, 0)
+  assert_eq(b.rollbacks, 0)
+  assert_eq(b.commits, 0)
+  assert_false(b.finished)
+}
+
+///|
+test "typed Integer/Boolean connections roundtrip through the typed surface" {
+  // a carries a Real channel value that is not representable as an Int32
+  // (5.5) and one that is not a wire boolean (2.0). The coupling must
+  // route them through read_integer/write_integer (5.5 truncates to 5)
+  // and read_boolean/write_boolean (2.0 reads as true, writes back 1.0);
+  // a Real-typed leak would leave 5.5 / 2.0 on b's side.
+  let a = MockNode::make(initial=[(1U, 5.5), (2U, 2.0)], transfer=fn(_t, _h) {
+    []
+  })
+  let b = MockNode::make(initial=[(1U, 0.0), (2U, 0.0), (3U, 0.0)], transfer=fn(
+    _t,
+    _h,
+  ) {
+    [(3U, 7.0)]
+  })
+  let config = CoupledConfig::new(
+    start_time=0.0,
+    stop_time=0.1,
+    step_size=0.1,
+    participants=[
+      // Typed connections observe their outputs through the typed surface
+      // directly; the source does not need the vr in its record list.
+      CoupledParticipant::new(name="a", instance=a, record=[]),
+      CoupledParticipant::new(name="b", instance=b, record=[3U]),
+    ],
+    connections=[
+      Coupling::new(from="a", out_vr=1U, to="b", in_vr=1U, signal=Integer),
+      Coupling::new(from="a", out_vr=2U, to="b", in_vr=2U, signal=Boolean),
+    ],
+  )
+  let result = run_coupled_simulation(config~)
+  assert_eq(result.steps(), 1)
+  assert_eq(b.channels.get(1U).unwrap(), 5.0)
+  assert_eq(b.channels.get(2U).unwrap(), 1.0)
+  // b's Real output still flows through the record list untouched.
+  assert_eq(result.series()[0][0], 0.0)
+  assert_eq(result.series()[0][1], 7.0)
+}
+
+///|
+test "loop solving converges a direct-feedthrough algebraic loop" {
+  // a.out = 1 + 0.5 * b.out and b.out = 1 + 0.5 * a.out: a two-node
+  // algebraic loop with the unique fixed point 2. With loop solving on,
+  // the Jacobi iteration converges geometrically instead of the cycle
+  // being rejected.
+  let b_holder : Array[MockNode] = []
+  let a = MockNode::make(initial=[(1U, 0.0)], transfer=fn(_t, _h) {
+    [(1U, 1.0 + 0.5 * b_holder[0].channels.get(2U).unwrap())]
+  })
+  let b = MockNode::make(initial=[(2U, 0.0)], transfer=fn(_t, _h) {
+    [(2U, 1.0 + 0.5 * a.channels.get(1U).unwrap())]
+  })
+  b_holder.push(b)
+  let config = CoupledConfig::new(
+    start_time=0.0,
+    stop_time=0.1,
+    step_size=0.1,
+    participants=[
+      CoupledParticipant::new(name="a", instance=a, record=[1U]),
+      CoupledParticipant::new(name="b", instance=b, record=[2U]),
+    ],
+    connections=[
+      Coupling::new(from="a", out_vr=1U, to="b", in_vr=2U),
+      Coupling::new(from="b", out_vr=2U, to="a", in_vr=1U),
+    ],
+    max_loop_iterations=Some(100),
+    loop_tolerance=0.000000001,
+  )
+  let result = run_coupled_simulation(config~)
+  assert_eq(result.steps(), 1)
+  // Both outputs settled on the fixed point 2 within the tolerance.
+  assert_true((result.series()[0][1] - 2.0).abs() < 0.00000001)
+  assert_true((result.series()[1][1] - 2.0).abs() < 0.00000001)
+  // The block actually iterated: far more step calls than grid points.
+  assert_true(a.stepped.length() > 10)
+}
+
+///|
+test "loop solving reports non-convergence with iterations and residual" {
+  // out = -2 * in amplifies every pass: the Jacobi iteration oscillates
+  // and diverges, so the run must fail with the iteration count and the
+  // last residual instead of recording unfixed outputs.
+  let b_holder : Array[MockNode] = []
+  let a = MockNode::make(initial=[(1U, 1.0)], transfer=fn(_t, _h) {
+    [(1U, -2.0 * b_holder[0].channels.get(2U).unwrap())]
+  })
+  let b = MockNode::make(initial=[(2U, 1.0)], transfer=fn(_t, _h) {
+    [(2U, -2.0 * a.channels.get(1U).unwrap())]
+  })
+  b_holder.push(b)
+  let config = CoupledConfig::new(
+    start_time=0.0,
+    stop_time=0.1,
+    step_size=0.1,
+    participants=[
+      CoupledParticipant::new(name="a", instance=a, record=[1U]),
+      CoupledParticipant::new(name="b", instance=b, record=[2U]),
+    ],
+    connections=[
+      Coupling::new(from="a", out_vr=1U, to="b", in_vr=2U),
+      Coupling::new(from="b", out_vr=2U, to="a", in_vr=1U),
+    ],
+    max_loop_iterations=Some(10),
+    loop_tolerance=0.000000001,
+  )
+  let result = run_coupled_simulation(config~) catch {
+    error => {
+      assert_true(error is Config(_))
+      assert_true(
+        error.message().contains("did not converge within 10 iterations"),
+      )
+      assert_true(error.message().contains("residual"))
+      { times: [], series: [], steps: -1, events: 0, }
+    }
+  }
+  assert_eq(result.steps(), -1)
+}
+
+///|
+test "loop solving stays off by default (None rejects cycles)" {
+  let a = MockNode::make(initial=[(1U, 0.0)], transfer=fn(_t, _h) {
+    [(1U, 0.0)]
+  })
+  let b = MockNode::make(initial=[(1U, 0.0)], transfer=fn(_t, _h) {
+    [(1U, 0.0)]
+  })
+  let config = CoupledConfig::new(
+    start_time=0.0,
+    stop_time=0.1,
+    step_size=0.1,
+    participants=[
+      CoupledParticipant::new(name="a", instance=a, record=[1U]),
+      CoupledParticipant::new(name="b", instance=b, record=[1U]),
+    ],
+    connections=[
+      Coupling::new(from="a", out_vr=1U, to="b", in_vr=1U),
+      Coupling::new(from="b", out_vr=1U, to="a", in_vr=1U),
+    ],
+    max_loop_iterations=None,
+  )
+  let mut rejected = false
+  let result = run_coupled_simulation(config~) catch {
+    error => {
+      assert_true(error.message().contains("cycle"))
+      rejected = true
+      { times: [], series: [], steps: -1, events: 0, }
+    }
+  }
+  assert_eq(result.steps(), -1)
+  assert_true(rejected)
+}
+
+///|
+test "loop solving turns a self connection into a one-member loop block" {
+  // out = 1 + 0.5 * in fed back into itself: the same fixed point 2, now
+  // reached by iterating the single-member block instead of rejecting the
+  // self connection.
+  let holder : Array[MockNode] = []
+  let a = MockNode::make(initial=[(10U, 0.0), (1U, 0.0)], transfer=fn(_t, _h) {
+    [(1U, 1.0 + 0.5 * holder[0].channels.get(10U).unwrap())]
+  })
+  holder.push(a)
+  let config = CoupledConfig::new(
+    start_time=0.0,
+    stop_time=0.1,
+    step_size=0.1,
+    participants=[CoupledParticipant::new(name="a", instance=a, record=[1U])],
+    connections=[Coupling::new(from="a", out_vr=1U, to="a", in_vr=10U)],
+    max_loop_iterations=Some(100),
+  )
+  let result = run_coupled_simulation(config~)
+  assert_eq(result.steps(), 1)
+  assert_true((result.series()[0][1] - 2.0).abs() < 0.00000001)
 }

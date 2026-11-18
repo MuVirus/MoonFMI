@@ -163,6 +163,56 @@ pub impl @fmi.CsInstance for Fmi2Instance with fn commit_rollback_point(self) ->
 }
 
 ///|
+/// Typed Integer signal access over the existing `fmi2GetInteger` /
+/// `fmi2SetInteger` channels (C-20 follow-up).
+pub impl @fmi.CsInstance for Fmi2Instance with fn read_integer(
+  self,
+  value_reference,
+) {
+  Fmi2Instance::get_integer_one(self, value_reference) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi2GetInteger", detail=error.message())
+  }
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi2Instance with fn write_integer(
+  self,
+  value_reference,
+  value,
+) {
+  Fmi2Instance::set_integer_one(self, value_reference, value) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi2SetInteger", detail=error.message())
+  }
+}
+
+///|
+/// Typed Boolean signal access over the existing `fmi2GetBoolean` /
+/// `fmi2SetBoolean` channels.
+pub impl @fmi.CsInstance for Fmi2Instance with fn read_boolean(
+  self,
+  value_reference,
+) {
+  Fmi2Instance::get_boolean_one(self, value_reference) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi2GetBoolean", detail=error.message())
+  }
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi2Instance with fn write_boolean(
+  self,
+  value_reference,
+  value,
+) {
+  Fmi2Instance::set_boolean_one(self, value_reference, value) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi2SetBoolean", detail=error.message())
+  }
+}
+
+///|
 pub extend Fmi2Instance with @fmi.CsInstance::{
   initialize,
   step,
