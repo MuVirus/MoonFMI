@@ -40,3 +40,24 @@ integration tests cover those directly.
 Tolerance: 1e-6. Both versions are driven by the same CS master
 (start 0, stop 1, h = 0.1), so the same model source has to produce the same
 trajectory.
+
+## 3. Official fmi-cross-check submission layout
+
+Generated under `docs/reports/fmi-cross-check-submission/` following
+FMI-CROSS-CHECK-RULES.md v4.1 (<https://github.com/modelica/fmi-cross-check>),
+import side only (`results/`): the corpus FMUs are modelica/Reference-FMUs,
+not MoonFMI exports. Status `ok` maps to a `passed` marker, `skip` entries
+are not submitted, and FMI 3 runs are not representable (the layout supports
+FMI 1.0/2.0 only). The upstream repository is archived — see the FMI 3.0
+Implementers' Guide; this tree documents a would-be submission.
+
+| submitted import | result |
+| --- | --- |
+| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
+| `results/2.0/me/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
+| `results/2.0/me/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/Feedthrough` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/Resource` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
+| `results/2.0/me/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
