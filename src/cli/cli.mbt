@@ -773,7 +773,7 @@ fn parse_simulate_options(
               )
             } else {
               options.timeout_seconds = Some(
-                @env.now() + seconds.to_uint64() * 1_000_000_000UL,
+                @env.now() + seconds.to_uint64() * 1_000UL,
               )
             }
           None => return (options, Some("'" + value + "' is not a number"))
@@ -1586,7 +1586,7 @@ fn parse_couple_options(
             )
           } else {
             options.timeout_seconds = Some(
-              @env.now() + seconds.to_uint64() * 1_000_000_000UL,
+              @env.now() + seconds.to_uint64() * 1_000UL,
             )
           }
         None =>

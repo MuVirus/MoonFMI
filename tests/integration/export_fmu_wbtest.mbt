@@ -46,7 +46,9 @@ fn ensure_test_dir(path : String) -> Unit {
     if segment.is_empty() {
       continue
     }
-    prefix = if prefix.is_empty() || prefix == "/" {
+    prefix = if prefix == "/" {
+      "/\{segment}"
+    } else if prefix.is_empty() {
       segment
     } else {
       "\{prefix}/\{segment}"
