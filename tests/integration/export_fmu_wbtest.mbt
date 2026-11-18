@@ -572,8 +572,7 @@ test "wasm export builds a component fmu end to end" {
     println("SKIP: node not on PATH")
     return
   }
-  if run_shell("wit-bindgen --version") != 0L &&
-    run_shell("\"%USERPROFILE%/.moonfmi/bin/wit-bindgen.exe\" --version") != 0L {
+  if run_shell("wit-bindgen --version") != 0L {
     println("SKIP: wit-bindgen not available")
     return
   }
