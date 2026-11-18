@@ -9,6 +9,7 @@ import {
   "MuVirus/fmi/src/zip",
   "moonbitlang/core/encoding/utf8",
   "moonbitlang/core/env",
+  "moonbitlang/core/string",
   "moonbitlang/x/fs",
   "tonyfettes/c",
 } for "wbtest"

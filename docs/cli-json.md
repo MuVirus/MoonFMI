@@ -68,6 +68,43 @@
 
 - 记录的数值数据在 `--output` 的 CSV 里;JSON 只是摘要。
 
+## `moonfmi.couple/v1` — `moonfmi couple --json`
+
+```json
+{
+  "schema": "moonfmi.couple/v1",
+  "files": ["generator.fmu", "gain.fmu"],
+  "startTime": 0,
+  "stopTime": 1,
+  "stepSize": 0.1,
+  "steps": 10,
+  "samples": 11,
+  "time": [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+  "outputs": [
+    {
+      "participant": "generator",
+      "varName": "x",
+      "valueReference": 1,
+      "series": [1.0, 0.9, 0.81, 0.729, 0.6561, 0.59049, 0.531441, 0.4782969, 0.43046721, 0.387420489, 0.3486784401]
+    },
+    {
+      "participant": "gain",
+      "varName": "y",
+      "valueReference": 2,
+      "series": [2.0, 1.8, 1.62, 1.458, 1.3122, 1.18098, 1.062882, 0.9565938, 0.86093442, 0.774840978, 0.6973568802]
+    }
+  ]
+}
+```
+
+- `files`: the FMU paths given on the command line, in declaration order.
+- `steps`: number of communication steps; `samples`: length of `time` (steps + 1).
+- `outputs`: one entry per recorded signal, in participant declaration order,
+  then document order within each participant. Every entry carries
+  `participant`, `varName`, `valueReference` and the `series` of Double
+  samples aligned with `time`. Only Real scalar outputs are recorded; array
+  outputs are skipped.
+
 ## `moonfmi.package/v1` — `moonfmi package --json`
 
 ```json
