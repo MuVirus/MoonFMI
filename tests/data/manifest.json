@@ -130,6 +130,30 @@
       }
     },
     {
+      "id": "fmi2-stair",
+      "archivePath": "2.0/Stair.fmu",
+      "cachePath": "fmi2/Stair.fmu",
+      "bytes": 203821,
+      "sha256": "f2ee100d131b7abff6f9e8365590b3e53fb494d51457a6af4810b5374d5aaad1",
+      "fmiVersion": "2.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "time-events",
+        "event-indicators",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "Time-event stair signal; the 0.7.0 cross-check expansion adds it to the smoke matrix.",
+      "modelIdentifier": "Stair",
+      "binaries": {
+        "windows": "binaries/win64/Stair.dll",
+        "linux": "binaries/linux64/Stair.so"
+      }
+    },
+    {
       "id": "fmi3-bouncingball",
       "archivePath": "3.0/BouncingBall.fmu",
       "cachePath": "fmi3/BouncingBall.fmu",
@@ -246,6 +270,54 @@
       "binaries": {
         "windows": "binaries/x86_64-windows/Clocks.dll",
         "linux": "binaries/x86_64-linux/Clocks.so"
+      }
+    },
+    {
+      "id": "fmi3-stair",
+      "archivePath": "3.0/Stair.fmu",
+      "cachePath": "fmi3/Stair.fmu",
+      "bytes": 347763,
+      "sha256": "6d9c5c475354ab71bc259e038be0201915ac6c67e14f03fc85fa2ac6ac58198b",
+      "fmiVersion": "3.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "time-events",
+        "event-indicators",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "Time-event stair signal (FMI 3); the 0.7.0 cross-check expansion adds it to the smoke matrix.",
+      "modelIdentifier": "Stair",
+      "binaries": {
+        "windows": "binaries/x86_64-windows/Stair.dll",
+        "linux": "binaries/x86_64-linux/Stair.so"
+      }
+    },
+    {
+      "id": "fmi3-roberts",
+      "archivePath": "3.0/Roberts.fmu",
+      "cachePath": "fmi3/Roberts.fmu",
+      "bytes": 354825,
+      "sha256": "bf6881dd6fe142a63527ea93155c18e6cfc47482cdc1e48ee3ddd67959c850bb",
+      "fmiVersion": "3.0",
+      "interfaces": [
+        "ModelExchange",
+        "CoSimulation"
+      ],
+      "covers": [
+        "time-events",
+        "continuous-time-events",
+        "windows-x86_64",
+        "linux-x86_64"
+      ],
+      "notes": "Time-event fish-model oscillator (FMI 3); the 0.7.0 cross-check expansion adds it to the smoke matrix.",
+      "modelIdentifier": "Roberts",
+      "binaries": {
+        "windows": "binaries/x86_64-windows/Roberts.dll",
+        "linux": "binaries/x86_64-linux/Roberts.so"
       }
     }
   ]

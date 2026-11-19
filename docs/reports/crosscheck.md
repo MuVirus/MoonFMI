@@ -14,6 +14,8 @@
 | fmi2/Feedthrough.fmu | me | ok | ok | skip |
 | fmi2/Resource.fmu | cs | ok | ok | ok |
 | fmi2/Resource.fmu | me | ok | ok | skip |
+| fmi2/Stair.fmu | cs | ok | ok | ok |
+| fmi2/Stair.fmu | me | ok | ok | skip |
 | fmi2/VanDerPol.fmu | cs | ok | ok | ok |
 | fmi2/VanDerPol.fmu | me | ok | ok | ok |
 | fmi3/BouncingBall.fmu | cs | ok | ok | ok |
@@ -23,12 +25,20 @@
 | fmi3/Feedthrough.fmu | me | ok | ok | skip |
 | fmi3/Resource.fmu | cs | ok | ok | skip |
 | fmi3/Resource.fmu | me | ok | ok | skip |
+| fmi3/Roberts.fmu | cs | ok | ok | skip |
+| fmi3/Roberts.fmu | me | ok | ok | ok |
+| fmi3/Stair.fmu | cs | ok | ok | ok |
+| fmi3/Stair.fmu | me | ok | ok | skip |
 | fmi3/StateSpace.fmu | cs | ok | ok | ok |
 | fmi3/StateSpace.fmu | me | ok | ok | ok |
 
 `skip` means the FMU does not offer that interface or state shape (an
 SE-only model under CS, or an ME run of a stateless model); the P4/P7
-integration tests cover those directly.
+integration tests cover those directly. `fmi3/Roberts.fmu under CS skips
+because the FMU requires FMI 3 intermediate-update capabilities (declares
+`providesIntermediateUpdate/`hasEventMode and returns no component
+without them); its ME path runs, and CS support for intermediate-update
+FMUs is future work.
 
 ## 2. Cross-version trajectory comparison (FMI 2 vs FMI 3)
 
@@ -53,11 +63,29 @@ Implementers' Guide; this tree documents a would-be submission.
 
 | submitted import | result |
 | --- | --- |
-| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
-| `results/2.0/me/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
-| `results/2.0/me/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/Feedthrough` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/Resource` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
-| `results/2.0/me/win64/MoonFMI/0.6.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
+| `results/2.0/me/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
+| `results/2.0/me/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Feedthrough` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Resource` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Stair` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
+| `results/2.0/me/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
+
+## 4. Exporter self-check (0.7.0)
+
+MoonFMI's own exports are cross-checked in the integration suite
+(`tests/integration/export_fmu_wbtest.mbt`) rather than here, because
+they need clang and the trajectory references live next to the export
+code: FMI 2/3 CS against the closed-form `(1-k*h)^n` solution, FMI 2 ME
+RK4 against `e^{-t}`, the FMI 3 array passthrough roundtrip, the 1-D
+state space against `(0.9)^n/(0.8)^n/(0.7)^n`, and the 2x2 dense matrix
+state space against `e^{-t}`/`e^{-2t}`. The export→reparse differential
+fuzz (`src/export/reparse_fuzz_wbtest.mbt`) adds a fixed-seed property
+gate: a check-clean IR must always reparse without errors.
+
+The full fmi-cross-check harness over the upstream corpus remains
+deferred (it needs the archived upstream repository's FMU set and the
+FMI 3 runs are not representable in the v4.1 layout; see §3). This report
+plus §4's integration evidence is the standing cross-check basis.

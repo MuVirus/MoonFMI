@@ -495,7 +495,7 @@ async fn main raise {
     report.write_string(row)
     report.write_string("\n")
   }
-  report.write_string("\n`skip` means the FMU does not offer that interface or state shape (an\nSE-only model under CS, or an ME run of a stateless model); the P4/P7\nintegration tests cover those directly.\n\n")
+  report.write_string("\n`skip` means the FMU does not offer that interface or state shape (an\nSE-only model under CS, or an ME run of a stateless model); the P4/P7\nintegration tests cover those directly. `fmi3/Roberts.fmu under CS skips\nbecause the FMU requires FMI 3 intermediate-update capabilities (declares\n`providesIntermediateUpdate/`hasEventMode and returns no component\nwithout them); its ME path runs, and CS support for intermediate-update\nFMUs is future work.\n\n")
   report.write_string("## 2. Cross-version trajectory comparison (FMI 2 vs FMI 3)\n\n")
   report.write_string("| model | verdict | max abs diff |\n| --- | --- | --- |\n")
   for comparison in comparisons {

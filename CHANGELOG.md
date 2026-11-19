@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.7.0] - 2026-11-19
+## [0.7.0] - 2026-11-20
 
 ### Added
 
+- Coupling refinements: algebraic-loop blocks are now minimal strongly
+  connected components (Tarjan) — cycle members iterate while downstream
+  consumers step once after the block — and every Jacobi iteration after
+  the first restores block members to the grid-point state when they
+  support capture (block-local lifecycle when the run is non-coordinated),
+  removing the compounding-doStep approximation for capturable FMUs.
+- The cross-check corpus grows from 9 to 13 FMUs: Stair (FMI 2 and FMI 3,
+  time events) and Roberts (FMI 3) join the smoke matrix; the corpus
+  Robertson model under CS is documented as requiring FMI 3 intermediate
+  updates MoonFMI's CS host does not provide yet (its ME path runs).
 - `moonfmi simulate --set name=value`: set inputs and parameters per type
   (FMI 2 Real/Integer/Boolean/String/Enumeration; FMI 3 Float64/Int32/
   Boolean/String/Enumeration) before initialization, with the type inferred

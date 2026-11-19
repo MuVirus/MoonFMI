@@ -579,3 +579,207 @@ test "loop solving turns a self connection into a one-member loop block" {
   assert_eq(result.steps(), 1)
   assert_true((result.series()[0][1] - 2.0).abs() < 0.00000001)
 }
+
+///|
+/// A feedthrough mock whose transfer reads the value written to its own
+/// input (not the producer's channel), so a state-restored Jacobi
+/// iteration converges the same way a real feedthrough FMU does. Carries
+/// capture counters for the inter-iteration restore assertions.
+struct CaptureLoopMock {
+  input_vr : UInt32
+  output_vr : UInt32
+  mut input_value : Double
+  mut output_value : Double
+  gain : Double
+  offset : Double
+  stepped : Array[Double]
+  capture : Bool
+  mut begins : Int32
+  mut rollbacks : Int32
+  mut commits : Int32
+}
+
+///|
+fn CaptureLoopMock::make(
+  input_vr~ : UInt32,
+  output_vr~ : UInt32,
+  initial~ : Double,
+  gain~ : Double,
+  offset~ : Double,
+  capture~ : Bool,
+) -> CaptureLoopMock {
+  {
+    input_vr,
+    output_vr,
+    input_value: initial,
+    output_value: initial,
+    gain,
+    offset,
+    stepped: [],
+    capture,
+    begins: 0,
+    rollbacks: 0,
+    commits: 0,
+  }
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn setup_experiment(
+  _self,
+  start~,
+  stop~,
+) {
+  let _ = start
+  let _ = stop
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn initialize(_self) {
+  // no experiment state
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn step(self, t, _h) {
+  self.stepped.push(t)
+  self.output_value = self.offset + self.gain * self.input_value
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn read_real(
+  self,
+  value_reference,
+) {
+  if value_reference == self.output_vr {
+    self.output_value
+  } else if value_reference == self.input_vr {
+    self.input_value
+  } else {
+    0.0
+  }
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn write_real(
+  self,
+  value_reference,
+  value,
+) {
+  if value_reference == self.input_vr {
+    self.input_value = value
+  }
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn finish(_self) {
+  // nothing to terminate
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn supports_state_capture(self) -> Bool {
+  self.capture
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn begin_rollback_point(self) -> Unit raise @fmi.SimulationError {
+  self.begins += 1
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn rollback(self) -> Unit raise @fmi.SimulationError {
+  self.rollbacks += 1
+}
+
+///|
+impl @fmi.CsInstance for CaptureLoopMock with fn commit_rollback_point(self) -> Unit raise @fmi.SimulationError {
+  self.commits += 1
+}
+
+///|
+/// Minimal SCC loop blocks (0.7.0): a two-node algebraic loop with a
+/// downstream consumer produces ONE loop block over the cycle members
+/// only; the consumer runs as a plain Single unit after the block, stepped
+/// once per grid point. The block members support capture, so every
+/// Jacobi iteration after the first rolls them back to the grid-point
+/// state — block-local begin/commit because the non-capturable consumer
+/// makes the run non-coordinated.
+test "loop blocks are minimal SCCs and iterations restore state" {
+  let a = CaptureLoopMock::make(
+    input_vr=10U,
+    output_vr=1U,
+    initial=0.0,
+    gain=0.5,
+    offset=1.0,
+    capture=true,
+  )
+  let b = CaptureLoopMock::make(
+    input_vr=20U,
+    output_vr=2U,
+    initial=0.0,
+    gain=0.5,
+    offset=1.0,
+    capture=true,
+  )
+  let c = CaptureLoopMock::make(
+    input_vr=30U,
+    output_vr=3U,
+    initial=0.0,
+    gain=10.0,
+    offset=0.0,
+    capture=false,
+  )
+  let participants = [
+    CoupledParticipant::new(name="a", instance=a, record=[1U]),
+    CoupledParticipant::new(name="b", instance=b, record=[2U]),
+    CoupledParticipant::new(name="c", instance=c, record=[3U]),
+  ]
+  let connections = [
+    Coupling::new(from="a", out_vr=1U, to="b", in_vr=20U),
+    Coupling::new(from="b", out_vr=2U, to="a", in_vr=10U),
+    Coupling::new(from="b", out_vr=2U, to="c", in_vr=30U),
+  ]
+  // Schedule shape: the cycle {a, b} is one LoopBlock, c is a Single
+  // scheduled after the block (dependencies first).
+  let schedule = build_schedule(participants, connections, Some(100))
+  assert_eq(schedule.length(), 2)
+  assert_true(
+    match schedule[0] {
+      LoopBlock(members) => members.length() == 2
+      _ => false
+    },
+    msg="the cycle must be one two-member loop block",
+  )
+  assert_true(
+    match schedule[1] {
+      Single(index) => index == 2
+      _ => false
+    },
+    msg="the downstream consumer must be a plain Single unit",
+  )
+  let config = CoupledConfig::new(
+    start_time=0.0,
+    stop_time=0.1,
+    step_size=0.1,
+    participants~,
+    connections~,
+    max_loop_iterations=Some(100),
+    loop_tolerance=0.000000001,
+  )
+  let result = run_coupled_simulation(config~)
+  assert_eq(result.steps(), 1)
+  // The loop settles on the fixed point 2; the downstream consumer sees
+  // the settled output (10 * 2 = 20), not an intermediate iteration.
+  assert_true((result.series()[0][1] - 2.0).abs() < 0.00000001)
+  assert_true((result.series()[1][1] - 2.0).abs() < 0.00000001)
+  assert_true((result.series()[2][1] - 20.0).abs() < 0.00000001)
+  // The loop iterated; the consumer did not.
+  assert_true(a.stepped.length() > 10)
+  assert_eq(c.stepped.length(), 1)
+  // Block-local capture lifecycle: one begin and one commit per member,
+  // one rollback per extra iteration.
+  assert_eq(a.begins, 1)
+  assert_eq(a.commits, 1)
+  assert_true(a.rollbacks >= 5, msg="iterations after the first must restore")
+  assert_eq(b.begins, 1)
+  assert_eq(b.commits, 1)
+  assert_true(b.rollbacks >= 5)
+}

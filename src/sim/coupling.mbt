@@ -220,15 +220,136 @@ fn build_schedule(
     schedule.push(Single(index))
   }
   if stalled {
-    let members : Array[Int32] = []
+    // Minimal strongly connected components (0.7.0, closing coupling.md
+    // §5 遗留): only the cycle members iterate; a downstream consumer Kahn
+    // could not place is no longer dragged into the block — the SCCs come
+    // back in condensation topological order (dependencies first), so
+    // non-cycle members run as plain `Single units after their loop.
+    let unplaced : Array[Int32] = []
     for index, is_placed in placed {
       if !is_placed {
-        members.push(index)
+        unplaced.push(index)
       }
     }
-    schedule.push(LoopBlock(members))
+    let components = sccs_of_subgraph(unplaced, edges)
+    let mut component_index = components.length() - 1
+    while component_index >= 0 {
+      let component = components[component_index]
+      let is_loop = component.length() > 1 || has_self_edge(component[0], edges)
+      if is_loop {
+        schedule.push(LoopBlock(component))
+      } else {
+        schedule.push(Single(component[0]))
+      }
+      component_index -= 1
+    }
   }
   schedule
+}
+
+///|
+/// Whether `node has a connection to itself among `edges.
+fn has_self_edge(node : Int32, edges : Array[(Int32, Int32)]) -> Bool {
+  for edge in edges {
+    if edge.0 == node && edge.1 == node {
+      return true
+    }
+  }
+  false
+}
+
+///|
+/// Strongly connected components of the subgraph induced by `nodes, via
+/// an iterative Tarjan pass (explicit call stack — the graph comes from
+/// user-built couplings, and no recursion-depth assumptions are made).
+/// The returned components are in reverse topological order of the
+/// condensation (sinks first), the order Tarjan pops them.
+fn sccs_of_subgraph(
+  nodes : Array[Int32],
+  edges : Array[(Int32, Int32)],
+) -> Array[Array[Int32]] {
+  let node_count = nodes.length()
+  let local_index : Map[Int32, Int32] = Map([])
+  for position, node in nodes {
+    local_index[node] = position
+  }
+  // Push one fresh list per node — `Array::make(n, []) would alias a
+  // single shared list across every slot.
+  let adjacency : Array[Array[Int32]] = []
+  for _ in 0..<node_count {
+    adjacency.push([])
+  }
+  for edge in edges {
+    match (local_index.get(edge.0), local_index.get(edge.1)) {
+      (Some(from), Some(to)) => adjacency[from].push(to)
+      _ => () // induced subgraph: skip edges touching placed nodes
+    }
+  }
+  let indices : Array[Int32] = Array::make(node_count, -1)
+  let lowlinks : Array[Int32] = Array::make(node_count, -1)
+  let on_stack : Array[Bool] = Array::make(node_count, false)
+  let stack : Array[Int32] = []
+  let components : Array[Array[Int32]] = []
+  let mut next_index = 0
+  // Explicit DFS frames: (local node, next child position to visit).
+  let call_stack : Array[(Int32, Int32)] = []
+  for root in 0..<node_count {
+    if indices[root] >= 0 {
+      continue
+    }
+    call_stack.push((root, 0))
+    while call_stack.length() > 0 {
+      let last = call_stack.length() - 1
+      let (node, child_position) = call_stack[last]
+      if child_position == 0 {
+        indices[node] = next_index
+        lowlinks[node] = next_index
+        next_index += 1
+        stack.push(node)
+        on_stack[node] = true
+      }
+      let children = adjacency[node]
+      let mut descended = false
+      let mut position = child_position
+      while position < children.length() {
+        let child = children[position]
+        if indices[child] < 0 {
+          call_stack[last] = (node, position + 1)
+          call_stack.push((child, 0))
+          descended = true
+          break
+        }
+        if on_stack[child] && indices[child] < lowlinks[node] {
+          lowlinks[node] = indices[child]
+        }
+        position += 1
+      }
+      if descended {
+        continue
+      }
+      let _ = call_stack.pop()
+      if lowlinks[node] == indices[node] {
+        let component : Array[Int32] = []
+        while stack.length() > 0 {
+          let top = stack[stack.length() - 1]
+          let _ = stack.pop()
+          on_stack[top] = false
+          component.push(top)
+          if top == node {
+            break
+          }
+        }
+        components.push(component)
+      }
+      if call_stack.length() > 0 {
+        let parent = call_stack[call_stack.length() - 1].0
+        if lowlinks[node] < lowlinks[parent] {
+          lowlinks[parent] = lowlinks[node]
+        }
+      }
+    }
+  }
+  components
 }
 
 ///|
@@ -533,60 +654,109 @@ pub fn run_coupled_simulation(
           refresh_observed(producer_index)
         }
         LoopBlock(members) => {
-          let max_iterations = match config.max_loop_iterations {
-            Some(iterations) => iterations
-            // unreachable: a block exists only when loop solving is on
-            None => 0
-          }
-          let mut iterations = 0
-          let mut residual = 0.0
-          let mut settled = false
-          while !settled {
-            iterations += 1
-            let baseline : Array[(Int32, UInt32, SignalType, Double)] = []
+          // Inter-iteration state restore (0.7.0, closing coupling.md §5
+          // 遗留): when every block member supports state capture, each
+          // Jacobi iteration steps from the SAME grid-point state with the
+          // previous iteration's outputs as inputs, instead of compounding
+          // doStep calls (undefined behaviour on real FMUs). In coordinated
+          // mode the whole-grid capture points are already armed by the
+          // caller, so the restore reuses them; otherwise the block arms
+          // and releases its own points around the iterations.
+          let block_capture = {
+            let mut all = true
             for peer in members {
-              for entry in watch[peer] {
-                let (value_reference, signal) = entry
-                baseline.push(
-                  (
-                    peer,
-                    value_reference,
-                    signal,
-                    loop_component(peer, value_reference, signal),
-                  ),
+              if !config.participants[peer].instance.supports_state_capture() {
+                all = false
+                break
+              }
+            }
+            all
+          }
+          if block_capture && !coordinated {
+            for peer in members {
+              config.participants[peer].instance.begin_rollback_point()
+            }
+          }
+          let run_iterations = fn() -> Unit raise @fmi.SimulationError {
+            let max_iterations = match config.max_loop_iterations {
+              Some(iterations) => iterations
+              // unreachable: a block exists only when loop solving is on
+              None => 0
+            }
+            let mut iterations = 0
+            let mut residual = 0.0
+            let mut settled = false
+            while !settled {
+              if iterations > 0 && block_capture {
+                // Restore the grid-point state; the snapshot maps below
+                // intentionally keep the previous iteration's outputs —
+                // that is what makes the pass a Jacobi iteration.
+                for peer in members {
+                  config.participants[peer].instance.rollback()
+                }
+              }
+              iterations += 1
+              let baseline : Array[(Int32, UInt32, SignalType, Double)] = []
+              for peer in members {
+                for entry in watch[peer] {
+                  let (value_reference, signal) = entry
+                  baseline.push(
+                    (
+                      peer,
+                      value_reference,
+                      signal,
+                      loop_component(peer, value_reference, signal),
+                    ),
+                  )
+                }
+              }
+              for peer in members {
+                write_inputs(peer)
+              }
+              for peer in members {
+                step_participant(peer, t, h)
+                refresh_observed(peer)
+              }
+              residual = 0.0
+              for entry in baseline {
+                let (peer, value_reference, signal, before) = entry
+                let delta = (loop_component(peer, value_reference, signal) -
+                before).abs()
+                if delta > residual {
+                  residual = delta
+                }
+              }
+              if residual <= config.loop_tolerance {
+                settled = true
+              } else if iterations >= max_iterations {
+                let mut names = ""
+                for index, peer in members {
+                  if index > 0 {
+                    names = names + ", "
+                  }
+                  names = names + config.participants[peer].name
+                }
+                raise @fmi.Config(
+                  detail="the algebraic loop over [\{names}] did not converge within \{iterations} iterations (last residual \{residual}, tolerance \{config.loop_tolerance})",
                 )
               }
             }
+          }
+          if block_capture && !coordinated {
+            // Local capture lifecycle: release the armed points however the
+            // iterations end — a non-convergence abort must not leak them.
+            let outcome = Ok(run_iterations()) catch { error => Err(error) }
             for peer in members {
-              write_inputs(peer)
-            }
-            for peer in members {
-              step_participant(peer, t, h)
-              refresh_observed(peer)
-            }
-            residual = 0.0
-            for entry in baseline {
-              let (peer, value_reference, signal, before) = entry
-              let delta = (loop_component(peer, value_reference, signal) -
-              before).abs()
-              if delta > residual {
-                residual = delta
+              config.participants[peer].instance.commit_rollback_point() catch {
+                _ => ()
               }
             }
-            if residual <= config.loop_tolerance {
-              settled = true
-            } else if iterations >= max_iterations {
-              let mut names = ""
-              for index, peer in members {
-                if index > 0 {
-                  names = names + ", "
-                }
-                names = names + config.participants[peer].name
-              }
-              raise @fmi.Config(
-                detail="the algebraic loop over [\{names}] did not converge within \{iterations} iterations (last residual \{residual}, tolerance \{config.loop_tolerance})",
-              )
+            match outcome {
+              Err(error) => raise error
+              Ok(_) => ()
             }
+          } else {
+            run_iterations()
           }
         }
       }
