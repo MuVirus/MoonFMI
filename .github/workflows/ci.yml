@@ -25,7 +25,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # ubuntu-24.04-arm covers the aarch64 ABI baseline, the
+        # platform-independent suites (source-FMU export compiles for the
+        # host, ABI fixtures build with clang) and the corpus FMUs — the
+        # Reference-FMUs corpus ships aarch64-linux binaries and 0.7.0
+        # maps FMI 2 arm64 hosts to `binaries/aarch64-linux/` so every
+        # suite runs natively. Tests that need platform binaries on an
+        # architecture the corpus does not ship can opt out via
+        # MOONFMI_TEST_SKIP_PLATFORM_BINARIES=1 (corpus_skip helper).
+        os: [ubuntu-latest, windows-latest, ubuntu-24.04-arm]
 
     steps:
       - name: Checkout

@@ -493,6 +493,8 @@ import {
 **2026-11-15 追记：阶段 1 完成，node 从工具链中移除。** tools/check-deps.mbtx、tests/abi/{check-abi,check-host,build-fixture,run-fmi2-host}.mbtx、tests/data/fetch-fmus.mbtx 全部落位，check.sh/check.ps1 与全部 .mjs/.sh/.ps1 辅助脚本删除（validate-xsd.ps1 保留——它用 .NET 的 XSD 引擎做独立交叉验证，转成 MoonBit 会失去独立性）。fetch-fmus 内置了自实现的 SHA-256（core 无 crypto 包），9 个 FMU 的 manifest 哈希作为黄金向量逐字节校验通过；解压改用项目已有的 hustcer/fzip。网络备注（2026-11-16 补跑验证时）：本机 DNS 把 release-assets.githubusercontent.com 解析成 127.0.0.1/::1（污染），导致任何客户端的 GitHub release 资产下载都在 302 跳转后"连接被拒"；github.com 本体与 gitee/gitcode/mooncakes 可达。恢复手段是 curl --resolve 钉住真实 IP（185.199.108-111.133）下载后交给 fetch-fmus.mbtx 校验解压——bundle 的 SHA-256 使任何下载渠道都安全。CI 在 GitHub 托管 runner 上不受此影响。
 注意事项：native 正则引擎不支持 s 类简写（unsafe_from_string 直接 panic），脚本一律用显式字符类 [ 	]；@env.args()[0] 是编译出的可执行文件自身路径，解析用户参数从下标 1 开始。
 
+**2026-11-19 评估：`moonbitlang/async@0.22.9` 从"仅门禁脚本"提升为产品依赖（用户批准）。** 背景：0.7.0 的 `--sandbox` 崩溃隔离需要 CLI 派生子进程（重执行自身 + 超时强杀），产品代码无进程 API（§13.2），`@process` 是唯一能力。版本仍为 0.22.9（mooncakes 最新，未 yanked），Apache-2.0，官方维护；2026-11-15 起已在 `scripts/check.mbtx` 实战（子进程/退出码/超时 kill 均验证过）。变更：`moon.mod` import 加锁 `@0.22.9`，`src/cli` 包导入 `@process`；仅 native 后端（`src/cli` 本就 `supported_targets = "native"`），wasm 目标构建不受影响。边界如实记录：这是崩溃隔离 + 超时强杀，不是权限沙箱——子进程 FMU 仍以宿主用户身份运行。
+
 ### 13.2 计划需要、但生态里没有（或不能用）的能力
 
 | 能力 | 生态现状 | 处理 |

@@ -535,6 +535,9 @@ async fn main raise {
   } else {
     report.write_string("\nNo FMI 2 import with status `ok` was available; nothing was generated.\n")
   }
+  report.write_string("\n## 4. Exporter self-check (0.7.0)\n\n")
+  report.write_string("MoonFMI's own exports are cross-checked in the integration suite\n(`tests/integration/export_fmu_wbtest.mbt`) rather than here, because\nthey need clang and the trajectory references live next to the export\ncode: FMI 2/3 CS against the closed-form `(1-k*h)^n` solution, FMI 2 ME\nRK4 against `e^{-t}`, the FMI 3 array passthrough roundtrip, the 1-D\nstate space against `(0.9)^n/(0.8)^n/(0.7)^n`, and the 2x2 dense matrix\nstate space against `e^{-t}`/`e^{-2t}`. The export→reparse differential\nfuzz (`src/export/reparse_fuzz_wbtest.mbt`) adds a fixed-seed property\ngate: a check-clean IR must always reparse without errors.\n\n")
+  report.write_string("The full fmi-cross-check harness over the upstream corpus remains\ndeferred (it needs the archived upstream repository's FMU set and the\nFMI 3 runs are not representable in the v4.1 layout; see §3). This report\nplus §4's integration evidence is the standing cross-check basis.\n")
   @fs.write_file("\{reportDir}/crosscheck.md", report.to_string())
   let json = StringBuilder()
   json.write_string("{\n  \"schema\": \"moonfmi.crosscheck/v1\",\n  \"samples\": [\n")

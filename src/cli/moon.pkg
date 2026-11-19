@@ -1,6 +1,9 @@
 import {
   "moonbitlang/core/env",
   "moonbitlang/core/string",
+  "moonbitlang/async",
+  "moonbitlang/async/process",
+  "moonbitlang/async/stdio",
   "moonbitlang/x/fs",
   "MuVirus/fmi/src/fmi",
   "MuVirus/fmi/src/backend/native",

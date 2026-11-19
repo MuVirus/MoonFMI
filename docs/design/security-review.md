@@ -39,15 +39,18 @@ P7 实验阶段。
 
 ## 3. 残余风险(按优先级)
 
+> 2026-11-19(0.7.0)更新:R2/R4(校验面)/R5/R7 落地缓解,R11 新增
+> `--sandbox`。R1 维持为已声明的本质风险。
+
 | # | 风险 | 影响 | 缓解/计划 |
 | --- | --- | --- | --- |
-| R1 | 加载 FMU = 执行宿主任意代码(native 后端本质) | simulate 信任 FMU 二进制 | 文档已声明(README);长期方向:最小化进程隔离或 wasm 后端 |
-| R2 | `dlopen` 前未校验二进制哈希/签名 | 恶意 FMU 可投毒 | 用户侧校验;release checklist 要求分发时提供 sha256 清单 |
+| R1 | 加载 FMU = 执行宿主任意代码(native 后端本质) | simulate 信任 FMU 二进制 | 文档已声明(README);0.7.0 起 `--sandbox` 提供崩溃隔离 + `--timeout` 派生的硬性看门狗(子进程重执行,经 moonbitlang/async);长期方向:wasm 后端。注意:这不是权限沙箱,FMU 仍以宿主用户身份运行 |
+| R2 | ~~`dlopen` 前未校验二进制哈希~~ **已缓解(0.7.0)** | 恶意 FMU 可投毒 | `simulate`/`couple` 的 `--sha256 <hex>` 在解压前校验整个归档;release checklist 要求分发时提供 sha256 清单 |
 | R3 | XML/ZIP 上限是配置常量,未做表压差分 | 极端输入下内存峰值 | R-05/R-10 跟踪(第三方库限制);G-03 基线监控 |
-| R4 | WASM 后端未覆盖 LS-WASM 全量 world | 与规范 FMU 互通性有限 | P7 实验边界已声明(见 tests/fmu-wasm/README §4) |
-| R5 | 导出 C 代码未经独立 fuzz | 生成代码对病态 IR 的鲁棒性靠 IR 自检 | IR check 是前置门;可在 P8+ 补"导出→重解析"差分测试 |
+| R4 | WASM 后端未覆盖 LS-WASM 全量 world | 与规范 FMU 互通性有限 | P7 实验边界已声明(见 tests/fmu-wasm/README §4);0.7.0 起 validate/info 校验 LS-WASM manifest 结构(不执行组件) |
+| R5 | ~~导出 C 代码未经独立 fuzz~~ **已缓解(0.7.0)** | 生成代码对病态 IR 的鲁棒性靠 IR 自检 | `tests/integration` 的导出→重解析差分 fuzz(固定种子):check-clean IR 的 XML 必须重解析通过;该测试立即抓到并修复了 FMI 2 `derivative` 索引缺陷 |
 | R6 | `serialize_fmu_state` 尺寸探测依赖 FMU 行为 | 非 Reference-FMUs 的策略差异 | 尺寸查询 + 增长回退已实现;跨更多 FMU 验证属 G-02 扩展 |
-| R7 | 临时目录按 `@env.now()` 命名 | 本机可预测名(共享主机的符号链接攻击面) | Windows/Linux 单用户场景可接受;可选随机后缀(P8+) |
+| R7 | ~~临时目录按 `@env.now()` 命名~~ **已缓解(0.7.0)** | 本机可预测名(共享主机的符号链接攻击面) | 产品路径(simulate/couple/doctor)改为平台熵源 8 字节经 SHA-256 截断的 16 位十六进制后缀(`src/cli/tempdir.mbt`);熵源不可用时退化为墙钟哈希(等同旧行为) |
 
 ## 4. 依赖安全
 

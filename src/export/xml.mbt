@@ -410,6 +410,16 @@ fn fmi2_model_description_xml(ir : ModelIr) -> String raise ExportError {
     }
     None => ()
   }
+  // Vendor annotations: carry the generating tool as a <Tool> element so
+  // downstream tools can attribute the FMU (fmi2Annotation.xsd requires
+  // the name attribute; the payload is tool-specific and left empty).
+  if !ir.generation_tool.is_empty() {
+    writer.line("<VendorAnnotations>")
+    writer.indent += 1
+    writer.line("<Tool name=\"\{XmlWriter::escape(ir.generation_tool)}\"/>")
+    writer.indent -= 1
+    writer.line("</VendorAnnotations>")
+  }
   writer.open("ModelVariables")
   let mut index = 0
   for v in ir.variables {
@@ -425,13 +435,17 @@ fn fmi2_model_description_xml(ir : ModelIr) -> String raise ExportError {
   let derivative_indexes : Array[Int32] = []
   let mut synthetic_index = declared_count + 1
   for name in states {
-    match ir.value_reference(name) {
-      Some(state_vr) => {
+    match ir.index_of(name) {
+      Some(state_position) => {
         writer.line(
           "<ScalarVariable name=\"der(\{XmlWriter::escape(name)})\" valueReference=\"\{ir_vr(synthetic_index - 1).to_string()}\" causality=\"local\" variability=\"continuous\" initial=\"calculated\">",
         )
         writer.indent += 1
-        writer.line("<Real derivative=\"\{state_vr.to_string()}\"/>")
+        // FMI 2's `derivative` attribute is the 1-based position of the
+        // state among the ModelVariables entries, not its value reference.
+        writer.line(
+          "<Real derivative=\"\{(state_position + 1).to_string()}\"/>",
+        )
         writer.indent -= 1
         writer.line("</ScalarVariable>")
         derivative_indexes.push(synthetic_index)

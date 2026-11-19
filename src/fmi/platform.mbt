@@ -60,13 +60,23 @@ pub fn parse_host_platform(name : String) -> HostPlatform? {
 }
 
 ///|
-/// The FMI 2 `binaries/` directory name for a host platform.
+/// The FMI 2 `binaries/` directory name for a host platform. The plain
+/// `win64`/`linux64`/`darwin64` names imply x86-64, so 64-bit ARM hosts
+/// use the `aarch64-*` directory names the Reference-FMUs corpus and other
+/// tooling ship — selecting `linux64` on an ARM host would find an x86-64
+/// binary that cannot load.
 pub fn fmi2_platform_dir(host : HostPlatform) -> String {
-  let suffix = if host.bits == 64 { "64" } else { "32" }
-  match host.os {
-    Windows => "win" + suffix
-    Linux => "linux" + suffix
-    Darwin => "darwin" + suffix
+  match (host.os, host.cpu) {
+    (Linux, "arm64") => "aarch64-linux"
+    (Darwin, "arm64") => "aarch64-darwin"
+    _ => {
+      let suffix = if host.bits == 64 { "64" } else { "32" }
+      match host.os {
+        Windows => "win" + suffix
+        Linux => "linux" + suffix
+        Darwin => "darwin" + suffix
+      }
+    }
   }
 }
 

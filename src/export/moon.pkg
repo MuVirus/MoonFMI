@@ -6,3 +6,7 @@ import {
   "MuVirus/fmi/src/schema",
   "MuVirus/fmi/src/zip",
 }
+
+import {
+  "moonbitlang/core/env",
+} for "wbtest"

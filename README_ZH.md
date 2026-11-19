@@ -12,10 +12,18 @@ mooncakes 上的模块名是 `MuVirus/fmi`；仓库仍叫 `MoonFMI`。
 ## 能做什么
 
 - 按 MD-001..MD-063 规则校验 `modelDescription.xml`，并打印摘要
-  （`validate`、`info`）。
+  （`validate`、`info`）；归档携带 WebAssembly 组件时，LS-WASM 分层标准
+  manifest 一并校验。
 - 运行联合仿真或模型交换仿真，输出 CSV 或 JSON；FMI 3 还可按时钟运行
-  调度执行（`simulate`）。
+  调度执行（`simulate`）；初始化前可按类型设置输入与参数
+  （`--set 名称=值`）。
+- 把多个 FMU 耦合成一次联合仿真：类型化信号连接（Real/Integer/Boolean）、
+  按连接自动推断信号类型、可选的代数环定点求解（`couple`）。
 - 从已解压目录构建确定性的 `.fmu`（`package`）。
+- 把受限的显式模型导出回源码 FMU（FMI 2/3）或实验性的 WASM 组件 FMU，
+  支持 FMI 3 数组与按元素展开的稠密矩阵方程。
+- 加载前校验 FMU 归档摘要（`--sha256`）、在崩溃隔离的子进程中运行命令
+  （`--sandbox`）、检查 CLI 二进制可复现构建（`scripts/repro-build.mbtx`）。
 - 以库的方式复用同一套代码：`MuVirus/fmi/src/{fmi,sim,backend/native}`。
 
 ## 安装
@@ -142,16 +150,26 @@ fn run_ball(fmu_path : String) -> Unit {
 - 模型交换（ME）的积分器只有定步长 Euler 与经典 RK4。MoonFMI 不是通用
   ME 求解器：刚性系统、大型 DAE 与自适应步长控制不在范围内（见
   [`docs/design/master-algorithm.md`](docs/design/master-algorithm.md)）。
-- 多个 CS FMU 的耦合已作为 library 级主算法支持（`MuVirus/fmi/src/sim`：参与者、连接、按拓扑序步进 + 常量外推；代数环会被拒绝，见 [`docs/design/coupling.md`](docs/design/coupling.md)）。Discard 时的多 FMU 协同回滚、Integer/Boolean 信号连接与 CLI 入口属于后续工作。
+- 多个 CS FMU 的耦合在库级（`MuVirus/fmi/src/sim`：参与者、连接、按拓扑
+  序步进 + 常量外推、Discard 时的整网协同回滚、Integer/Boolean 信号连接、
+  可选的 Jacobi 定点环求解）和 `moonfmi couple` 命令行均可用。环求解在
+  迭代轮间不回退真实 FMU 状态，是一种已声明的近似（见
+  [`docs/design/coupling.md`](docs/design/coupling.md) §3.5/§5）。
 - FMI 3 Scheduled Execution 支持固定、动态与 countdown 输入时钟、宿主
   触发时钟以及输出时钟级联，但不提供实时保证：priority 只决定同一时刻
   的激活顺序。
 - 源码 FMU 导出器只生成受限的显式模型（连续状态、直通输出、参数与
-  输入）；它不是 Modelica 编译器。FMI 3 数组变量支持按元素的方程(DerivativeElement/OutputElement),稠密矩阵运算暂不生成。
+  输入）；它不是 Modelica 编译器。FMI 3 数组变量支持按元素的方程与展开成
+  逐元素求和的稠密矩阵乘法；IR 没有符号化的循环/求和构造。
 - WebAssembly 后端为实验性：已验证最小 CS 组件与 LS-WASM 打包（见
   [`tests/fmu-wasm/README.md`](tests/fmu-wasm/README.md)），完整的
   LS-WASM world 与浏览器导入属于后续工作。`simulate --backend wasm`
-  固定以退出码 4 结束。
+  固定以退出码 4 结束；`validate`/`info` 会校验 LS-WASM manifest，但尚无
+  任何 WASM 组件执行路径。
+- `--sandbox` 只提供崩溃隔离与硬性看门狗：子进程里的 FMU 仍以宿主用户
+  权限运行，它不是权限沙箱。
+- FMU 线程的日志投递由 shim 内的进程级锁串行化，但 shim 不排队、不格式化
+  消息：不对外部格式串执行 `vsnprintf`，4 KiB 截断，同步投递。
 
 ## 文档
 

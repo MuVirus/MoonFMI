@@ -13,14 +13,8 @@
 ## FMI 2
 
 - declared in XSD: 92
-- covered by the typed model: 89 (97%)
-- not covered: 3
-
-Missing names (candidates for future P1-style rule work):
-
-- `Tool`
-- `fmi2IntegerAttributes`
-- `fmi2RealAttributes`
+- covered by the typed model: 92 (100%)
+- not covered: 0
 
 ## FMI 3 (model-description scope)
 

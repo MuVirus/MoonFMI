@@ -11,15 +11,17 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 3. **FMU 导出**（先源码 FMU，再 WASM FMU）
 4. **验证、打包与交叉测试**
 
-> 当前阶段（2026-11-18）：路线图 P0–P8 全部完成。`moonfmi` 支持 FMI 2.0.4/3.0.2 的
-> CS/ME 仿真、FMI 3 Scheduled Execution（完整时钟语义）、`validate/info/package/doctor`
-> CLI、源码 FMU 导出（FMI 2/3，含 FMPy XSD 校验对照）与实验性 WASM 导出器/浏览器
-> POC。交叉检查（9 个 Reference-FMUs 样品 × 接口矩阵 + FMI 2/3 轨迹对照 + FMPy
-> 外检）见 [`reports/crosscheck.md`](reports/crosscheck.md)。首轮硬化（fuzz、性能
-> 基线、安全审查、发布清单 + SBOM、FMI 2 状态序列化）随 P8 完成；R-24（CI 首跑）
-> 已关闭。当前进入硬化/补强阶段：开放项集中在 CS 主算法的 Discard 回滚（C-11）、
-> FMI 2 Integer/Boolean 绑定（C-08 余项）、多 FMU 耦合（README 已知限制）、导出器
-> 数组方程、FMI 3 字段覆盖（68%）。各阶段实施记录见 [`records/README.md`](records/README.md)。
+> 当前阶段（2026-11-19，0.7.0）：路线图 P0–P8 全部完成，0.6.0 已发布，
+> 0.7.0 汇总本轮增量（backlog §10.1 H-01..H-12）：`--set` 类型化输入、
+> `couple` 信号类型推断 + 环求解旗标、LS-WASM manifest 校验、导出器 2 维
+> 数组与稠密矩阵、FMI 2 VendorAnnotations/Tool（字段覆盖 92/92 + 144/144）、
+> `--sha256`/`--sandbox`/熵临时目录（R2/R7/R11 缓解）、导出→重解析差分
+> fuzz（R5，抓到并修复 FMI 2 `derivative` 索引缺陷）、shim 日志投递锁 +
+> 并发回调测试（R4 关闭）、`ubuntu-24.04-arm` CI + FMI 2 arm64 平台映射
+> 修复、`scripts/repro-build.mbtx`。开放项：官方 fmi-cross-check 全量
+> harness（顺延）、LS-WASM 全量 world 与 WASM 执行路径（P7 实验边界）、
+> MSCC 环提取等耦合精化（coupling.md §5）。各阶段实施记录见
+> [`records/README.md`](records/README.md)（最新：[`records/2026-11-19.md`](records/2026-11-19.md)）。
 
 ---
 

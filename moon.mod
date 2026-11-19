@@ -11,7 +11,7 @@
 
 name = "MuVirus/fmi"
 
-version = "0.6.0"
+version = "0.7.0"
 
 readme = "README.md"
 
@@ -28,6 +28,7 @@ description = "An experimental MoonBit interface to FMI-compliant FMUs."
 import {
   "Milky2018/xml@0.6.1",
   "hustcer/fzip@0.8.8",
+  "moonbitlang/async@0.22.9",
   "moonbitlang/x@0.5.7",
   "tonyfettes/c@0.8.0",
 }

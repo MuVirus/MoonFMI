@@ -34,11 +34,7 @@ fn fmi3_type_suffix(data_type : IrDataType) -> String {
 ///|
 /// Element count of a variable (1 for scalars, product of dimensions).
 fn ir_element_count(v : IrVariable) -> Int32 {
-  let mut count = 1
-  for d in v.dimensions {
-    count = count * d.reinterpret_as_int()
-  }
-  count
+  v.element_count()
 }
 
 ///|

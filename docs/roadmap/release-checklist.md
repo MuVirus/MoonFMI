@@ -24,23 +24,25 @@
 ## 3. 发布产物
 
 - [ ] `moon build --target native --release cmd/main` 产出 CLI
-- [ ] 附 sha256:`main.exe` / `main` 二进制。可复现性(2026-11-18 实测):两次 `moon clean` + `moon build --target native --release` 的 main.exe 在 1,058,816 字节中仅 2 字节不同——PE 头 COFF TimeDateStamp(0x108)与调试目录时间戳(0xE8034),均为链接时间;其余字节逐位一致。逐字节可复现需链接器支持 SOURCE_DATE_EPOCH(上游未提供),发布时以附 sha256 为准。
+- [ ] 附 sha256:`main.exe` / `main` 二进制。可复现性:两次 `moon clean` + release 构建仅 PE 链接时间戳字节不同(COFF TimeDateStamp 与调试目录时间戳,识别规则:双侧均解码为合理 Unix 时间戳),其余逐位一致——已由 `moon run scripts/repro-build.mbtx --target native` 自动核对(0.7.0;2026-11-19 实测 1,399,808 字节中仅 2 字节时间戳差异)。逐字节可复现需链接器支持 SOURCE_DATE_EPOCH(上游未提供),发布时以附 sha256 为准。
 - [ ] 若发布源码导出样例 FMU:构建产物 + 生成 FMU 的 sha256
 - [ ] 版本号:遵守 roadmap 发布节奏表(`0.x` 对应阶段)
 
 ## 4. SBOM(依赖清单)
 
-直接依赖(`moon.mod`,均为 MoonBit 社区注册表包;核对日期 2026-11-17):
+直接依赖(`moon.mod`,均为 MoonBit 社区注册表包;核对日期 2026-11-19):
 
 | 依赖 | 版本 | 许可证 | 用途 | 备注 |
 | --- | --- | --- | --- | --- |
 | `Milky2018/xml` | 0.6.1 | 见包 | XML 事件流解析(封装在 `src/xml`) | 上限与安全在自有代码 |
 | `hustcer/fzip` | 0.8.8 | 见包 | ZIP 读写(封装在 `src/zip`) | 确定性写入自实现 |
+| `moonbitlang/async` | 0.22.9 | Apache-2.0 | `--sandbox` 子进程(`src/cli`) | 0.7.0 准入,见 `research/moonbit-ecosystem.md` §13.1;仅 native |
 | `moonbitlang/x` | 0.5.7 | Apache-2.0 | `fs`、`crypto`(sha256) | 官方扩展库 |
 | `tonyfettes/c` | 0.8.0 | 见包 | C FFI 绑定(`src/backend/native`) | native 目标 |
 
-脚本专用(不进运行时):`moonbitlang/async@0.22.9`(scripts/*.mbtx)、
-`moonbitlang/core`(工具链自带)。测试专用:`tonyfettes/c`(native-stub)。
+脚本专用(不进运行时):`moonbitlang/async@0.22.9`(scripts/*.mbtx,
+tests/abi/*.mbtx)、`moonbitlang/core`(工具链自带)。测试专用:
+`tonyfettes/c`(native-stub)。
 
 工具链(MoonBit `moon`/`moonc`,clang/MSVC,node,wit-bindgen,wasm-tools,
 jco)见 `docs/roadmap/p0-report.md` §2 与 `tests/fmu-wasm/README.md` §1;

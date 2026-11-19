@@ -79,9 +79,14 @@ fn c_line_comment(role : String, v : IrVariable) -> String {
 }
 
 ///|
-/// Struct member declaration, honouring fixed array dimensions.
+/// Struct member declaration, honouring fixed array dimensions. Arrays of
+/// any rank are declared flat (`v_name[<element count>]`): the FMI 3 entry
+/// points, the flattened state slots and the buffer copies all address
+/// `v_name[flat]`, and the multi-dimensional shape only surfaces in the
+/// XML `<Dimension>` elements.
 fn member_decl(v : IrVariable) -> String {
-  let dims = v.dimensions.map(fn(d) { "[\{d.to_string()}]" }).join("")
+  let count = v.element_count()
+  let dims = if count > 1 { "[\{count.to_string()}]" } else { "" }
   "\{v.data_type.c_type()} \{c_member_of(v.name)}\{dims};"
 }
 

@@ -2,5 +2,6 @@ import {
   "moonbitlang/core/debug",
   "moonbitlang/x/fs",
   "MuVirus/fmi/src/schema",
+  "MuVirus/fmi/src/xml",
   "MuVirus/fmi/src/zip",
 }

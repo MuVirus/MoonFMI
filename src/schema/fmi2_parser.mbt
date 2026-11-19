@@ -105,6 +105,7 @@ fn parse_fmi2_model(
   let mut log_categories : Array[LogCategory] = []
   let mut experiment : DefaultExperiment? = None
   let mut variables : Array[Fmi2ScalarVariable] = []
+  let mut tools : Array[Fmi2Tool] = []
   let mut structure : Fmi2ModelStructure? = None
   let mut order_index = 0
   let mut seen_variables = false
@@ -176,7 +177,7 @@ fn parse_fmi2_model(
             experiment = Some(parse_fmi2_experiment(element))
           "VendorAnnotations" =>
             if event is Start(_) {
-              cursor.skip_subtree("VendorAnnotations")
+              tools = parse_fmi2_vendor_annotations(cursor)
             }
           "ModelVariables" => {
             variables = parse_fmi2_variables(
@@ -231,10 +232,111 @@ fn parse_fmi2_model(
     log_categories,
     default_experiment: experiment,
     variables,
+    tools,
     model_structure: match structure {
       Some(value) => value
       None => { outputs: [], derivatives: [], initial_unknowns: [], }
     },
+  }
+}
+
+///|
+/// Parse `<VendorAnnotations>`: a sequence of `<Tool name="...">` elements
+/// (fmi2Annotation.xsd). The required `name` attribute is validated; the
+/// tool-specific payload is skipped.
+fn parse_fmi2_vendor_annotations(
+  cursor : Cursor,
+) -> Array[Fmi2Tool] raise SchemaError {
+  let tools : Array[Fmi2Tool] = []
+  while true {
+    match cursor.peek() {
+      Eof =>
+        raise cursor.fail(
+          message="unexpected end of document inside <VendorAnnotations>",
+        )
+      End(name) =>
+        if name == "VendorAnnotations" {
+          let _ = cursor.next()
+          return tools
+        } else {
+          raise cursor.fail(
+            message="unexpected end element </\{name}>, expected </VendorAnnotations>",
+          )
+        }
+      Start(element) => parse_fmi2_tool(cursor, element, true, tools)
+      Empty(element) => parse_fmi2_tool(cursor, element, false, tools)
+      Text(_)
+      | CData(_)
+      | Comment(_)
+      | Declaration(..)
+      | ProcessingInstruction(..)
+      | DocType => {
+        let _ = cursor.next()
+      }
+    }
+  }
+  tools
+}
+
+///|
+/// Parse one `<Tool>` child of `<VendorAnnotations>`.
+fn parse_fmi2_tool(
+  cursor : Cursor,
+  element : XmlElement,
+  had_start : Bool,
+  tools : Array[Fmi2Tool],
+) -> Unit raise SchemaError {
+  // Consume the Start/Empty event itself before inspecting attributes.
+  let _ = cursor.next()
+  if element.name != "Tool" {
+    raise cursor.fail(
+      message="unexpected element <\{element.name}> inside <VendorAnnotations>",
+      hint="VendorAnnotations contains <Tool> elements only",
+    )
+  }
+  match element.attribute("name") {
+    Some(name) =>
+      tools.push({ name, line: line_of(element), column: column_of(element), })
+    None =>
+      raise cursor.fail(
+        message="<Tool> is missing the required name attribute",
+        hint="every vendor <Tool> must carry name (fmi2Annotation.xsd)",
+      )
+  }
+  if had_start {
+    // The XSD gives <Tool> a lax any-content payload; skip the
+    // tool-specific content (elements and text) until </Tool>.
+    while true {
+      match cursor.peek() {
+        Eof =>
+          raise cursor.fail(message="unexpected end of document inside <Tool>")
+        End(name) =>
+          if name == "Tool" {
+            let _ = cursor.next()
+            break
+          } else {
+            raise cursor.fail(
+              message="unexpected end element </\{name}>, expected </Tool>",
+            )
+          }
+        Start(_) =>
+          match cursor.next() {
+            Start(nested) => cursor.skip_subtree(nested.name)
+            _ => ()
+          }
+        Empty(_) => {
+          let _ = cursor.next()
+        }
+        Text(_)
+        | CData(_)
+        | Comment(_)
+        | Declaration(..)
+        | ProcessingInstruction(..)
+        | DocType => {
+          let _ = cursor.next()
+        }
+      }
+    }
   }
 }
 

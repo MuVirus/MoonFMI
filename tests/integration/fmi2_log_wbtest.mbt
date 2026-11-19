@@ -193,3 +193,20 @@ test "ten thousand log messages do not accumulate memory" {
   instance.free()
   library.close()
 }
+
+///|
+/// Concurrent callbacks from the FMU's own threads (R-04, closed in 0.7.0):
+/// 4 fixture threads × 25 messages hit the same instance at the same time.
+/// The shim serializes delivery with a process-wide lock, so the MoonBit
+/// sink observes exactly 100 well-formed messages and the process does not
+/// crash or interleave thunks.
+test "concurrent log callbacks from FMU threads deliver every message" {
+  let messages = messages_for_kind(7.0, 1.0)
+  assert_eq(messages.length(), 100)
+  for message in messages {
+    assert_true(
+      message.category == "concurrent" && message.message.has_prefix("thread "),
+      msg="malformed concurrent message: " + message.message,
+    )
+  }
+}

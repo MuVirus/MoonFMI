@@ -234,6 +234,7 @@ pub struct Fmi2ModelDescription {
   default_experiment : DefaultExperiment?
   variables : Array[Fmi2ScalarVariable]
   model_structure : Fmi2ModelStructure
+  tools : Array[Fmi2Tool]
 }
 pub fn Fmi2ModelDescription::interface_count(Self) -> Int32
 pub fn Fmi2ModelDescription::interfaces(Self) -> Array[Fmi2Interface]
@@ -286,6 +287,12 @@ pub fn Fmi2ScalarVariable::effective_variability(Self) -> Variability
 pub struct Fmi2StringAttrs {
   declared_type : String?
   start : String?
+}
+
+pub struct Fmi2Tool {
+  name : String
+  line : Int32
+  column : Int32
 }
 
 pub struct Fmi2TypeDefinition {

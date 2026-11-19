@@ -16,6 +16,19 @@ fn fmu_path(relative : String) -> String {
 }
 
 ///|
+/// Skip guard for tests that load platform-specific corpus binaries. The
+/// Reference-FMUs corpus ships `win64`/`linux64` binaries only, so
+/// architectures without a matching binary (e.g. aarch64 CI) set
+/// `MOONFMI_TEST_SKIP_PLATFORM_BINARIES=1` and these tests report a skip
+/// instead of failing on a missing platform directory.
+fn corpus_skip() -> String? {
+  match @env.get_env_var("MOONFMI_TEST_SKIP_PLATFORM_BINARIES") {
+    Some("1") => Some("corpus platform binaries unavailable on this platform")
+    _ => None
+  }
+}
+
+///|
 fn open_cached_fmu(relative : String) -> @zip.ZipArchive {
   let data = @fs.read_file_to_bytes(fmu_path(relative)) catch {
     error => abort("reading " + relative + " failed: " + io_message(error))

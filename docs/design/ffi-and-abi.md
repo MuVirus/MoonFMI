@@ -226,8 +226,14 @@ typedef void (*fmi2CallbackLogger)(
 ### 4.3 重入与线程
 
 - 日志回调可能在 FMU 内部线程触发，因此 shim 不在回调里做复杂工作：只复制、截断、调用一次；
-- 当前实现**没有队列，也没有锁**：消息在 FMU 调用的线程上同步投递到 MoonBit。这样不引入跨线程队列的所有权问题，代价是回调必须很快返回；
-- 实测“FMU 自建线程打一条日志”不会崩，但“多个线程同时回调同一个实例”没有验证，暂按“同一实例同一时刻只有一个线程回调”假设；
+- 投递是同步的（没有队列），但 0.7.0 起由 shim 内的**进程级锁串行化**
+  （`src/backend/native/moonfmi_log_lock.h`，Windows `CRITICAL_SECTION` /
+  POSIX `pthread_mutex_t`）：MoonBit 侧假设单线程驱动，多个 FMU 线程
+  同时回调同一个实例时，thunk 调用按到达顺序串行执行，不并发进入
+  MoonBit。代价是并发日志互等，回调仍须很快返回；
+- “FMU 自建线程打一条日志”与“多个线程并发回调同一实例”都有端到端
+  测试（`tests/abi/logging_fmu.c` kind 6/7，
+  `tests/integration/fmi2_log_wbtest.mbt`），并发 4×25 条全部按序到达；
 - 实例释放前先把日志接收端标记为关闭，再由 shim 调 `fmi2FreeInstance`；释放之后到达的消息被丢弃，不会调用 MoonBit；
 - 退休的实例上下文保留到库卸载，避免迟到的回调写到已释放内存。
 

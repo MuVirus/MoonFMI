@@ -50,6 +50,15 @@
 
 - `platforms`:`binaries/` 下的平台目录名(存档内出现的顺序);纯源码
   FMU 为 `[]`。
+- 0.7.0 起新增可选字段(只增不改):归档携带 WASM 组件或 LS-WASM
+  manifest 时,输出多一个
+
+  ```json
+  "lsWasm": { "manifest": false, "components": 1 }
+  ```
+
+  `manifest` 为 `extra/org.modelica.fmi-ls-wasm/manifest.xml` 是否存在,
+  `components` 为 `binaries/wasm32-wasip2/` 下 `.wasm` 组件数。
 
 ## `moonfmi.simulate/v1` — `moonfmi simulate --json`
 

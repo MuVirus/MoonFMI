@@ -13,10 +13,21 @@ name.
 ## What you can do
 
 - Check a `modelDescription.xml` against rules MD-001..MD-063 and print a
-  summary (`validate`, `info`).
+  summary (`validate`, `info`); LS-WASM layered-standard manifests are
+  validated too when the archive carries WebAssembly components.
 - Run a Co-Simulation or Model Exchange simulation with CSV or JSON output,
-  or a Scheduled Execution run for FMI 3 clocks (`simulate`).
+  or a Scheduled Execution run for FMI 3 clocks (`simulate`); set inputs and
+  parameters per type with `--set name=value` before initialization.
+- Couple several FMUs into one co-simulation with typed signal connections
+  (Real, Integer, Boolean), opt-in algebraic-loop solving and per-connection
+  signal-type inference (`couple`).
 - Build a deterministic `.fmu` from an unpacked directory (`package`).
+- Export restricted explicit models back to source-code FMUs (FMI 2/3) or an
+  experimental WASM component FMU, including FMI 3 arrays and dense matrix
+  equations expanded per element.
+- Verify an FMU archive digest before anything is loaded (`--sha256`), run a
+  command in a crash-isolated child process (`--sandbox`), and check the CLI
+  binary builds reproducibly (`scripts/repro-build.mbtx`).
 - Use the same code as a library: `MuVirus/fmi/src/{fmi,sim,backend/native}`.
 
 ## Install
@@ -151,25 +162,34 @@ directory. FMI 3 uses the same shape through `load_fmi3_fmu`.
   MoonFMI is not a general-purpose ME solver: stiff systems, large DAEs, and
   adaptive step control are out of scope (see
   [`docs/design/master-algorithm.md`](docs/design/master-algorithm.md)).
-- Coupling several CS FMUs is supported as a library-level master
+- Coupling several CS FMUs is available as a library master
   (`MuVirus/fmi/src/sim`: participants, connections, topological stepping
-  with constant extrapolation; algebraic loops are rejected — see
-  [`docs/design/coupling.md`](docs/design/coupling.md)). Multi-FMU rollback
-  on `Discard`, Integer/Boolean signal connections, and a CLI front end are
-  future work.
+  with constant extrapolation, coordinated multi-FMU rollback on `Discard`,
+  Integer/Boolean signal connections, opt-in Jacobi fixed-point solving for
+  algebraic loops) and through the `moonfmi couple` command. Loop solving
+  re-steps real FMUs between Jacobi iterations without restoring FMU state —
+  a documented approximation (see
+  [`docs/design/coupling.md`](docs/design/coupling.md) §3.5/§5).
 - FMI 3 Scheduled Execution supports fixed, calculated and countdown input
   clocks, host-triggered clocks, and output-clock cascades, but gives no
   real-time guarantee: priority only orders activations at the same instant.
 - The source-FMU exporter emits restricted explicit models (continuous
   states, feedthrough outputs, parameters and inputs); it is not a Modelica
-  compiler. FMI 3 array variables support element-wise equations
-  (DerivativeElement/OutputElement); dense matrix array arithmetic is not
-  generated.
+  compiler. FMI 3 array variables support element-wise equations and dense
+  matrix products expanded into per-element sums; symbolic loop/sum
+  constructs are not part of the IR.
 - The WebAssembly backend is experimental: a minimal CS component and
   LS-WASM packaging are verified (see
   [`tests/fmu-wasm/README.md`](tests/fmu-wasm/README.md)), while the full
   LS-WASM world and browser import are future work. `simulate --backend
-  wasm` intentionally exits with code 4.
+  wasm` intentionally exits with code 4; `validate`/`info` check the LS-WASM
+  manifest but nothing executes WASM components yet.
+- `--sandbox` gives crash isolation and a hard watchdog only: the child
+  FMU still runs with the host user's permissions. It is not a permission
+  sandbox.
+- Log delivery from FMU threads is serialized by a process-wide lock in the
+  shim, but the shim does not queue or format messages: no `vsnprintf` on
+  foreign format strings, 4 KiB truncation, synchronous delivery.
 
 ## Documentation
 

@@ -1,0 +1,167 @@
+---
+import {
+  "moonbitlang/async@0.22.9",
+  "moonbitlang/async@0.22.9/fs",
+  "moonbitlang/async@0.22.9/shell",
+  "moonbitlang/core/env",
+}
+---
+
+// Reproducible CLI build check (release checklist §3, 0.7.0). Builds the
+// `moonfmi` CLI twice from a clean tree and compares the binaries. Two
+// regions are allowed to differ on Windows: the PE COFF TimeDateStamp
+// (offset 0x108) and the debug-directory timestamp — both are link-time
+// wall-clock stamps, detected by value (both sides must decode to plausible
+// Unix timestamps). Every other differing byte fails the check. Run from
+// the repository root:
+//
+//   moon run scripts/repro-build.mbtx --target native
+
+///|
+fn[T] fail(msg : String) -> T {
+  println("ERROR: \{msg}")
+  @env.exit(1)
+}
+
+///|
+async fn run_step(name : String, cmd : String, args : Array[String]) -> Unit raise {
+  println("== \{name} ==")
+  let code = @shell.Cmd::Cmd(cmd, args).status()
+  if code != 0 {
+    fail("moon \{args.join(" ")} failed with exit code \{code}")
+  }
+}
+
+///|
+fn is_windows() -> Bool {
+  @env.get_env_var("OS") == Some("Windows_NT")
+}
+
+///|
+async fn read_binary(path : String) -> Bytes {
+  @fs.read_file(path).binary() catch {
+    _ => fail("cannot read \{path}")
+  }
+}
+
+///|
+/// True when both 4-byte little-endian windows decode to plausible
+/// Unix timestamps (2020-01-01 .. 2035-01-01). Link-time wall-clock
+/// stamps are the only known intentional nondeterminism.
+fn plausible_timestamps(a : Bytes, b : Bytes, offset : Int) -> Bool {
+  let lower : Int64 = 1_577_836_800L
+  let upper : Int64 = 2_051_225_600L
+  // Decode little-endian UInt32 values manually.
+  let a_value = (a[offset].to_int() & 0xFF).to_int64() +
+    ((a[offset + 1].to_int() & 0xFF).to_int64() << 8) +
+    ((a[offset + 2].to_int() & 0xFF).to_int64() << 16) +
+    ((a[offset + 3].to_int() & 0xFF).to_int64() << 24)
+  let b_value = (b[offset].to_int() & 0xFF).to_int64() +
+    ((b[offset + 1].to_int() & 0xFF).to_int64() << 8) +
+    ((b[offset + 2].to_int() & 0xFF).to_int64() << 16) +
+    ((b[offset + 3].to_int() & 0xFF).to_int64() << 24)
+  a_value >= lower &&
+    a_value <= upper &&
+    b_value >= lower &&
+    b_value <= upper
+}
+
+///|
+let hex_digits : String = "0123456789abcdef"
+
+///|
+/// Hex dump of `[from, to)` with spaces between bytes.
+fn hex_window(data : Bytes, from : Int, to : Int) -> String {
+  let buf = StringBuilder()
+  for i in from..<to {
+    if i > from {
+      buf.write_string(" ")
+    }
+    let value = data[i].to_int()
+    buf.write_char(UInt16::unsafe_to_char(hex_digits[(value / 16) & 0xF]))
+    buf.write_char(UInt16::unsafe_to_char(hex_digits[value & 0xF]))
+  }
+  buf.to_string()
+}
+
+///|
+async fn main raise {
+  let binary_name = if is_windows() { "main.exe" } else { "main" }
+  let binary_path = "_build/native/release/build/cmd/main/\{binary_name}"
+  @fs.mkdir(".moonfmi-tmp", allow_exist=true)
+  let builds : Array[Bytes] = []
+  for round in 1..<=2 {
+    run_step("clean build \{round}", "moon", ["clean"])
+    run_step(
+      "release build \{round}",
+      "moon",
+      ["build", "--target", "native", "--release", "cmd/main"],
+    )
+    let data = read_binary(binary_path)
+    // Keep both binaries for post-mortem comparison when the check fails.
+    @fs.write_file(".moonfmi-tmp/repro-build-round\{round}.bin", data)
+    builds.push(data)
+  }
+  let first = builds[0]
+  let second = builds[1]
+  if first.length() != second.length() {
+    fail(
+      "binary sizes differ: \{first.length()} vs \{second.length()} bytes",
+    )
+  }
+  let differing : Array[Int] = []
+  for i in 0..<first.length() {
+    if first[i] != second[i] {
+      differing.push(i)
+    }
+  }
+  if differing.is_empty() {
+    println(
+      "reproducible: \{first.length()} bytes, byte-for-byte identical across two clean release builds",
+    )
+    return
+  }
+  // Group differing offsets into 4-byte-aligned runs and require every run
+  // to be a pair of plausible link timestamps.
+  let mut index = 0
+  let mut allowed = 0
+  while index < differing.length() {
+    let start = differing[index]
+    let mut end = start
+    while index < differing.length() && differing[index] - end <= 4 {
+      end = differing[index]
+      index += 1
+    }
+    let run_start = start - (start % 4)
+    let run_end = end + (4 - ((end + 1) % 4))
+    // A run may straddle two 4-byte windows; only windows the run actually
+    // touches must decode as plausible link timestamps.
+    let first_window_ok = is_windows() &&
+      plausible_timestamps(first, second, run_start)
+    let second_window_ok = if run_end >= run_start + 4 {
+      plausible_timestamps(first, second, run_start + 4)
+    } else {
+      true
+    }
+    if first_window_ok && second_window_ok {
+      allowed += 1
+      println(
+        "allowed: link-timestamp bytes at 0x\{run_start.to_string()}..0x\{run_end.to_string()} differ (\{first[run_start]} vs \{second[run_start]}, ...)",
+      )
+    } else {
+      // Dump a hex context window so the differing region can be attributed
+      // against the saved binaries in .moonfmi-tmp/.
+      let from = if start < 16 { 0 } else { start - 16 }
+      let to = if start + 16 > first.length() { first.length() } else { start + 16 }
+      println("context around offset 0x\{start.to_string()}:")
+      println("  round1: \{hex_window(first, from, to)}")
+      println("  round2: \{hex_window(second, from, to)}")
+      fail(
+        "non-reproducible byte at offset 0x\{start.to_string()}: \{first[start]} vs \{second[start]} (\{differing.length()} differing bytes total); both binaries saved to .moonfmi-tmp/repro-build-round*.bin",
+      )
+    }
+  }
+  println(
+    "reproducible modulo link timestamps: \{differing.length()} differing bytes in \{allowed} timestamp run(s), all others identical (\{first.length()} bytes)",
+  )
+}

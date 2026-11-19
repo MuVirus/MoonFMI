@@ -49,6 +49,8 @@ pub fn generated_c_source_names(ModelIr) -> Array[String]
 
 pub fn ir_sha256_hex(String) -> String
 
+pub fn matrix_state_space_example_ir() -> ModelIr
+
 pub fn model_description_xml(ModelIr, @schema.FmiVersion) -> String raise ExportError
 
 pub fn wasm_package_name(ModelIr) -> String
@@ -173,6 +175,7 @@ pub struct IrVariable {
   mut nominal : Double?
   dimensions : Array[UInt32]
 }
+pub fn IrVariable::element_count(Self) -> Int32
 pub fn IrVariable::new(name~ : String, data_type~ : IrDataType, causality~ : @schema.Causality, initial? : @schema.Initial, unit? : String, display_unit? : String, quantity? : String, min? : Double, max? : Double) -> Self
 
 pub struct ModelIr {
@@ -195,16 +198,21 @@ pub fn ModelIr::add_int_input(Self, name~ : String, start~ : Int64, description?
 pub fn ModelIr::add_int_parameter(Self, name~ : String, start~ : Int64, description? : String) -> IrVariable
 pub fn ModelIr::add_interface(Self, kind~ : @schema.InterfaceKind, model_identifier~ : String) -> Unit
 pub fn ModelIr::add_log_category(Self, name~ : String, description~ : String) -> Unit
+pub fn ModelIr::add_matrix_state_equation(Self, state~ : String, a_matrix~ : String) -> Unit
 pub fn ModelIr::add_output_equation(Self, output~ : String, expr~ : IrExpr) -> Unit
 pub fn ModelIr::add_output_equation_element(Self, output~ : String, element~ : Int64, expr~ : IrExpr) -> Unit
 pub fn ModelIr::add_real_input(Self, name~ : String, start~ : Double, unit? : String, description? : String) -> IrVariable
 pub fn ModelIr::add_real_input_array(Self, name~ : String, size~ : UInt32, start~ : Array[Double], description? : String) -> IrVariable
+pub fn ModelIr::add_real_input_matrix(Self, name~ : String, rows~ : UInt32, cols~ : UInt32, start~ : Array[Double], description? : String) -> IrVariable
 pub fn ModelIr::add_real_local(Self, name~ : String, start~ : Double, description? : String) -> IrVariable
 pub fn ModelIr::add_real_output(Self, name~ : String, unit? : String, description? : String) -> IrVariable
 pub fn ModelIr::add_real_output_array(Self, name~ : String, size~ : UInt32, description? : String) -> IrVariable
+pub fn ModelIr::add_real_output_matrix(Self, name~ : String, rows~ : UInt32, cols~ : UInt32, description? : String) -> IrVariable
 pub fn ModelIr::add_real_parameter(Self, name~ : String, start~ : Double, unit? : String, description? : String) -> IrVariable
+pub fn ModelIr::add_real_parameter_matrix(Self, name~ : String, rows~ : UInt32, cols~ : UInt32, values~ : Array[Double], description? : String) -> IrVariable
 pub fn ModelIr::add_real_state(Self, name~ : String, start~ : Double, unit? : String, description? : String, nominal? : Double) -> IrVariable
 pub fn ModelIr::add_real_state_array(Self, name~ : String, size~ : UInt32, start~ : Array[Double], nominal? : Double, description? : String) -> IrVariable
+pub fn ModelIr::add_real_state_matrix(Self, name~ : String, rows~ : UInt32, cols~ : UInt32, start~ : Array[Double], nominal? : Double, description? : String) -> IrVariable
 pub fn ModelIr::add_string_output(Self, name~ : String, start~ : String, description? : String) -> IrVariable
 pub fn ModelIr::add_unit(Self, @schema.UnitDef) -> Unit
 pub fn ModelIr::add_variable(Self, IrVariable) -> Unit

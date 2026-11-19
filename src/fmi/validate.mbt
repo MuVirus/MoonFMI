@@ -77,5 +77,9 @@ pub fn validate_fmu_bytes(
       return (None, report)
     }
   }
-  @schema.parse_and_validate(xml_bytes)
+  let (model, report) = @schema.parse_and_validate(xml_bytes)
+  // LS-WASM layered-standard stage: manifest structure and component
+  // cross-references, only when the archive carries WASM bits.
+  validate_ls_wasm(archive, model, report)
+  (model, report)
 }

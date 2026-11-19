@@ -1,7 +1,7 @@
 ///|
 /// Payload attributes of an FMI 2 `Real` variable or type definition.
-/// Fields mirror the XSD `fmi2RealAttributes` group; `derivative` is the
-/// 1-based `ScalarVariable` index of the state this variable is the
+/// Fields mirror the XSD attribute group "fmi2RealAttributes"; `derivative`
+/// is the 1-based `ScalarVariable` index of the state this variable is the
 /// derivative of (FMI 2 uses indices, not value references).
 pub struct Fmi2RealAttrs {
   declared_type : String?
@@ -20,6 +20,7 @@ pub struct Fmi2RealAttrs {
 
 ///|
 /// Payload attributes of an FMI 2 `Integer` variable or type definition.
+/// Fields mirror the XSD attribute group "fmi2IntegerAttributes".
 pub struct Fmi2IntAttrs {
   declared_type : String?
   quantity : String?
@@ -160,6 +161,18 @@ pub struct Fmi2ModelDescription {
   default_experiment : DefaultExperiment?
   variables : Array[Fmi2ScalarVariable]
   model_structure : Fmi2ModelStructure
+  /// `<VendorAnnotations><Tool name="...">` entries, in document order.
+  /// Only the required `name` is carried; the tool-specific payload is
+  /// skipped (fmi2Annotation.xsd allows any lax content).
+  tools : Array[Fmi2Tool]
+}
+
+///|
+/// A vendor `<Tool>` element of the FMI 2 `VendorAnnotations` section.
+pub struct Fmi2Tool {
+  name : String
+  line : Int32
+  column : Int32
 }
 
 ///|

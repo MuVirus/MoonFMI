@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-19
+
+### Added
+
+- `moonfmi simulate --set name=value`: set inputs and parameters per type
+  (FMI 2 Real/Integer/Boolean/String/Enumeration; FMI 3 Float64/Int32/
+  Boolean/String/Enumeration) before initialization, with the type inferred
+  from the model description and wrong-kind or unknown names rejected with
+  exit 1.
+- `moonfmi couple --loop-iterations N` / `--loop-tolerance T`: expose the
+  existing Jacobi fixed-point loop solver on the command line.
+- `moonfmi couple --connect` infers the signal type (Real, Integer,
+  Boolean) from the producer's declared variable type and rejects
+  cross-type connections up front instead of failing mid-run.
+- `--sha256 <hex>` on `simulate` and `couple`: the archive digest is
+  verified before anything is extracted or loaded (security review R2).
+- `--sandbox` on `simulate` and `couple`: the command re-executes in a
+  child process (via `moonbitlang/async`, admitted 2026-11-19) with live
+  stdout/stderr forwarding and a hard watchdog derived from `--timeout`.
+  Crash isolation only — not a permission sandbox (R11 mitigation).
+- LS-WASM layered-standard validation: `validate` now checks
+  `extra/org.modelica.fmi-ls-wasm/manifest.xml` structurally (root,
+  `fmiVersion`, `Binary` path/entrypoint/world, model-identifier match,
+  archive presence) and rejects wasm-only FMUs without a manifest;
+  wasm components next to native binaries stay diagnostic-free (the
+  Reference-FMUs corpus ships those). `info` reports the WASM layer
+  (`lsWasm` in the JSON output).
+- Source-FMU exporter: two-dimensional FMI 3 arrays (matrix states, inputs,
+  outputs, parameters) with a `add_matrix_state_equation` helper that
+  expands dense `x'[i][j] = Σₖ A[i][k]·x[k][j]` into per-element sums;
+  arrays are stored flat and the multi-dimensional shape surfaces in the
+  XML `<Dimension>` elements. A 2×2 matrix state-space example matches the
+  analytic solution end to end.
+- FMI 2 `<VendorAnnotations><Tool name="...">` is parsed (payload skipped,
+  name required) and carried on the model description; the exporter writes
+  its generation tool as a vendor `Tool`. XSD field coverage is now
+  FMI 2 92/92 and FMI 3 144/144 (`docs/reports/field-coverage.md`).
+- `scripts/repro-build.mbtx`: two clean release builds of the CLI are
+  compared byte for byte, tolerating only link-timestamp bytes (release
+  checklist §3 automation).
+- Random suffixes for private `.moonfmi-tmp` directories (8 bytes from the
+  platform entropy source, hex-encoded), replacing wall-clock-only names
+  (security review R7).
+- Aarch64 CI coverage: `ubuntu-24.04-arm` builds the ABI baseline (new
+  `tests/abi/baselines/aarch64-linux.json`), compiles the source-FMU export
+  tests for the host and runs the corpus suites natively.
+- Concurrent log callbacks from FMU threads are verified end to end: the
+  shim serializes delivery with a process-wide lock, and a fixture test
+  drives 4 threads × 25 messages through one instance (security review R4).
+
+### Fixed
+
+- The FMI 2 exporter wrote the synthetic `der(x)` variable's `derivative`
+  attribute as a value reference; the FMI 2 semantics require the 1-based
+  `ModelVariables` position. Models whose first declaration is a state (no
+  parameter/output declared before it) produced XML that failed validation.
+  Found by the new export→reparse differential fuzz.
+- FMI 2 platform selection was bitness-only: an arm64 Linux host selected
+  `binaries/linux64/` (x86-64 binaries). It now selects `aarch64-linux` /
+  `aarch64-darwin`, matching the Reference-FMUs corpus layout.
+
 ## [0.6.0] - 2026-11-18
 
 First release. This entry summarizes the project from its first commit

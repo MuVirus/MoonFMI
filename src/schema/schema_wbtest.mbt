@@ -665,6 +665,35 @@ test "diagnostics are normalized and sorted" {
 }
 
 ///|
+/// FMI 2 `<VendorAnnotations><Tool name="...">` elements are carried on
+/// the model description (0.7.0); the payload is skipped but the required
+/// `name` attribute is validated (fmi2Annotation.xsd).
+test "fmi2 vendor annotations carry tool names" {
+  let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><fmiModelDescription fmiVersion=\"2.0\" modelName=\"T\" guid=\"{11111111-1111-1111-1111-111111111111}\"><CoSimulation modelIdentifier=\"T\"/><VendorAnnotations><Tool name=\"Zusty\"/><Tool name=\"FMPy\"><SomethingElse/></Tool></VendorAnnotations><ModelVariables/><ModelStructure/></fmiModelDescription>"
+  let (model, report) = parse_and_validate(@utf8.encode(xml))
+  assert_eq(report.error_count(), 0)
+  let model = match model {
+    Some(V2(m)) => m
+    _ => abort("fixture must parse")
+  }
+  assert_eq(model.tools.length(), 2)
+  assert_eq(model.tools[0].name, "Zusty")
+  assert_eq(model.tools[1].name, "FMPy")
+}
+
+///|
+/// A `<Tool>` without the required name attribute is a parse error.
+test "fmi2 tool without a name attribute is rejected" {
+  let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?><fmiModelDescription fmiVersion=\"2.0\" modelName=\"T\" guid=\"{11111111-1111-1111-1111-111111111111}\"><CoSimulation modelIdentifier=\"T\"/><VendorAnnotations><Tool/></VendorAnnotations><ModelVariables/><ModelStructure/></fmiModelDescription>"
+  let (model, report) = parse_and_validate(@utf8.encode(xml))
+  assert_true(model is None)
+  assert_true(
+    report.error_count() > 0,
+    msg="the name-less Tool must fail validation",
+  )
+}
+
+///|
 test "golden snapshot of a semantic-invalid report" {
   let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"2.0\" modelName=\"Bad\" guid=\"\">\n  <CoSimulation modelIdentifier=\"../bad\"/>\n  <ModelVariables>\n    <ScalarVariable name=\"p\" valueReference=\"0\" causality=\"parameter\" variability=\"continuous\" initial=\"exact\">\n      <Real min=\"9\" max=\"1\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"y\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Real unit=\"ghost\"/>\n    </ScalarVariable>\n  </ModelVariables>\n  <ModelStructure>\n    <Outputs>\n      <Unknown index=\"2\"/>\n    </Outputs>\n  </ModelStructure>\n</fmiModelDescription>\n"
   let report = run_validate(xml)

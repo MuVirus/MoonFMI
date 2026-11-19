@@ -77,3 +77,112 @@ test "cs master algorithm matches the C reference host" {
   }
   loaded.dispose()
 }
+
+///|
+/// `--set` end to end (0.7.0): typed input overrides on the Feedthrough
+/// corpus FMU. The recorded columns are the Real outputs in document
+/// order — Float64_continuous_output, then Float64_discrete_output — so
+/// the first row shows the feedthrough of the overridden Real input.
+test "simulate --set drives Real, Integer, Boolean and String inputs" {
+  match corpus_skip() {
+    Some(reason) => {
+      println("SKIP: " + reason)
+      return
+    }
+    None => ()
+  }
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let directory = absolute_path(".moonfmi-tmp/set-cli-\{@env.now()}")
+  ensure_test_dir(directory)
+  let output = directory + "/feedthrough.csv"
+  let code = @cli.run(
+    [
+      "simulate",
+      fmu_path("fmi2/Feedthrough.fmu"),
+      "--stop-time",
+      "0.02",
+      "--step-size",
+      "0.01",
+      "--set",
+      "Float64_continuous_input=3.5",
+      "--set",
+      "Int32_input=7",
+      "--set",
+      "Boolean_input=true",
+      "--set",
+      "String_input=hello",
+      "--output",
+      output,
+    ],
+    fn(path) { @fs.read_file_to_bytes(path) catch { _ => b"" } },
+  )
+  assert_eq(code, 0)
+  let csv = @fs.read_file_to_bytes(output) catch {
+    error => abort("reading feedthrough CSV failed: " + io_message(error))
+  }
+  let text = @utf8.decode(csv)
+  let lines = Array::from_iter(text.split("\n"))
+  assert_eq(lines[0], "time,Float64_continuous_output,Float64_discrete_output")
+  let fields = Array::from_iter(lines[1].split(","))
+  assert_eq(fields[1], "3.5")
+}
+
+///|
+/// `--set` rejections are exit 1 with a diagnostic naming the variable:
+/// unknown name, wrong causality and a value that does not parse.
+test "simulate --set rejects unknown, non-settable and malformed values" {
+  match corpus_skip() {
+    Some(reason) => {
+      println("SKIP: " + reason)
+      return
+    }
+    None => ()
+  }
+  // Unknown variable.
+  let unknown = @cli.run(
+    [
+      "simulate",
+      fmu_path("fmi2/Feedthrough.fmu"),
+      "--stop-time",
+      "0.01",
+      "--step-size",
+      "0.01",
+      "--set",
+      "Ghost=1",
+    ],
+    fn(path) { @fs.read_file_to_bytes(path) catch { _ => b"" } },
+  )
+  assert_eq(unknown, 1)
+  // An output is not settable.
+  let output = @cli.run(
+    [
+      "simulate",
+      fmu_path("fmi2/Feedthrough.fmu"),
+      "--stop-time",
+      "0.01",
+      "--step-size",
+      "0.01",
+      "--set",
+      "Float64_continuous_output=1.0",
+    ],
+    fn(path) { @fs.read_file_to_bytes(path) catch { _ => b"" } },
+  )
+  assert_eq(output, 1)
+  // A Real input does not accept a non-number.
+  let malformed = @cli.run(
+    [
+      "simulate",
+      fmu_path("fmi2/Feedthrough.fmu"),
+      "--stop-time",
+      "0.01",
+      "--step-size",
+      "0.01",
+      "--set",
+      "Float64_continuous_input=abc",
+    ],
+    fn(path) { @fs.read_file_to_bytes(path) catch { _ => b"" } },
+  )
+  assert_eq(malformed, 1)
+}

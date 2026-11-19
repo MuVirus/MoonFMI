@@ -10,14 +10,7 @@ let hex_digits : String = "0123456789abcdef"
 
 ///|
 fn sha256_hex(data : Bytes) -> String {
-  let digest = @crypto.sha256(data)
-  let builder = StringBuilder()
-  for byte in digest {
-    let value = byte.to_int()
-    builder.write_char(UInt16::unsafe_to_char(hex_digits[(value / 16) & 0xF]))
-    builder.write_char(UInt16::unsafe_to_char(hex_digits[value & 0xF]))
-  }
-  builder.to_string()
+  bytes_hex(@crypto.sha256(data))
 }
 
 ///|

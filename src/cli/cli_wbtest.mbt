@@ -114,10 +114,10 @@ test "couple missing fmu is a usage error" {
 }
 
 ///|
-/// `resolve_real_scalar` is pure, so it can be unit-tested without loading
+/// `resolve_typed_scalar` is pure, so it can be unit-tested without loading
 /// any FMU.
-test "resolve_real_scalar accepts Real outputs and rejects the rest" {
-  let xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?><fmiModelDescription fmiVersion=\"2.0\" modelName=\"T\" guid=\"{11111111-1111-1111-1111-111111111111}\"><CoSimulation modelIdentifier=\"T\"/><ModelVariables><ScalarVariable name=\"out\" valueReference=\"7\" causality=\"output\"><Real start=\"0\"/></ScalarVariable><ScalarVariable name=\"inp\" valueReference=\"8\" causality=\"input\"><Real start=\"0\"/></ScalarVariable><ScalarVariable name=\"num\" valueReference=\"9\" causality=\"output\"><Integer start=\"0\"/></ScalarVariable></ModelVariables><ModelStructure/></fmiModelDescription>"
+test "resolve_typed_scalar infers signal types and rejects the rest" {
+  let xml = b"<?xml version=\"1.0\" encoding=\"UTF-8\"?><fmiModelDescription fmiVersion=\"2.0\" modelName=\"T\" guid=\"{11111111-1111-1111-1111-111111111111}\"><CoSimulation modelIdentifier=\"T\"/><ModelVariables><ScalarVariable name=\"out\" valueReference=\"7\" causality=\"output\"><Real start=\"0\"/></ScalarVariable><ScalarVariable name=\"inp\" valueReference=\"8\" causality=\"input\"><Real start=\"0\"/></ScalarVariable><ScalarVariable name=\"num\" valueReference=\"9\" causality=\"output\"><Integer start=\"0\"/></ScalarVariable><ScalarVariable name=\"flag\" valueReference=\"10\" causality=\"output\"><Boolean start=\"false\"/></ScalarVariable><ScalarVariable name=\"label\" valueReference=\"11\" causality=\"output\"><String start=\"x\"/></ScalarVariable></ModelVariables><ModelStructure/></fmiModelDescription>"
   let (model, report) = @schema.parse_and_validate(xml)
   assert_true(
     model is Some(_),
@@ -128,38 +128,119 @@ test "resolve_real_scalar accepts Real outputs and rejects the rest" {
     Some(model) => model
     None => abort("unreachable: fixture model description is valid")
   }
-  match resolve_real_scalar(model, "out", Output) {
-    Ok(reference) => assert_eq(reference, 7U)
+  match resolve_typed_scalar(model, "out", Output) {
+    Ok((reference, signal)) => {
+      assert_eq(reference, 7U)
+      assert_true(signal is Real)
+    }
     Err(message) => abort("expected to resolve 'out', got: " + message)
   }
-  match resolve_real_scalar(model, "inp", Input) {
-    Ok(reference) => assert_eq(reference, 8U)
+  match resolve_typed_scalar(model, "inp", Input) {
+    Ok((reference, signal)) => {
+      assert_eq(reference, 8U)
+      assert_true(signal is Real)
+    }
     Err(message) => abort("expected to resolve 'inp', got: " + message)
   }
-  // A non-Real output exists but cannot be coupled.
-  match resolve_real_scalar(model, "num", Output) {
+  // An Integer output is connectable and carries its signal type.
+  match resolve_typed_scalar(model, "num", Output) {
+    Ok((reference, signal)) => {
+      assert_eq(reference, 9U)
+      assert_true(signal is Integer)
+    }
+    Err(message) => abort("expected to resolve 'num', got: " + message)
+  }
+  match resolve_typed_scalar(model, "flag", Output) {
+    Ok((reference, signal)) => {
+      assert_eq(reference, 10U)
+      assert_true(signal is Boolean)
+    }
+    Err(message) => abort("expected to resolve 'flag', got: " + message)
+  }
+  // A String output exists but cannot be coupled.
+  match resolve_typed_scalar(model, "label", Output) {
     Err(_) => ()
-    Ok(reference) =>
+    Ok((reference, _)) =>
       abort(
-        "'num' is an Integer output, expected an error, got " +
+        "'label' is a String output, expected an error, got " +
         reference.to_string(),
       )
   }
   // Wrong causality is rejected in both directions.
-  match resolve_real_scalar(model, "out", Input) {
+  match resolve_typed_scalar(model, "out", Input) {
     Err(_) => ()
     Ok(_) => abort("'out' is an output, expected an error for input")
   }
-  match resolve_real_scalar(model, "inp", Output) {
+  match resolve_typed_scalar(model, "inp", Output) {
     Err(_) => ()
     Ok(_) => abort("'inp' is an input, expected an error for output")
   }
-  match resolve_real_scalar(model, "missing", Output) {
+  match resolve_typed_scalar(model, "missing", Output) {
     Err(_) => ()
-    Ok(reference) =>
+    Ok((reference, _)) =>
       abort(
         "'missing' is undeclared, expected an error, got " +
         reference.to_string(),
       )
   }
+}
+
+///|
+test "normalize_sha256 accepts hex and normalizes case" {
+  match
+    normalize_sha256(
+      "1C7A40AB239C03E4795B230C6FE414A673030D0CE9F26A160301DADCA7FF30B7",
+    ) {
+    Some(normalized) =>
+      assert_eq(
+        normalized, "1c7a40ab239c03e4795b230c6fe414a673030d0ce9f26a160301dadca7ff30b7",
+      )
+    None => abort("expected uppercase hex to normalize")
+  }
+  // Wrong length, non-hex characters, empty.
+  match normalize_sha256("abc") {
+    Some(_) => abort("expected a short digest to be rejected")
+    None => ()
+  }
+  match
+    normalize_sha256(
+      "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    ) {
+    Some(_) => abort("expected non-hex characters to be rejected")
+    None => ()
+  }
+  match normalize_sha256("") {
+    Some(_) => abort("expected an empty digest to be rejected")
+    None => ()
+  }
+}
+
+///|
+test "temp_dir_suffix yields distinct hex strings" {
+  let first = temp_dir_suffix()
+  assert_eq(first.char_length(), 16)
+  let mut all_hex = true
+  for ch in first {
+    let code = ch.to_int()
+    let ok = (code >= 0x30 && code <= 0x39) || (code >= 0x61 && code <= 0x66)
+    if !ok {
+      all_hex = false
+    }
+  }
+  assert_true(all_hex, msg="suffix must be lowercase hex")
+  // Two calls must differ with overwhelming probability; the entropy
+  // fallback (sha256 of the wall clock) also changes between calls.
+  let second = temp_dir_suffix()
+  assert_true(first != second, msg="suffixes must differ between calls")
+}
+
+///|
+test "parse_nonnegative_int accepts digits only" {
+  assert_eq(parse_nonnegative_int("0"), Some(0))
+  assert_eq(parse_nonnegative_int("5"), Some(5))
+  assert_eq(parse_nonnegative_int("12"), Some(12))
+  assert_true(parse_nonnegative_int("") is None)
+  assert_true(parse_nonnegative_int("-1") is None)
+  assert_true(parse_nonnegative_int("3x") is None)
+  assert_true(parse_nonnegative_int("999999999999") is None)
 }

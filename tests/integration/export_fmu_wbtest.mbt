@@ -747,3 +747,151 @@ test "exported fmi3 array-equation state space matches the analytic solution" {
   }
   loaded.dispose()
 }
+
+///|
+/// Exports the dense matrix state-space IR (FMI 3, 0.7.0), compiles it
+/// with clang and packages a deterministic FMU — the same pipeline as
+/// `build_state_space_fmu`, with the matrix model name.
+fn build_matrix_state_space_fmu(tag : String) -> Bytes {
+  let ir = @export.matrix_state_space_example_ir()
+  let options = @export.ExportOptions::new(
+    fmi_version=@schema.FmiVersion::V3,
+    output_dir=Some(".moonfmi-tmp/export-\{tag}-\{@env.now()}"),
+  )
+  let result = @export.export_source_fmu(ir, options) catch {
+    error => abort("matrix state-space export failed: " + error.message())
+  }
+  let xml_bytes = result.files[0].1
+  let (_, report) = @schema.parse_and_validate(xml_bytes)
+  if report.error_count() > 0 {
+    abort(
+      "matrix modelDescription.xml failed validation: \{report.diagnostics[0].render()}",
+    )
+  }
+  let host_platform = host()
+  let platform = @fmi.fmi3_platform_dir(host_platform)
+  ensure_test_dir("\{result.output_dir}/binaries/\{platform}")
+  let flags = match host_platform.os {
+    @fmi.Windows => "-O1 -shared"
+    @fmi.Darwin => "-O1 -dynamiclib"
+    @fmi.Linux => "-O1 -shared -fPIC"
+  }
+  let extension = match host_platform.os {
+    @fmi.Windows => "dll"
+    @fmi.Darwin => "dylib"
+    @fmi.Linux => "so"
+  }
+  let binary_path = "\{result.output_dir}/binaries/\{platform}/MoonfmiMatrixStateSpace.\{extension}"
+  let command = "clang \{flags} -o \"\{binary_path}\" \"\{result.output_dir}/sources/moonfmi_model.c\" \"\{result.output_dir}/sources/fmi3Functions.c\""
+  if run_shell(command) != 0L {
+    abort("clang failed for the matrix state-space model: \{command}")
+  }
+  let binary = @fs.read_file_to_bytes(binary_path) catch {
+    error =>
+      abort("reading matrix state-space binary failed: " + io_message(error))
+  }
+  let entries : Array[(String, Bytes)] = []
+  for entry in result.files {
+    entries.push(entry)
+  }
+  entries.push(
+    ("binaries/\{platform}/MoonfmiMatrixStateSpace.\{extension}", binary),
+  )
+  @zip.build_deterministic_zip(entries) catch {
+    error => abort("matrix state-space packaging failed: " + error.message())
+  }
+}
+
+///|
+/// The dense 2×2 matrix state space (0.7.0): the exported FMU compiles,
+/// loads and its flat element buffer follows the analytic solution.
+/// `A = [[-1, 0], [0, -2]]`, identity start, Euler h = 0.1 — the flat
+/// buffer is row-major `[x00, x01, x10, x11]`, so `x00` evolves as
+/// `(0.9)^n`, `x11` as `(0.8)^n`, and the off-diagonal zeros stay zero
+/// (their dense sums are `A[0][0]*x[0][1] + A[0][1]*x[1][1] = -x[0][1]`).
+test "exported fmi3 dense matrix state space matches the analytic solution" {
+  match compiler_probe_skip() {
+    Some(reason) => {
+      println("SKIP: \{reason}")
+      return
+    }
+    None => ()
+  }
+  let archive = build_matrix_state_space_fmu("fmi3-matrix")
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let directory = absolute_path(".moonfmi-tmp/load-matrix-\{@env.now()}")
+  let fmu_logs : Array[String] = []
+  let loaded = @native_backend.load_fmi3_fmu(
+    archive,
+    host=host(),
+    temp_directory=directory,
+    on_log=fn(message) {
+      fmu_logs.push(message.category + ": " + message.message)
+    },
+  ) catch {
+    error => abort("loading matrix state-space FMU failed: " + error.message())
+  }
+  // VRs follow declaration order: A = 0 (matrix parameter), x = 1 (matrix
+  // state), y = 2 (matrix output); each array buffer is 4 elements flat.
+  let instance = loaded.instance()
+  let cs_instance : &@fmi.CsInstance = instance
+  cs_instance.setup_experiment(start=0.0, stop=Some(1.0))
+  cs_instance.initialize() catch {
+    error =>
+      abort(
+        "matrix state-space initialize failed: " +
+        error.message() +
+        " | fmu logs: " +
+        fmu_logs.join(" | "),
+      )
+  }
+  // Parameter roundtrip first: the flat A buffer is [-1, 0, 0, -2].
+  let a_values = instance.get_float64_values([0U], 4) catch {
+    error => abort("reading A failed: " + error.message())
+  }
+  assert_true(
+    a_values[0] == -1.0 &&
+    a_values[1] == 0.0 &&
+    a_values[2] == 0.0 &&
+    a_values[3] == -2.0,
+    msg="A buffer mismatch: \{a_values[0]}, \{a_values[1]}, \{a_values[2]}, \{a_values[3]}",
+  )
+  let expected = [1.0, 0.0, 0.0, 1.0]
+  let factors = [0.9, 1.0, 1.0, 0.8]
+  for n in 0..<=10 {
+    let x = instance.get_float64_values([1U], 4) catch {
+      error => abort("reading x failed: " + error.message())
+    }
+    let y = instance.get_float64_values([2U], 4) catch {
+      error => abort("reading y failed: " + error.message())
+    }
+    for element in 0..<4 {
+      let reference = expected[element]
+      assert_true(
+        (x[element] - reference).abs() <= 0.000000000001,
+        msg="x[\{element}][\{n}] = \{x[element]}, expected \{reference}",
+      )
+      assert_true(
+        (y[element] - reference).abs() <= 0.000000000001,
+        msg="y[\{element}][\{n}] = \{y[element]}, expected \{reference}",
+      )
+    }
+    if n < 10 {
+      instance.step(n.to_double() * 0.1, 0.1) catch {
+        error =>
+          abort(
+            "matrix state-space step failed: " +
+            error.message() +
+            " | fmu logs: " +
+            fmu_logs.join(" | "),
+          )
+      }
+      for element in 0..<4 {
+        expected[element] = expected[element] * factors[element]
+      }
+    }
+  }
+  loaded.dispose()
+}

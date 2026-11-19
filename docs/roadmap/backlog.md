@@ -70,7 +70,7 @@
 | C-05 ✅ | 符号表绑定/可选符号 | P0 | M | C-04 ✅ | 缺失符号可定位 |
 | C-06 ✅ | C shim：回调/结构体/日志 | P0 | L | A-06 | 日志测试 |
 | C-07 ✅ | FMI 2 实例化/释放 | P1 | M | C-05/C-06 | 真实 FMU（P2 核心路径，2026-11-07） |
-| C-08 ✅ | FMI 2 get/set/状态码 | P1 | L | C-07 | Real（P2）+ Integer/Boolean 数组/单值绑定（2026-11-18，Feedthrough 真实 FMU roundtrip）；String 通道未做（FMI 2/3 一致，导入侧暂无需求） |
+| C-08 ✅ | FMI 2 get/set/状态码 | P1 | L | C-07 | Real（P2）+ Integer/Boolean 数组/单值绑定（2026-11-18，Feedthrough 真实 FMU roundtrip）；String 通道绑定层已于 2026-11-18 完成（FMI 2/3 一致，shim 管 FMI 2 指针生命周期），0.7.0 经 `simulate --set` 与 Feedthrough 端到端验证 |
 | C-09 ✅ | FMI 2 状态保存/序列化 | P2 | M | C-08 | 能力缺失报错（commit 21ebba1，Get/Set/Free/Serialize/Deserialize 全链路） |
 | C-10 ✅ | CS 主算法 | P1 | L | C-08 | BouncingBall |
 | C-11 ✅ | CS 事件/回滚/早退 | P1 | L | C-10 ✅ | Discard 回滚+步长减半重试(上限 5)+FMI 3 lastSuccessfulTime 续跑;FMI 3 早退收敛已存在于绑定层;见 master-algorithm.md §3.5 与 2026-11-18 记录 |
@@ -167,6 +167,29 @@
 - 浏览器加载任意 native FMU；
 - 自动修复非法 FMU；
 - 云端服务/账号系统。
+
+---
+
+## 10.1 0.7.0 增量（2026-11-19，全部完成）
+
+| ID | 任务 | 优先级 | 规模 | 验收 |
+| --- | --- | --- | --- | --- |
+| H-01 ✅ | `simulate --set` 类型化输入通道 | P1 | M | 四类型 Feedthrough 端到端 + 拒绝用例（exit 1） |
+| H-02 ✅ | couple CLI：信号类型推断/一致性校验/环求解旗标 | P1 | M | 跨类型拒绝 + Integer 连接 + 自连求解端到端 |
+| H-03 ✅ | LS-WASM manifest 校验（validate/info） | P1 | M | wasm-only 缺 manifest 报错；混合归档免诊断（Reference-FMUs 实况）；结构/标识符负例 |
+| H-04 ✅ | 导出器 2 维数组 + 稠密矩阵展开 | P2 | L | 2×2 矩阵状态空间编译→加载→解析解一致 |
+| H-05 ✅ | FMI 2 VendorAnnotations/Tool | P3 | S | 正反例解析 + 导出写入；字段覆盖 92/92 |
+| H-06 ✅ | R7 临时目录熵后缀 | P2 | S | simulate/couple/doctor 三处；熵缺失退化路径 |
+| H-07 ✅ | R2 `--sha256` 归档校验 | P2 | S | 错误哈希 exit 1；正确哈希通过 |
+| H-08 ✅ | R5 导出→重解析差分 fuzz | P2 | M | 固定种子 240 次；**发现并修复 FMI 2 `derivative` 索引缺陷** |
+| H-09 ✅ | `--sandbox` 子进程隔离 | P2 | M | moonbitlang/async@0.22.9（准入记录见 ecosystem.md §13.1）；子进程转发/超时看门狗 |
+| H-10 ✅ | aarch64 CI + 平台映射修复 | P2 | M | ubuntu-24.04-arm job；FMI 2 arm64 → `aarch64-linux`；aarch64 ABI 基线 |
+| H-11 ✅ | shim 日志投递锁 + 并发回调测试 | P2 | M | 4×25 并发全序到达（R-04 关闭） |
+| H-12 ✅ | 可复现构建检查脚本 | P3 | S | scripts/repro-build.mbtx 双次清洁构建逐字节对比 |
+
+> H-08 的差分 fuzz 抓到 FMI 2 合成 `der(x)` 的 `derivative` 属性写成
+> VR 而非 1 基 ModelVariables 位置——首个"状态变量声明在最前"的模型
+> 生成的 XML 无法通过校验；已修复并纳入回归。
 
 ---
 

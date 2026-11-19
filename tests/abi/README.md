@@ -44,6 +44,7 @@ tests/abi/.cache/probe > tests/abi/baselines/x86_64-linux.json
 | --- | --- |
 | `baselines/x86_64-windows.json` | Windows x86_64，MSVC 头文件/编译器 |
 | `baselines/x86_64-linux.json` | Linux x86_64，clang |
+| `baselines/aarch64-linux.json` | Linux aarch64（0.7.0 新增；FMI 结构体全为 `int`/`size_t`/`double`/指针，LP64 布局与 x86_64 相同，首份基线由 x86_64 复制而来，CI `ubuntu-24.04-arm` 首跑时由 probe 实测核对，如有差异按实际更新） |
 
 比较：
 

@@ -1,9 +1,11 @@
 # 耦合主算法(多 FMU 联合仿真)
 
 > 状态:已实现(library 级 MVP,2026-11-18;C-20 follow-up 增加协同回滚、
-> 类型化信号连接与代数环定点求解)。实现位于 `src/sim/coupling.mbt`,
+> 类型化信号连接与代数环定点求解;2026-11-18 晚些时候 `moonfmi couple`
+> 命令行落地,2026-11-19 补齐信号类型推断、环求解旗标与端到端测试)。
+> 实现位于 `src/sim/coupling.mbt` 与 `src/cli/cli.mbt`(couple 命令),
 > mock 测试 `src/sim/coupling_wbtest.mbt`,端到端测试
-> `tests/integration/coupling_wbtest.mbt`。
+> `tests/integration/coupling_wbtest.mbt` 与 `couple_cli_wbtest.mbt`。
 
 ## 1. 目标与边界
 
@@ -19,8 +21,10 @@
   通信点读到的输出,不做高阶外推;
 - **代数环默认拒绝**;`CoupledConfig::max_loop_iterations = Some(n)` 开启后,
   用 Jacobi 定点迭代求解(简单实现:Kahn 未放置集合整体作为一个块,见 §3.5);
+  CLI 侧通过 `--loop-iterations N` / `--loop-tolerance T` 暴露;
 - 参与者只借出(`CsInstance` 借用),加载与 `dispose()` 仍归调用方;
-- CLI 不暴露 `couple` 命令(library-only),`--json` 契约不变。
+- CLI 通过 `moonfmi couple` 暴露:`--connect p.var=q.var` 按生产者声明类型
+  自动推断信号类型并校验两端一致,Real/Integer/Boolean 均可连接。
 
 ## 2. 数据模型
 
@@ -174,4 +178,5 @@ loop_tolerance~ : Double = 1e-9)`。
   `rollback` 是更严谨的形态;
 - t0 的环求解(需要无步进的输出一致性迭代或接受初始输出);
 - 高阶外推;
-- CLI/JSON 输出暴露耦合运行。
+- CLI/JSON 输出已覆盖(`moonfmi couple`,`moonfmi.couple/v1`);JSON 尚未
+  记录 Integer/Boolean 连接的值(Real 记录面不变)。

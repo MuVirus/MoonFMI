@@ -1,0 +1,78 @@
+{
+  "fmi2": {
+    "sizeof": {
+      "fmi2Real": 8,
+      "fmi2Integer": 4,
+      "fmi2Boolean": 4,
+      "fmi2Char": 1,
+      "fmi2Byte": 1,
+      "fmi2String": 8,
+      "fmi2ValueReference": 4,
+      "fmi2Component": 8,
+      "fmi2ComponentEnvironment": 8,
+      "fmi2FMUstate": 8,
+      "fmi2Status": 4,
+      "fmi2CallbackFunctions": 40,
+      "fmi2CallbackLogger": 8,
+      "fmi2InstantiateTYPE*": 8,
+      "fmi2DoStepTYPE*": 8,
+      "fmi2GetRealTYPE*": 8
+    },
+    "offsetof": {
+      "fmi2CallbackFunctions.logger": 0,
+      "fmi2CallbackFunctions.allocateMemory": 8,
+      "fmi2CallbackFunctions.freeMemory": 16,
+      "fmi2CallbackFunctions.stepFinished": 24,
+      "fmi2CallbackFunctions.componentEnvironment": 32
+    },
+    "enum": {
+      "fmi2OK": 0,
+      "fmi2Warning": 1,
+      "fmi2Discard": 2,
+      "fmi2Error": 3,
+      "fmi2Fatal": 4,
+      "fmi2Pending": 5,
+      "fmi2DoStepStatus": 0,
+      "fmi2PendingStatus": 1,
+      "fmi2LastSuccessfulTime": 2,
+      "fmi2Terminated": 3,
+      "fmi2CoSimulation": 1,
+      "fmi2ModelExchange": 0,
+      "fmi2True": 1,
+      "fmi2False": 0
+    }
+  },
+  "fmi3": {
+    "sizeof": {
+      "fmi3Float64": 8,
+      "fmi3Float32": 4,
+      "fmi3Int64": 8,
+      "fmi3UInt64": 8,
+      "fmi3Int32": 4,
+      "fmi3UInt32": 4,
+      "fmi3Int16": 2,
+      "fmi3UInt16": 2,
+      "fmi3Int8": 1,
+      "fmi3UInt8": 1,
+      "fmi3Boolean": 1,
+      "fmi3Char": 1,
+      "fmi3String": 8,
+      "fmi3Binary": 8,
+      "fmi3Clock": 1,
+      "fmi3ValueReference": 4,
+      "fmi3Instance": 8,
+      "fmi3InstanceEnvironment": 8,
+      "fmi3FMUState": 8,
+      "fmi3Status": 4
+    },
+    "enum": {
+      "fmi3OK": 0,
+      "fmi3Warning": 1,
+      "fmi3Discard": 2,
+      "fmi3Error": 3,
+      "fmi3Fatal": 4,
+      "fmi3True": 1,
+      "fmi3False": 0
+    }
+  }
+}

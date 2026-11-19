@@ -22,7 +22,7 @@ let allowed : Array[(String, Array[String])] = [
   ("src/zip", []),
   ("src/xml", []),
   ("src/schema", ["src/xml"]),
-  ("src/fmi", ["src/schema", "src/zip"]),
+  ("src/fmi", ["src/schema", "src/xml", "src/zip"]),
   ("src/backend/native", ["src/fmi", "src/schema", "src/zip"]),
   ("src/backend/wasm", ["src/fmi"]),
   ("src/sim", ["src/fmi"]),

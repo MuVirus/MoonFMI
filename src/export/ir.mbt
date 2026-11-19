@@ -596,8 +596,8 @@ pub fn ModelIr::check(self : ModelIr) -> Array[@schema.Diagnostic] {
         }
         match (v.dimensions.length() > 0, element) {
           (true, Some(e)) => {
-            // Element equation: the index must address a real element.
-            let size : Int64 = v.dimensions[0].to_int64()
+            // Element equation: the flat index must address a real element.
+            let size : Int64 = v.element_count().to_int64()
             if e < 0L || e >= size {
               fail(
                 "EX-018",
@@ -654,10 +654,10 @@ pub fn ModelIr::check(self : ModelIr) -> Array[@schema.Diagnostic] {
               "expression references element \{index} of scalar variable '\{name}'",
               None,
             )
-          } else if index < 0L || index >= v.dimensions[0].to_int64() {
+          } else if index < 0L || index >= v.element_count().to_int64() {
             fail(
               "EX-018",
-              "expression element \{index} is out of range for '\{name}' (size \{v.dimensions[0]})",
+              "expression element \{index} is out of range for '\{name}' (size \{v.element_count()})",
               None,
             )
           }
@@ -697,7 +697,7 @@ pub fn ModelIr::check(self : ModelIr) -> Array[@schema.Diagnostic] {
       Some(index) => {
         let v = self.variables[index]
         let size : Int64 = if v.dimensions.length() > 0 {
-          v.dimensions[0].to_int64()
+          v.element_count().to_int64()
         } else {
           1L
         }
@@ -1085,6 +1085,180 @@ pub fn ModelIr::add_real_output_array(
 }
 
 ///|
+/// The number of scalar elements of a variable (1 for scalars, product of
+/// the declared dimensions). Arrays are stored and addressed flat — the
+/// multi-dimensional shape only surfaces in the XML `<Dimension>` elements.
+pub fn IrVariable::element_count(self : IrVariable) -> Int32 {
+  let mut count = 1
+  for d in self.dimensions {
+    count = count * d.reinterpret_as_int()
+  }
+  count
+}
+
+///|
+/// Adds a matrix continuous state (FMI 3 only; two dimensions). `start`
+/// is the flat row-major element list and must hold `rows * cols` values.
+/// Every element needs its own `DerivativeElement` equation — see
+/// `ModelIr::add_matrix_state_equation` for the dense-matrix expansion.
+pub fn ModelIr::add_real_state_matrix(
+  self : ModelIr,
+  name~ : String,
+  rows~ : UInt32,
+  cols~ : UInt32,
+  start~ : Array[Double],
+  nominal? : Double,
+  description? : String,
+) -> IrVariable {
+  let v = IrVariable::new(
+    name~,
+    data_type=IrDataType::Float64,
+    causality=@schema.Causality::Output,
+  )
+  v.initial = Some(@schema.Initial::Exact)
+  v.start = Some(IrValue::RealArray(start))
+  v.nominal = nominal
+  v.description = description
+  v.dimensions.push(rows)
+  v.dimensions.push(cols)
+  self.add_variable(v)
+  v
+}
+
+///|
+/// Adds a matrix input (FMI 3 only). `start` is flat row-major and must
+/// hold `rows * cols` values.
+pub fn ModelIr::add_real_input_matrix(
+  self : ModelIr,
+  name~ : String,
+  rows~ : UInt32,
+  cols~ : UInt32,
+  start~ : Array[Double],
+  description? : String,
+) -> IrVariable {
+  let v = IrVariable::new(
+    name~,
+    data_type=IrDataType::Float64,
+    causality=@schema.Causality::Input,
+  )
+  v.start = Some(IrValue::RealArray(start))
+  v.description = description
+  v.dimensions.push(rows)
+  v.dimensions.push(cols)
+  self.add_variable(v)
+  v
+}
+
+///|
+/// Adds a matrix parameter with a flat row-major constant matrix (FMI 3
+/// only). Parameters are the natural carrier for the `A` matrix of a
+/// dense state-space model.
+pub fn ModelIr::add_real_parameter_matrix(
+  self : ModelIr,
+  name~ : String,
+  rows~ : UInt32,
+  cols~ : UInt32,
+  values~ : Array[Double],
+  description? : String,
+) -> IrVariable {
+  let v = IrVariable::new(
+    name~,
+    data_type=IrDataType::Float64,
+    causality=@schema.Causality::Parameter,
+  )
+  v.start = Some(IrValue::RealArray(values))
+  v.description = description
+  v.dimensions.push(rows)
+  v.dimensions.push(cols)
+  self.add_variable(v)
+  v
+}
+
+///|
+/// Adds a matrix output (FMI 3 only).
+pub fn ModelIr::add_real_output_matrix(
+  self : ModelIr,
+  name~ : String,
+  rows~ : UInt32,
+  cols~ : UInt32,
+  description? : String,
+) -> IrVariable {
+  let v = IrVariable::new(
+    name~,
+    data_type=IrDataType::Float64,
+    causality=@schema.Causality::Output,
+  )
+  v.description = description
+  v.dimensions.push(rows)
+  v.dimensions.push(cols)
+  self.add_variable(v)
+  v
+}
+
+///|
+/// Expands the dense matrix product `x'[i][j] = Σₖ A[i][k]·x[k][j]` into
+/// per-element derivative equations (one `DerivativeElement` per element,
+/// constants folded by the C compiler). `state` must be a `rows × cols`
+/// array state and `a_matrix` a `rows × inner` matrix; both must carry
+/// two dimensions with matching row counts. Element references stay flat:
+/// `Element(a, i * inner + k)` and `Element(x, k * cols + j)` — the
+/// generated C members are flat arrays (see `member_decl`).
+pub fn ModelIr::add_matrix_state_equation(
+  self : ModelIr,
+  state~ : String,
+  a_matrix~ : String,
+) -> Unit {
+  let state_index = match self.index_of(state) {
+    Some(index) => index
+    None =>
+      abort("add_matrix_state_equation: unknown state variable '" + state + "'")
+  }
+  let a_index = match self.index_of(a_matrix) {
+    Some(index) => index
+    None =>
+      abort(
+        "add_matrix_state_equation: unknown matrix variable '" + a_matrix + "'",
+      )
+  }
+  let state_dims = self.variables[state_index].dimensions
+  let a_dims = self.variables[a_index].dimensions
+  if state_dims.length() != 2 || a_dims.length() != 2 {
+    abort(
+      "add_matrix_state_equation: both variables must be two-dimensional matrices",
+    )
+  }
+  let rows = state_dims[0].reinterpret_as_int()
+  let cols = state_dims[1].reinterpret_as_int()
+  let inner = a_dims[1].reinterpret_as_int()
+  if a_dims[0].reinterpret_as_int() != rows {
+    abort(
+      "add_matrix_state_equation: A matrix has \{a_dims[0]} rows, state has \{rows}",
+    )
+  }
+  for i in 0..<rows {
+    for j in 0..<cols {
+      // Sum of `inner` products, folded left-assoc into the expression tree.
+      let mut expr : IrExpr = IrExpr::mul(
+        IrExpr::Element(a_matrix, (i * inner).to_int64()),
+        IrExpr::Element(state, j.to_int64()),
+      )
+      for k in 1..<inner {
+        expr = IrExpr::add(
+          expr,
+          IrExpr::mul(
+            IrExpr::Element(a_matrix, (i * inner + k).to_int64()),
+            IrExpr::Element(state, (k * cols + j).to_int64()),
+          ),
+        )
+      }
+      self.equations.push(
+        IrEquation::DerivativeElement(state, (i * cols + j).to_int64(), expr),
+      )
+    }
+  }
+}
+
+///|
 pub fn ModelIr::add_derivative(
   self : ModelIr,
   state~ : String,
@@ -1303,5 +1477,53 @@ pub fn diagonal_state_space_example_ir() -> ModelIr {
     element=2L,
     expr=IrExpr::elem("x", 2L),
   )
+  ir
+}
+
+///|
+/// Example model: dense 2×2 matrix state space (FMI 3, 0.7.0). `x' = A·x`
+/// with `A = [[-1, 0], [0, -2]]` written through
+/// `ModelIr::add_matrix_state_equation` — the diagonal A keeps the
+/// analytic reference simple (`x00(t) = e^-t`, `x11(t) = e^-2t`) while the
+/// equations are genuinely dense sums (`A[0][0]*x[0][0] + A[0][1]*x[1][0]`
+/// with an explicit zero term). The `A` matrix is a 2×2 parameter with a
+/// flat row-major start; value references: A = 0, x = 1, y = 2.
+pub fn matrix_state_space_example_ir() -> ModelIr {
+  let ir = ModelIr::new(
+    model_name="MoonfmiMatrixStateSpace",
+    generation_tool="MoonFMI source exporter",
+    description="dense x'[i][j] = sum_k A[i][k]*x[k][j] with a 2x2 matrix state",
+  )
+  ir.add_interface(
+    kind=@schema.InterfaceKind::CoSimulation,
+    model_identifier="MoonfmiMatrixStateSpace",
+  )
+  ignore(
+    ir.add_real_parameter_matrix(
+      name="A",
+      rows=2U,
+      cols=2U,
+      values=[-1.0, 0.0, 0.0, -2.0],
+      description="state matrix (flat row-major)",
+    ),
+  )
+  ignore(
+    ir.add_real_state_matrix(
+      name="x",
+      rows=2U,
+      cols=2U,
+      start=[1.0, 0.0, 0.0, 1.0],
+      description="identity start",
+    ),
+  )
+  ignore(ir.add_real_output_matrix(name="y", rows=2U, cols=2U))
+  ir.add_matrix_state_equation(state="x", a_matrix="A")
+  for element in 0L..<4L {
+    ir.add_output_equation_element(
+      output="y",
+      element~,
+      expr=IrExpr::elem("x", element),
+    )
+  }
   ir
 }

@@ -23,6 +23,8 @@
 #include <dlfcn.h>
 #endif
 
+#include "moonfmi_log_lock.h"
+
 /* Messages are truncated to 4 KiB, measured in bytes before UTF-8 decoding. */
 #define MOONFMI_FMI3_LOG_LIMIT 4096
 #define MOONFMI_FMI3_ERROR_LIMIT 512
@@ -491,12 +493,16 @@ static void moonfmi_fmi3_log_message(fmi3InstanceEnvironment environment,
       instance->log_thunk == NULL || instance->log_closure == NULL) {
     return;
   }
+  /* Serialize delivery: an FMU may log from several of its own threads
+     (R-04), and MoonBit must not see interleaved thunk calls. */
+  moonfmi_log_lock_acquire();
   instance->log_count++;
   moonbit_bytes_t kind = moonfmi_fmi3_log_bytes(category);
   moonbit_bytes_t text = moonfmi_fmi3_log_bytes(message);
   instance->log_thunk(instance->log_closure, (int32_t)status, kind, text);
   moonbit_decref(kind);
   moonbit_decref(text);
+  moonfmi_log_lock_release();
 }
 
 /* The host declines every intermediate update: no variable access, no early

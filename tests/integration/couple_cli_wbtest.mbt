@@ -181,3 +181,88 @@ test "moonfmi couple rejects a connection cycle" {
   )
   assert_eq(code, 1)
 }
+
+///|
+/// Signal-type inference on real FMUs (0.7.0): the Feedthrough corpus FMU
+/// loaded twice — a cross-type connection (`Float64` output → `Int32`
+/// input) is rejected up front, while the same-type `Int32` connection
+/// runs the typed write path end to end.
+test "couple infers signal types and rejects cross-type connections" {
+  match corpus_skip() {
+    Some(reason) => {
+      println("SKIP: " + reason)
+      return
+    }
+    None => ()
+  }
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let directory = absolute_path(".moonfmi-tmp/couple-typed-\{@env.now()}")
+  ensure_test_dir(directory)
+  let feedthrough = fmu_path("fmi2/Feedthrough.fmu")
+  // Real output wired to an Integer input: rejected before anything steps.
+  let cross_type = @cli.run(
+    [
+      "couple", feedthrough, feedthrough, "--connect", "Feedthrough.Float64_continuous_output=Feedthrough-2.Int32_input",
+      "--stop-time", "0.02", "--step-size", "0.01",
+    ],
+    fn(path) { @fs.read_file_to_bytes(path) catch { _ => b"" } },
+  )
+  assert_eq(cross_type, 1)
+  // Same-type Integer connection: the typed write path runs on real FMUs.
+  let output = directory + "/typed.csv"
+  let typed = @cli.run(
+    [
+      "couple", feedthrough, feedthrough, "--connect", "Feedthrough.Int32_output=Feedthrough-2.Int32_input",
+      "--stop-time", "0.02", "--step-size", "0.01", "--output", output,
+    ],
+    fn(path) { @fs.read_file_to_bytes(path) catch { _ => b"" } },
+  )
+  assert_eq(typed, 0)
+  let csv = @fs.read_file_to_bytes(output) catch {
+    error => abort("reading typed couple CSV failed: " + io_message(error))
+  }
+  let text = @utf8.decode(csv)
+  // The Real record columns are still present (Real outputs only); the
+  // Integer connection itself carries no recorded column.
+  assert_true(
+    text.contains("time,Feedthrough.Float64_continuous_output"),
+    msg="coupled CSV header missing Real record columns: " + text,
+  )
+}
+
+///|
+/// The loop-solving flags reach the coupled master: a self-connection,
+/// which is rejected as an algebraic loop by default, is accepted with
+/// `--loop-iterations` on the corpus Feedthrough (direct feedthrough
+/// converges in one iteration).
+test "couple --loop-iterations enables self-connection solving" {
+  match corpus_skip() {
+    Some(reason) => {
+      println("SKIP: " + reason)
+      return
+    }
+    None => ()
+  }
+  @fs.create_dir(".moonfmi-tmp") catch {
+    _ => ()
+  }
+  let feedthrough = fmu_path("fmi2/Feedthrough.fmu")
+  let rejected = @cli.run(
+    [
+      "couple", feedthrough, "--connect", "Feedthrough.Float64_continuous_output=Feedthrough.Float64_continuous_input",
+      "--stop-time", "0.01", "--step-size", "0.01",
+    ],
+    fn(path) { @fs.read_file_to_bytes(path) catch { _ => b"" } },
+  )
+  assert_eq(rejected, 1)
+  let solved = @cli.run(
+    [
+      "couple", feedthrough, "--connect", "Feedthrough.Float64_continuous_output=Feedthrough.Float64_continuous_input",
+      "--stop-time", "0.01", "--step-size", "0.01", "--loop-iterations", "3",
+    ],
+    fn(path) { @fs.read_file_to_bytes(path) catch { _ => b"" } },
+  )
+  assert_eq(solved, 0)
+}

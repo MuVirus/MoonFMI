@@ -21,11 +21,14 @@ pub fn usage() -> String {
   "  moonfmi info <fmu | modelDescription.xml> [--json]\n" +
   "  moonfmi simulate <fmu> [--interface cs|me|se] [--solver euler|rk4]\n" +
   "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
+  "                  [--set name=value ...] [--sha256 HEX]\n" +
   "                  [--output out.csv] [--timeout SEC] [--backend native|wasm]\n" +
-  "                  [--platform DIR] [--json]\n" +
+  "                  [--platform DIR] [--sandbox] [--json]\n" +
   "  moonfmi couple <fmu> [...] [--connect p.var=q.var ...]\n" +
   "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
   "                  [--output out.csv] [--json] [--timeout SEC]\n" +
+  "                  [--sha256 HEX] [--loop-iterations N] [--loop-tolerance T]\n" +
+  "                  [--sandbox]\n" +
   "  moonfmi package <dir> [--output model.fmu] [--platform DIR] [--json]\n" +
   "  moonfmi doctor [--json]\n" +
   "  moonfmi completion <bash|zsh|pwsh>\n" +
@@ -99,6 +102,11 @@ fn command_help(command : String) -> String {
       "  --step-size H        Step size (default 0.01 or the model's DefaultExperiment)\n" +
       "  --output FILE        Write CSV to FILE instead of stdout\n" +
       "  --timeout SEC        Abort when the run exceeds SEC seconds of wall clock\n" +
+      "  --sha256 HEX         Refuse to run unless the FMU archive hashes to HEX\n" +
+      "  --set NAME=VALUE     Set an input or parameter before initialization; the type is\n" +
+      "                       inferred from the model description (repeatable)\n" +
+      "  --sandbox            Run in a crash-isolated child process with a hard watchdog\n" +
+      "                       (not a permission sandbox)\n" +
       "  --backend NAME       native (default) or wasm; wasm is not supported yet\n" +
       "  --platform DIR       Force a binaries/ platform directory\n" +
       "  --json               Stable JSON summary (schema moonfmi.simulate/v1)\n" +
@@ -119,12 +127,20 @@ fn command_help(command : String) -> String {
       "\n" +
       "Options:\n" +
       "  --connect p.var=q.var  Drive input q.var of participant q with output p.var\n" +
-      "                         of participant p (repeatable)\n" +
+      "                         of participant p (repeatable); the signal type (Real,\n" +
+      "                         Integer, Boolean) is inferred from the producer's\n" +
+      "                         variable and both endpoints must agree\n" +
       "  --start-time T         Start time (default 0)\n" +
       "  --stop-time T          Stop time (default 1.0)\n" +
       "  --step-size H          Communication step size (default 0.01)\n" +
       "  --output FILE          Write CSV to FILE instead of stdout\n" +
       "  --timeout SEC          Abort when the run exceeds SEC seconds of wall clock\n" +
+      "  --sha256 HEX           Refuse to run unless every FMU archive hashes to HEX\n" +
+      "  --loop-iterations N    Solve algebraic loops with at most N Jacobi iterations\n" +
+      "                         (default: loops are rejected)\n" +
+      "  --loop-tolerance T     Residual tolerance of the loop iteration (default 1e-9)\n" +
+      "  --sandbox              Run in a crash-isolated child process with a hard watchdog\n" +
+      "                         (not a permission sandbox)\n" +
       "  --json                 Stable JSON summary (schema moonfmi.couple/v1)\n" +
       "\n" +
       "Examples:\n" +
@@ -156,7 +172,7 @@ fn command_help(command : String) -> String {
 }
 
 ///|
-let moonfmi_version : String = "0.1.0"
+let moonfmi_version : String = "0.7.0"
 
 ///|
 /// JSON string escaping for the stable `--json` output.
@@ -627,6 +643,14 @@ fn info_text(model : @schema.ModelDescription, data : Bytes) -> Array[String] {
   } else {
     lines.push("platforms: none (source or description only)")
   }
+  let (wasm_manifest, wasm_components) = @fmi.ls_wasm_layer(data) catch {
+    _ => (false, 0)
+  }
+  if wasm_manifest || wasm_components > 0 {
+    lines.push(
+      "lsWasm: manifest=\{if wasm_manifest { "yes" } else { "no" }} components=\{wasm_components}",
+    )
+  }
   lines.push("sha256: \{sha256_hex(data)}")
   lines
 }
@@ -680,6 +704,14 @@ fn info_json(model : @schema.ModelDescription, data : Bytes) -> String {
   builder.write_string("]")
   builder.write_string(",\n  \"sha256\": ")
   builder.write_string(json_string(sha256_hex(data)))
+  let (wasm_manifest, wasm_components) = @fmi.ls_wasm_layer(data) catch {
+    _ => (false, 0)
+  }
+  if wasm_manifest || wasm_components > 0 {
+    builder.write_string(
+      ",\n  \"lsWasm\": {\"manifest\": \{wasm_manifest}, \"components\": \{wasm_components}}",
+    )
+  }
   builder.write_string("\n}")
   builder.to_string()
 }
@@ -697,6 +729,10 @@ priv struct SimulateOptions {
   mut solver : String
   mut backend : String
   mut timeout_seconds : UInt64?
+  /// Expected sha256 of the FMU archive (`--sha256`), lowercase hex.
+  mut sha256 : String?
+  /// `--set name=value` input overrides, in command-line order.
+  sets : Array[(String, String)]
   mut json : Bool
 }
 
@@ -716,6 +752,8 @@ fn parse_simulate_options(
     solver: "rk4",
     backend: "native",
     timeout_seconds: None,
+    sha256: None,
+    sets: [],
     json: false,
   }
   let mut index = skip
@@ -732,7 +770,9 @@ fn parse_simulate_options(
       arg == "--interface" ||
       arg == "--solver" ||
       arg == "--backend" ||
-      arg == "--timeout" {
+      arg == "--timeout" ||
+      arg == "--sha256" ||
+      arg == "--set" {
       if index + 1 >= args.length() {
         return (options, Some("flag '" + arg + "' needs a value"))
       }
@@ -752,6 +792,26 @@ fn parse_simulate_options(
         }
       } else if arg == "--output" {
         options.output = Some(value)
+      } else if arg == "--sha256" {
+        match normalize_sha256(value) {
+          Some(normalized) => options.sha256 = Some(normalized)
+          None =>
+            return (
+              options,
+              Some(
+                "'--sha256' needs a 64-digit hex digest, not '" + value + "'",
+              ),
+            )
+        }
+      } else if arg == "--set" {
+        match split_set_override(value) {
+          Some(pair) => options.sets.push(pair)
+          None =>
+            return (
+              options,
+              Some("'--set' needs 'name=value', got '" + value + "'"),
+            )
+        }
       } else if arg == "--platform" {
         options.platform_override = Some(value)
       } else if arg == "--backend" {
@@ -807,6 +867,98 @@ fn parse_simulate_options(
 /// Parse a `--start-time` style value; accepts plain numbers only.
 fn parse_simulation_double(text : String) -> Double? {
   Some(@string.parse_double(text) catch { _ => return None })
+}
+
+///|
+/// Parse a plain non-negative integer (`--loop-iterations`).
+fn parse_nonnegative_int(text : String) -> Int32? {
+  if text.is_empty() {
+    return None
+  }
+  let mut value = 0
+  for ch in text {
+    let code = ch.to_int()
+    if code < 0x30 || code > 0x39 {
+      return None
+    }
+    value = value * 10 + (code - 0x30)
+    if value > 0x7FFFFFF {
+      return None
+    }
+  }
+  Some(value)
+}
+
+///|
+/// Split a `--set name=value` operand on the first `=`. The variable name
+/// must be non-empty; the value may itself contain `=`.
+fn split_set_override(text : String) -> (String, String)? {
+  let mut eq = -1
+  for index, ch in text {
+    if ch == '=' {
+      eq = index
+      break
+    }
+  }
+  if eq <= 0 {
+    None
+  } else {
+    Some((text[:eq].to_owned(), text[eq + 1:].to_owned()))
+  }
+}
+
+///|
+/// Normalize an expected sha256 digest: lowercase hex, exactly 64 digits.
+/// `None` when the value is not a well-formed digest.
+fn normalize_sha256(value : String) -> String? {
+  if value.char_length() != 64 {
+    return None
+  }
+  let builder = StringBuilder()
+  for ch in value {
+    let code = ch.to_int()
+    let nibble = if code >= 0x30 && code <= 0x39 {
+      code - 0x30
+    } else if code >= 0x41 && code <= 0x46 {
+      code - 0x41 + 10
+    } else if code >= 0x61 && code <= 0x66 {
+      code - 0x61 + 10
+    } else {
+      return None
+    }
+    builder.write_char(UInt16::unsafe_to_char(hex_digits[nibble]))
+  }
+  Some(builder.to_string())
+}
+
+///|
+/// Verify the archive digest requested by `--sha256` (R2): the whole
+/// archive is hashed before anything is extracted or loaded, so a
+/// mismatching archive never reaches `dlopen`. Prints the error and
+/// returns `false` on mismatch.
+fn verify_archive_sha256(
+  path : String,
+  expected : String?,
+  data : Bytes,
+) -> Bool {
+  match expected {
+    Some(expected) => {
+      let actual = sha256_hex(data)
+      if actual != expected {
+        println(
+          "moonfmi: '" +
+          path +
+          "' sha256 mismatch: expected " +
+          expected +
+          ", got " +
+          actual,
+        )
+        return false
+      }
+      true
+    }
+    None => true
+  }
 }
 
 ///|
@@ -909,6 +1061,9 @@ fn run_simulate(
         }
       }
   }
+  if !verify_archive_sha256(path, options.sha256, data) {
+    return 1
+  }
   let host_name = @native.host_platform_name()
   let host = match @fmi.parse_host_platform(host_name) {
     Some(host) => host
@@ -921,7 +1076,7 @@ fn run_simulate(
   @fs.create_dir(".moonfmi-tmp") catch {
     _ => ()
   }
-  let directory = ".moonfmi-tmp/run-\{@env.now()}"
+  let directory = ".moonfmi-tmp/run-\{temp_dir_suffix()}"
   let start_time = options.start_time.unwrap_or(0.0)
   // Detect the FMI version so the right backend family loads. A failing
   // probe is fine here: the loader below reports a precise error.
@@ -944,6 +1099,10 @@ fn run_simulate(
           return 4
         }
         LoadFailed(message) => {
+          println("moonfmi: \{message}")
+          return 1
+        }
+        Config(message) => {
           println("moonfmi: \{message}")
           return 1
         }
@@ -1035,6 +1194,8 @@ fn simulate_json(
 priv suberror SimulateFailure {
   Unsupported(String)
   LoadFailed(String)
+  /// A `--set` override could not be resolved or written (exit 1).
+  Config(String)
   RunFailed(String)
   TimedOut(String)
 }
@@ -1083,6 +1244,14 @@ fn simulate_fmi2(
         @native.load_fmi2_me_fmu(data, host~, temp_directory=directory) catch {
           error => raise map_loader_failure(error)
         }
+    }
+    match
+      apply_set_overrides_fmi2(loaded.model, loaded.instance, options.sets) {
+      Some(message) => {
+        loaded.dispose()
+        raise SimulateFailure::Config(message)
+      }
+      None => ()
     }
     let outputs = real_outputs(loaded.model())
     let references : Array[UInt32] = []
@@ -1143,6 +1312,14 @@ fn simulate_fmi2(
         @native.load_fmi2_fmu(data, host~, temp_directory=directory) catch {
           error => raise map_loader_failure(error)
         }
+    }
+    match
+      apply_set_overrides_fmi2(loaded.model(), loaded.instance(), options.sets) {
+      Some(message) => {
+        loaded.dispose()
+        raise SimulateFailure::Config(message)
+      }
+      None => ()
     }
     let outputs = real_outputs(loaded.model())
     let references : Array[UInt32] = []
@@ -1213,6 +1390,14 @@ fn simulate_fmi3(
           error => raise map_loader_failure(error)
         }
     }
+    match
+      apply_set_overrides_fmi3(loaded.model(), loaded.instance(), options.sets) {
+      Some(message) => {
+        loaded.dispose()
+        raise SimulateFailure::Config(message)
+      }
+      None => ()
+    }
     let outputs = real_outputs_fmi3(loaded.model())
     let references : Array[UInt32] = []
     for output in outputs {
@@ -1272,6 +1457,12 @@ fn simulate_fmi3(
         @native.load_fmi3_se_fmu(data, host~, temp_directory=directory) catch {
           error => raise map_loader_failure(error)
         }
+    }
+    if !options.sets.is_empty() {
+      loaded.dispose()
+      raise SimulateFailure::Config(
+        "--set is not supported with --interface se",
+      )
     }
     let outputs = real_outputs_fmi3(loaded.model())
     let references : Array[UInt32] = []
@@ -1356,6 +1547,14 @@ fn simulate_fmi3(
           error => raise map_loader_failure(error)
         }
     }
+    match
+      apply_set_overrides_fmi3(loaded.model(), loaded.instance(), options.sets) {
+      Some(message) => {
+        loaded.dispose()
+        raise SimulateFailure::Config(message)
+      }
+      None => ()
+    }
     let outputs = real_outputs_fmi3(loaded.model())
     let references : Array[UInt32] = []
     for output in outputs {
@@ -1418,6 +1617,13 @@ priv struct CoupleOptions {
   mut step_size : Double?
   mut output : String?
   mut timeout_seconds : UInt64?
+  /// Expected sha256 of each FMU archive (`--sha256`), lowercase hex.
+  mut sha256 : String?
+  /// `--loop-iterations`: opt-in Jacobi fixed-point bound for algebraic
+  /// loops (`CoupledConfig::max_loop_iterations`).
+  mut loop_iterations : Int32?
+  /// `--loop-tolerance`: residual tolerance of the fixed-point iteration.
+  mut loop_tolerance : Double?
   mut json : Bool
 }
 
@@ -1521,6 +1727,9 @@ fn parse_couple_options(
     step_size: None,
     output: None,
     timeout_seconds: None,
+    sha256: None,
+    loop_iterations: None,
+    loop_tolerance: None,
     json: false,
   }
   let mut index = skip
@@ -1558,6 +1767,56 @@ fn parse_couple_options(
             options.stop_time = Some(number)
           } else {
             options.step_size = Some(number)
+          }
+        None =>
+          return (options, Some("'" + args[index + 1] + "' is not a number"))
+      }
+      index += 2
+    } else if arg == "--sha256" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '--sha256' needs a value"))
+      }
+      match normalize_sha256(args[index + 1]) {
+        Some(normalized) => options.sha256 = Some(normalized)
+        None =>
+          return (
+            options,
+            Some(
+              "'--sha256' needs a 64-digit hex digest, not '" +
+              args[index + 1] +
+              "'",
+            ),
+          )
+      }
+      index += 2
+    } else if arg == "--loop-iterations" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '--loop-iterations' needs a value"))
+      }
+      match parse_nonnegative_int(args[index + 1]) {
+        Some(count) =>
+          if count <= 0 {
+            return (
+              options,
+              Some("'--loop-iterations' needs a positive integer"),
+            )
+          } else {
+            options.loop_iterations = Some(count)
+          }
+        None =>
+          return (options, Some("'" + args[index + 1] + "' is not an integer"))
+      }
+      index += 2
+    } else if arg == "--loop-tolerance" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '--loop-tolerance' needs a value"))
+      }
+      match parse_simulation_double(args[index + 1]) {
+        Some(tolerance) =>
+          if tolerance < 0.0 {
+            return (options, Some("'--loop-tolerance' must not be negative"))
+          } else {
+            options.loop_tolerance = Some(tolerance)
           }
         None =>
           return (options, Some("'" + args[index + 1] + "' is not a number"))
@@ -1608,14 +1867,16 @@ fn parse_couple_options(
 
 ///|
 /// Resolve a variable name on a typed model description to the value
-/// reference of a Real scalar variable with the required causality. This is
-/// the name resolution behind `moonfmi couple --connect`; it is pure so it
-/// can be tested without loading any FMU.
-fn resolve_real_scalar(
+/// reference and signal type of a connectable scalar variable (Real,
+/// Integer or Boolean) with the required causality. The signal type is
+/// inferred from the variable's declared payload so `moonfmi couple
+/// --connect` can wire Integer/Boolean signals without extra flags. This
+/// is pure so it can be tested without loading any FMU.
+fn resolve_typed_scalar(
   model : @schema.ModelDescription,
   name : String,
   want : @schema.Causality,
-) -> Result[UInt32, String] {
+) -> Result[(UInt32, @sim.SignalType), String] {
   match model {
     V2(m) => {
       let index = @schema.build_fmi2_index(m)
@@ -1626,24 +1887,27 @@ fn resolve_real_scalar(
           )
         Some(position) => {
           let variable = m.variables[position - 1]
-          let real = match variable.payload {
-            Real(_) => true
-            _ => false
+          let signal : @sim.SignalType? = match variable.payload {
+            Real(_) => Some(Real)
+            Integer(_) => Some(Integer)
+            Boolean(_) => Some(Boolean)
+            _ => None
           }
-          if !real {
-            Err("variable '" + name + "' is not a Real scalar variable")
-          } else if variable.effective_causality() != want {
-            Err(
-              "variable '" +
-              name +
-              "' has causality '" +
-              @schema.Causality::name(variable.effective_causality()) +
-              "', expected '" +
-              @schema.Causality::name(want) +
-              "'",
-            )
-          } else {
-            Ok(variable.value_reference)
+          match signal {
+            None =>
+              Err(
+                "variable '" +
+                name +
+                "' is not a connectable scalar signal (Real, Integer or Boolean)",
+              )
+            Some(signal) =>
+              if variable.effective_causality() != want {
+                Err(
+                  causality_mismatch(name, variable.effective_causality(), want),
+                )
+              } else {
+                Ok((variable.value_reference, signal))
+              }
           }
         }
       }
@@ -1657,26 +1921,64 @@ fn resolve_real_scalar(
           )
         Some(position) => {
           let variable = m.variables[position - 1]
-          let real_scalar = variable.type_kind is Float64 &&
-            variable.dimensions.is_empty()
-          if !real_scalar {
-            Err("variable '" + name + "' is not a Real scalar variable")
-          } else if variable.effective_causality() != want {
-            Err(
-              "variable '" +
-              name +
-              "' has causality '" +
-              @schema.Causality::name(variable.effective_causality()) +
-              "', expected '" +
-              @schema.Causality::name(want) +
-              "'",
-            )
+          let signal : @sim.SignalType? = if !variable.dimensions.is_empty() {
+            None
+          } else if variable.type_kind is Float64 {
+            Some(Real)
+          } else if variable.type_kind is Int32 {
+            Some(Integer)
+          } else if variable.type_kind is Boolean {
+            Some(Boolean)
           } else {
-            Ok(variable.value_reference)
+            None
+          }
+          match signal {
+            None =>
+              Err(
+                "variable '" +
+                name +
+                "' is not a connectable scalar signal (Real, Integer or Boolean)",
+              )
+            Some(signal) =>
+              if variable.effective_causality() != want {
+                Err(
+                  causality_mismatch(name, variable.effective_causality(), want),
+                )
+              } else {
+                Ok((variable.value_reference, signal))
+              }
           }
         }
       }
     }
+  }
+}
+
+///|
+/// The causality mismatch diagnostic shared by both typed-resolution
+/// branches.
+fn causality_mismatch(
+  name : String,
+  got : @schema.Causality,
+  want : @schema.Causality,
+) -> String {
+  "variable '" +
+  name +
+  "' has causality '" +
+  @schema.Causality::name(got) +
+  "', expected '" +
+  @schema.Causality::name(want) +
+  "'"
+}
+
+///|
+/// Human-readable name of a coupling signal type, used in the
+/// type-mismatch diagnostic.
+fn signal_type_name(signal : @sim.SignalType) -> String {
+  match signal {
+    Real => "Real"
+    Integer => "Integer"
+    Boolean => "Boolean"
   }
 }
 
@@ -1730,7 +2032,8 @@ fn collect_record_outputs(
 }
 
 ///|
-/// Resolve `participant.var` among the loaded participants. On failure a
+/// Resolve `participant.var` among the loaded participants, including the
+/// signal type inferred from the variable's declared payload. On failure a
 /// diagnostic (file path + variable name + problem) is printed and None is
 /// returned; the caller then exits with code 1.
 fn resolve_endpoint(
@@ -1738,7 +2041,7 @@ fn resolve_endpoint(
   participant : String,
   variable : String,
   want : @schema.Causality,
-) -> UInt32? {
+) -> (UInt32, @sim.SignalType)? {
   let mut view : CoupledFmuView? = None
   for candidate in views {
     if candidate.name == participant {
@@ -1763,8 +2066,8 @@ fn resolve_endpoint(
       None
     }
     Some(view) =>
-      match resolve_real_scalar(view.model, variable, want) {
-        Ok(value_reference) => Some(value_reference)
+      match resolve_typed_scalar(view.model, variable, want) {
+        Ok((value_reference, signal)) => Some((value_reference, signal))
         Err(message) => {
           println(
             "moonfmi couple: in '" +
@@ -1923,15 +2226,15 @@ fn run_couple(
           }
         }
     }
+    if !verify_archive_sha256(path, options.sha256, data) {
+      return 1
+    }
     let (probe, _probe_report) = @fmi.validate_fmu_bytes(data)
     let is_fmi3 = match probe {
       Some(@schema.V3(_)) => true
       _ => false
     }
-    let directory = ".moonfmi-tmp/couple-" +
-      i.to_string() +
-      "-" +
-      @env.now().to_string()
+    let directory = ".moonfmi-tmp/couple-\{i}-\{temp_dir_suffix()}"
     let loaded = match
       (Ok(load_fmu_for_couple(path, data, host~, is_fmi3, directory~)) catch {
         error => Err(error)
@@ -1987,18 +2290,40 @@ fn run_couple(
     records.push(outputs)
     loaded_fmus.push(loaded)
   }
-  // Resolve every `--connect` endpoint before anything is stepped.
+  // Resolve every `--connect` endpoint before anything is stepped. The
+  // signal type comes from the producer's declared payload; a connection
+  // whose endpoints disagree on the type is rejected up front instead of
+  // surfacing as an FMU read/write error mid-run.
   let connections : Array[@sim.Coupling] = []
   for connect in options.connects {
     let (from_participant, from_var, to_participant, to_var) = connect
-    let from_vr = match
+    let (from_vr, signal) = match
       resolve_endpoint(views, from_participant, from_var, Output) {
-      Some(value_reference) => value_reference
+      Some(resolved) => resolved
       None => return 1
     }
-    let to_vr = match resolve_endpoint(views, to_participant, to_var, Input) {
-      Some(value_reference) => value_reference
+    let (to_vr, in_signal) = match
+      resolve_endpoint(views, to_participant, to_var, Input) {
+      Some(resolved) => resolved
       None => return 1
+    }
+    if signal != in_signal {
+      println(
+        "moonfmi couple: connection '" +
+        from_participant +
+        "." +
+        from_var +
+        "' -> '" +
+        to_participant +
+        "." +
+        to_var +
+        "' connects a " +
+        signal_type_name(signal) +
+        " output to a " +
+        signal_type_name(in_signal) +
+        " input",
+      )
+      return 1
     }
     connections.push(
       @sim.Coupling::new(
@@ -2006,6 +2331,7 @@ fn run_couple(
         out_vr=from_vr,
         to=to_participant,
         in_vr=to_vr,
+        signal~,
       ),
     )
   }
@@ -2019,6 +2345,8 @@ fn run_couple(
     participants=coupled,
     connections~,
     deadline=options.timeout_seconds,
+    max_loop_iterations=options.loop_iterations,
+    loop_tolerance=options.loop_tolerance.unwrap_or(0.000000001),
   )
   let outcome = Ok(@sim.run_coupled_simulation(config~)) catch {
     error => Err(error)

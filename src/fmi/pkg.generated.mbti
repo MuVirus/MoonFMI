@@ -8,6 +8,12 @@ import {
 }
 
 // Values
+pub const LS_WASM_DIAGNOSTIC_CODE : String = "LS-WASM"
+
+pub const LS_WASM_MANIFEST_ENTRY : String = "extra/org.modelica.fmi-ls-wasm/manifest.xml"
+
+pub const LS_WASM_PLATFORM_DIR : String = "wasm32-wasip2"
+
 pub fn extract_fmu_to_directory(@zip.ZipArchive, String) -> Array[String] raise ExtractionError
 
 pub fn fmi2_platform_dir(HostPlatform) -> String
@@ -20,6 +26,8 @@ pub fn library_extension(HostPlatform) -> String
 
 pub fn list_platform_dirs(Array[String]) -> Array[String]
 
+pub fn ls_wasm_layer(Bytes) -> (Bool, Int32) raise @zip.ZipError
+
 pub fn parse_host_platform(String) -> HostPlatform?
 
 pub fn platform_dir(@schema.FmiVersion, HostPlatform) -> String
@@ -29,6 +37,8 @@ pub fn remove_directory_best_effort(String, Array[String]) -> Unit
 pub fn select_platform(Array[String], @schema.FmiVersion, model_identifier~ : String, host~ : HostPlatform, requested~ : String?) -> (String, String) raise PlatformSelectionError
 
 pub fn validate_fmu_bytes(Bytes) -> (@schema.ModelDescription?, @schema.ValidationReport)
+
+pub fn validate_ls_wasm(@zip.ZipArchive, @schema.ModelDescription?, @schema.ValidationReport) -> Unit
 
 // Errors
 type ExtractionError

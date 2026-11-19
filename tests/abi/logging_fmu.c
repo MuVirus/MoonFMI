@@ -14,6 +14,8 @@
  *   4  4093 ASCII bytes followed by a 4-byte character (cut inside it)
  *   5  exactly 4096 ASCII bytes (must not be truncated)
  *   6  one message from a second thread
+ *   7  CONCURRENT_THREADS threads each emit CONCURRENT_MESSAGES_PER_THREAD
+ *      messages into the same instance at the same time (R-04 concurrency)
  *
  * Build it with tests/abi/build-fixture.ps1 or build-fixture.sh.
  */
@@ -82,6 +84,70 @@ static void emit_from_thread(moonfmi_fake_fmu *fmu) {
 }
 #endif
 
+/* Concurrent callbacks (R-04): several threads log into the same instance
+ * at the same time. doStep joins the threads, so the burst is
+ * deterministic in count: CONCURRENT_THREADS * CONCURRENT_MESSAGES. */
+#define CONCURRENT_THREADS 4
+#define CONCURRENT_MESSAGES 25
+
+typedef struct moonfmi_concurrent_arg {
+  moonfmi_fake_fmu *fmu;
+  int index;
+} moonfmi_concurrent_arg;
+
+#ifdef _WIN32
+static DWORD WINAPI emit_concurrent_body(LPVOID argument) {
+  moonfmi_concurrent_arg *arg = (moonfmi_concurrent_arg *)argument;
+  char message[64];
+  for (int i = 0; i < CONCURRENT_MESSAGES; ++i) {
+    snprintf(message, sizeof(message), "thread %d message %d", arg->index, i);
+    emit(arg->fmu, fmi2OK, "concurrent", message);
+  }
+  return 0;
+}
+static void emit_concurrent(moonfmi_fake_fmu *fmu) {
+  moonfmi_concurrent_arg args[CONCURRENT_THREADS];
+  HANDLE threads[CONCURRENT_THREADS];
+  for (int i = 0; i < CONCURRENT_THREADS; ++i) {
+    args[i].fmu = fmu;
+    args[i].index = i;
+    threads[i] = CreateThread(NULL, 0, emit_concurrent_body, &args[i], 0, NULL);
+  }
+  for (int i = 0; i < CONCURRENT_THREADS; ++i) {
+    if (threads[i] != NULL) {
+      WaitForSingleObject(threads[i], INFINITE);
+      CloseHandle(threads[i]);
+    }
+  }
+}
+#else
+static void *emit_concurrent_body(void *argument) {
+  moonfmi_concurrent_arg *arg = (moonfmi_concurrent_arg *)argument;
+  char message[64];
+  for (int i = 0; i < CONCURRENT_MESSAGES; ++i) {
+    snprintf(message, sizeof(message), "thread %d message %d", arg->index, i);
+    emit(arg->fmu, fmi2OK, "concurrent", message);
+  }
+  return NULL;
+}
+static void emit_concurrent(moonfmi_fake_fmu *fmu) {
+  moonfmi_concurrent_arg args[CONCURRENT_THREADS];
+  pthread_t threads[CONCURRENT_THREADS];
+  int created[CONCURRENT_THREADS];
+  for (int i = 0; i < CONCURRENT_THREADS; ++i) {
+    args[i].fmu = fmu;
+    args[i].index = i;
+    created[i] = pthread_create(&threads[i], NULL, emit_concurrent_body,
+                                &args[i]) == 0;
+  }
+  for (int i = 0; i < CONCURRENT_THREADS; ++i) {
+    if (created[i]) {
+      pthread_join(threads[i], NULL);
+    }
+  }
+}
+#endif
+
 static void emit_kind(moonfmi_fake_fmu *fmu, int kind, int step) {
   char short_message[64];
   switch (kind) {
@@ -126,6 +192,9 @@ static void emit_kind(moonfmi_fake_fmu *fmu, int kind, int step) {
     }
     case 6:
       emit_from_thread(fmu);
+      break;
+    case 7:
+      emit_concurrent(fmu);
       break;
     default:
       snprintf(short_message, sizeof(short_message), "step %d", step);
