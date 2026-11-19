@@ -59,24 +59,31 @@ fn open_bouncing_ball() -> (@native_backend.Fmi2Library, String) {
   ensure_dir(root + "/binaries")
   ensure_dir(root + "/binaries/win64")
   ensure_dir(root + "/binaries/linux64")
+  ensure_dir(root + "/binaries/aarch64-linux")
   ensure_dir(root + "/resources")
 
   let archive = open_cached_fmu("fmi2/BouncingBall.fmu")
   let dll = root + "/binaries/win64/BouncingBall.dll"
   let so = root + "/binaries/linux64/BouncingBall.so"
+  let so_arm = root + "/binaries/aarch64-linux/BouncingBall.so"
   let have_dll = extract_if_present(
     archive, "binaries/win64/BouncingBall.dll", dll,
   )
   let have_so = extract_if_present(
     archive, "binaries/linux64/BouncingBall.so", so,
   )
-  if !have_dll && !have_so {
+  let have_so_arm = extract_if_present(
+    archive, "binaries/aarch64-linux/BouncingBall.so", so_arm,
+  )
+  if !have_dll && !have_so && !have_so_arm {
     abort("BouncingBall.fmu contains no binary for this platform")
   }
   let resource = absolute_path(root + "/resources")
 
   // The FMU carries one binary per platform; loading is the cheapest way to
-  // find out which of them this host can actually use.
+  // find out which of them this host can actually use. An ARM runner cannot
+  // load the linux64 (x86-64) binary, so the aarch64 candidate comes last
+  // but is reachable.
   if have_dll {
     let loaded = Some(@native_backend.Fmi2Library::open(dll)) catch {
       _ => None
@@ -88,6 +95,15 @@ fn open_bouncing_ball() -> (@native_backend.Fmi2Library, String) {
   }
   if have_so {
     let loaded = Some(@native_backend.Fmi2Library::open(so)) catch { _ => None }
+    match loaded {
+      Some(library) => return (library, resource)
+      None => ()
+    }
+  }
+  if have_so_arm {
+    let loaded = Some(@native_backend.Fmi2Library::open(so_arm)) catch {
+      _ => None
+    }
     match loaded {
       Some(library) => return (library, resource)
       None => ()

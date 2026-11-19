@@ -69,6 +69,21 @@ async fn write_bytes(path : String, content : Bytes) -> Unit raise {
 }
 
 ///|
+/// The Reference-FMUs corpus stores the Linux binaries under `linux64`
+/// (x86-64) and `aarch64-linux; a fixed `linux64 would hand the ARM
+/// runner an ELF it cannot load. `uname -m picks the directory.
+async fn linux_binary_platform() -> String raise {
+  let probe = @shell.Cmd::Cmd("uname", ["-m"]).output()
+  if probe.exit_code() == 0 {
+    let machine = probe.stdout().trim().to_owned()
+    if machine == "aarch64" {
+      return "binaries/aarch64-linux"
+    }
+  }
+  "binaries/linux64"
+}
+
+///|
 async fn main raise {
   let output = output_path()
   let fmu_path = "tests/data/.cache/fmi2/BouncingBall.fmu"
@@ -89,7 +104,7 @@ async fn main raise {
   let platform_dir = if is_windows() {
     "binaries/win64"
   } else {
-    "binaries/linux64"
+    linux_binary_platform()
   }
   let binary_name = if is_windows() {
     "\{platform_dir}/BouncingBall.dll"
@@ -127,6 +142,12 @@ async fn main raise {
   let uri = resource_uri("\{work}/resources")
   let host_output = @shell.Cmd::Cmd(host_exe, ["\{work}/\{binary_name}", uri]).output()
   if host_output.exit_code() != 0 {
+    // Surface the child's own output: on a foreign platform the interesting
+    // lines are the loader error or the trajectory mismatch, not the exit code.
+    println("reference host stdout:")
+    println(host_output.stdout())
+    println("reference host stderr:")
+    println(host_output.stderr())
     fail("the reference host failed with exit code \{host_output.exit_code()}")
   }
 

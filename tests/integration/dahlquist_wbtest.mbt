@@ -78,18 +78,25 @@ fn open_dahlquist() -> (@native_backend.Fmi2Library, String) {
   ensure_dir(root + "/binaries")
   ensure_dir(root + "/binaries/win64")
   ensure_dir(root + "/binaries/linux64")
+  ensure_dir(root + "/binaries/aarch64-linux")
   ensure_dir(root + "/resources")
   let archive = open_cached_fmu("fmi2/Dahlquist.fmu")
   let dll = root + "/binaries/win64/Dahlquist.dll"
   let so = root + "/binaries/linux64/Dahlquist.so"
+  let so_arm = root + "/binaries/aarch64-linux/Dahlquist.so"
   let have_dll = extract_if_present(
     archive, "binaries/win64/Dahlquist.dll", dll,
   )
   let have_so = extract_if_present(archive, "binaries/linux64/Dahlquist.so", so)
-  if !have_dll && !have_so {
+  let have_so_arm = extract_if_present(
+    archive, "binaries/aarch64-linux/Dahlquist.so", so_arm,
+  )
+  if !have_dll && !have_so && !have_so_arm {
     abort("Dahlquist.fmu contains no binary for this platform")
   }
   let resource = absolute_path(root + "/resources")
+  // Loading is the cheapest way to find out which candidate this host can
+  // actually use; an ARM runner falls through to the aarch64 binary.
   if have_dll {
     let loaded = Some(@native_backend.Fmi2Library::open(dll)) catch {
       _ => None
@@ -101,6 +108,15 @@ fn open_dahlquist() -> (@native_backend.Fmi2Library, String) {
   }
   if have_so {
     let loaded = Some(@native_backend.Fmi2Library::open(so)) catch { _ => None }
+    match loaded {
+      Some(library) => return (library, resource)
+      None => ()
+    }
+  }
+  if have_so_arm {
+    let loaded = Some(@native_backend.Fmi2Library::open(so_arm)) catch {
+      _ => None
+    }
     match loaded {
       Some(library) => return (library, resource)
       None => ()
