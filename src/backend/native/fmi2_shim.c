@@ -546,9 +546,17 @@ moonfmi_fmi2_setup_experiment(void *handle,
   if (instance == NULL) {
     return (int32_t)fmi2Error;
   }
-  return (int32_t)instance->library->setup_experiment(
+  /* fmi2SetupExperiment returns void in the spec text and in real
+     implementations (Reference-FMUs, our exporter), although the published
+     fmi2FunctionTypes.h typedefs it as fmi2Status — a known FMI 2 header
+     inconsistency. The previous `(int32_t)void-call read the caller-side
+     result register: on x86-64 it happened to hold 0, on aarch64 it held
+     garbage that surfaced as a bogus fmi2Error. Call it without reading a
+     return value; the next call (EnterInitializationMode) reports status. */
+  instance->library->setup_experiment(
       instance->component, tolerance_defined ? fmi2True : fmi2False, tolerance,
       start_time, stop_time_defined ? fmi2True : fmi2False, stop_time);
+  return (int32_t)fmi2OK;
 }
 
 MOONBIT_FFI_EXPORT

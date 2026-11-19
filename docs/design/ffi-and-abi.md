@@ -392,10 +392,21 @@ options(
 | --- | --- |
 | Windows x86_64（MSVC `cl.exe`） | 编译、链接、运行均正常 |
 | Linux x86_64（WSL，`clang`/`cc`） | 编译、链接、运行均正常 |
+| Linux aarch64（GitHub `ubuntu-24.04-arm，clang，2026-11-19 起进 CI） | 编译、链接、运行均正常 |
 | 头文件包含路径 | 相对路径可用，不需要 `-I` |
 | CRT 选择 | 由工具链统一决定，不需要手工对齐 `/MD`、`/MT` |
 | 链接参数 | 不需要 `cc-link-flags` |
 | 符号冲突 | 未出现；shim 导出符号统一加 `moonfmi_` 前缀 |
+
+**0.7.0 的 aarch64 教训（void 返回读取）**：FMI 2 的 `fmi2SetupExperiment
+在规范正文与实现（Reference-FMUs、我们的导出器）里返回 `void，但
+`fmi2FunctionTypes.h 把 typedef 写成 `fmi2Status（FMI 2 的著名头文件
+不一致）。shim 包装层此前把 void 调用强转成 `(int32_t) 读取结果寄存器——
+x86-64 上恰好是 0，aarch64 上是垃圾，表现为随机的 `fmi2SetupExperiment
+failed with status error。shim 现在调用后不读返回值、固定返回
+`fmi2OK（`src/backend/native/fmi2_shim.c）。其余被包装函数均真返回
+`fmi2Status，无同类问题；`fmi2FreeInstance 与 `fmi3FreeInstance 按
+void 调用、不读返回值。
 
 第二、三条路（先编静态库、再编独立动态库）因此没有实际尝试。它们仍是备选：一旦某个平台的原生构建不再接受 `native-stub`，或者 shim 需要链接第三方 C 库，就退到静态库。届时 CRT 一致性问题会重新出现——这正是优先选第一条路的理由。
 
