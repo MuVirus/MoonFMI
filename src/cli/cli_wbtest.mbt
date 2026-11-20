@@ -114,6 +114,26 @@ test "couple missing fmu is a usage error" {
 }
 
 ///|
+/// `--config` without a value is a usage error, and a config file that
+/// cannot be read is a general error (exit 1).
+
+///|
+test "config flag errors map to the exit code matrix" {
+  let missing : (String) -> Bytes raise ReadError = _path => {
+    raise ReadError::Failed("no such file")
+  }
+  assert_eq(run(["simulate", "x.fmu", "--config"], missing), 2)
+  assert_eq(run(["couple", "x.fmu", "--config"], missing), 2)
+  assert_eq(
+    run(
+      ["simulate", "x.fmu", "--config", ".moonfmi-tmp/no-such-config.json"],
+      missing,
+    ),
+    1,
+  )
+}
+
+///|
 /// `resolve_typed_scalar` is pure, so it can be unit-tested without loading
 /// any FMU.
 test "resolve_typed_scalar infers signal types and rejects the rest" {

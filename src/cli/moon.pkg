@@ -11,6 +11,13 @@ import {
   "MuVirus/fmi/src/sim",
   "MuVirus/fmi/src/zip",
   "moonbitlang/x/crypto",
+  "MuVirus/moonfig/core" @config,
+  "MuVirus/moonfig/core/format/json_format" @jsonfmt,
+  "MuVirus/moonfig/core/format/ini_format" @inifmt,
+  "MuVirus/moonfig/core/format/dotenv_format" @dotenvfmt,
+  "MuVirus/moonfig/file_source" @filesrc,
+  "MuVirus/moonfig/env_source" @envsrc,
+  "MuVirus/moonfig/format_detect" @detect,
 }
 
 supported_targets = "native"

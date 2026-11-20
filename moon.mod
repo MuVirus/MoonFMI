@@ -31,4 +31,5 @@ import {
   "moonbitlang/async@0.22.9",
   "moonbitlang/x@0.5.7",
   "tonyfettes/c@0.8.0",
+  "MuVirus/moonfig@0.2.4",
 }

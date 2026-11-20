@@ -23,12 +23,12 @@ pub fn usage() -> String {
   "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
   "                  [--set name=value ...] [--sha256 HEX]\n" +
   "                  [--output out.csv] [--timeout SEC] [--backend native|wasm]\n" +
-  "                  [--platform DIR] [--sandbox] [--json]\n" +
+  "                  [--platform DIR] [--sandbox] [--json] [--config FILE]\n" +
   "  moonfmi couple <fmu> [...] [--connect p.var=q.var ...]\n" +
   "                  [--start-time T] [--stop-time T] [--step-size H]\n" +
   "                  [--output out.csv] [--json] [--timeout SEC]\n" +
   "                  [--sha256 HEX] [--loop-iterations N] [--loop-tolerance T]\n" +
-  "                  [--sandbox]\n" +
+  "                  [--sandbox] [--config FILE]\n" +
   "  moonfmi package <dir> [--output model.fmu] [--platform DIR] [--json]\n" +
   "  moonfmi doctor [--json]\n" +
   "  moonfmi completion <bash|zsh|pwsh>\n" +
@@ -41,6 +41,12 @@ pub fn usage() -> String {
   "  couple       Run several FMUs as one coupled co-simulation\n" +
   "  package      Build a deterministic FMU archive from a directory\n" +
   "  doctor       Check the local environment\n" +
+  "\n" +
+  "Config:\n" +
+  "  --config FILE reads settings from FILE (JSON, INI or .env); the 'simulate'\n" +
+  "  and 'couple' sections map to the matching command options. Environment\n" +
+  "  variables override the file — MOONFMI_SIMULATE__STOP_TIME=10 sets\n" +
+  "  simulate.stop_time — and command-line options override both.\n" +
   "\n" +
   "Examples:\n" +
   "  moonfmi validate BouncingBall.fmu --strict\n" +
@@ -110,10 +116,15 @@ fn command_help(command : String) -> String {
       "  --backend NAME       native (default) or wasm; wasm is not supported yet\n" +
       "  --platform DIR       Force a binaries/ platform directory\n" +
       "  --json               Stable JSON summary (schema moonfmi.simulate/v1)\n" +
+      "  --config FILE        Read settings from FILE (JSON, INI or .env); the\n" +
+      "                       'simulate' section maps to these options. Environment\n" +
+      "                       variables (MOONFMI_SIMULATE__STOP_TIME) and command-line\n" +
+      "                       options override the file in that order\n" +
       "\n" +
       "Examples:\n" +
       "  moonfmi simulate BouncingBall.fmu --stop-time 3 --step-size 0.01 --output ball.csv\n" +
       "  moonfmi simulate VanDerPol.fmu --interface me --solver rk4 --stop-time 5\n" +
+      "  moonfmi simulate BouncingBall.fmu --config experiment.json\n" +
       "\n" +
       "Exit codes: 0 success, 1 load error, 2 usage, 3 unreadable file, 4 unsupported,\n" +
       "5 simulation failure, 6 timeout\n"
@@ -142,6 +153,10 @@ fn command_help(command : String) -> String {
       "  --sandbox              Run in a crash-isolated child process with a hard watchdog\n" +
       "                         (not a permission sandbox)\n" +
       "  --json                 Stable JSON summary (schema moonfmi.couple/v1)\n" +
+      "  --config FILE          Read settings from FILE (JSON, INI or .env); the\n" +
+      "                         'couple' section maps to these options. Environment\n" +
+      "                         variables (MOONFMI_COUPLE__STOP_TIME) and command-line\n" +
+      "                         options override the file in that order\n" +
       "\n" +
       "Examples:\n" +
       "  moonfmi couple generator.fmu gain.fmu --connect generator.y=gain.u --stop-time 1\n" +
@@ -725,15 +740,20 @@ priv struct SimulateOptions {
   mut step_size : Double?
   mut output : String?
   mut platform_override : String?
-  mut interface : String
-  mut solver : String
-  mut backend : String
+  /// Interface, solver and backend stay optional until the config layer has
+  /// been merged: `None` means "not given on the command line", so the
+  /// config file can supply a value the command line did not.
+  mut interface : String?
+  mut solver : String?
+  mut backend : String?
   mut timeout_seconds : UInt64?
   /// Expected sha256 of the FMU archive (`--sha256`), lowercase hex.
   mut sha256 : String?
   /// `--set name=value` input overrides, in command-line order.
-  sets : Array[(String, String)]
+  mut sets : Array[(String, String)]
   mut json : Bool
+  /// Config file (`--config`), if any.
+  mut config_path : String?
 }
 
 ///|
@@ -748,13 +768,14 @@ fn parse_simulate_options(
     step_size: None,
     output: None,
     platform_override: None,
-    interface: "cs",
-    solver: "rk4",
-    backend: "native",
+    interface: None,
+    solver: None,
+    backend: None,
     timeout_seconds: None,
     sha256: None,
     sets: [],
     json: false,
+    config_path: None,
   }
   let mut index = skip
   while index < args.length() {
@@ -772,12 +793,17 @@ fn parse_simulate_options(
       arg == "--backend" ||
       arg == "--timeout" ||
       arg == "--sha256" ||
+      arg == "--config" ||
       arg == "--set" {
       if index + 1 >= args.length() {
         return (options, Some("flag '" + arg + "' needs a value"))
       }
       let value = args[index + 1]
-      if arg == "--start-time" || arg == "--stop-time" || arg == "--step-size" {
+      if arg == "--config" {
+        options.config_path = Some(value)
+      } else if arg == "--start-time" ||
+        arg == "--stop-time" ||
+        arg == "--step-size" {
         let number = parse_simulation_double(value)
         match number {
           Some(number) =>
@@ -815,13 +841,13 @@ fn parse_simulate_options(
       } else if arg == "--platform" {
         options.platform_override = Some(value)
       } else if arg == "--backend" {
-        if value != "native" && value != "wasm" {
+        if !backend_values.contains(value) {
           return (
             options,
             Some("'--backend' accepts native or wasm, not '" + value + "'"),
           )
         }
-        options.backend = value
+        options.backend = Some(value)
       } else if arg == "--timeout" {
         let seconds = parse_simulation_double(value)
         match seconds {
@@ -832,28 +858,26 @@ fn parse_simulate_options(
                 Some("'--timeout' needs a positive number of seconds"),
               )
             } else {
-              options.timeout_seconds = Some(
-                @env.now() + seconds.to_uint64() * 1_000UL,
-              )
+              options.timeout_seconds = Some(deadline_in_seconds(seconds))
             }
           None => return (options, Some("'" + value + "' is not a number"))
         }
       } else if arg == "--interface" {
-        if value != "cs" && value != "me" && value != "se" {
+        if !interface_values.contains(value) {
           return (
             options,
             Some("'--interface' accepts cs, me or se, not '" + value + "'"),
           )
         }
-        options.interface = value
+        options.interface = Some(value)
       } else {
-        if value != "euler" && value != "rk4" {
+        if !solver_values.contains(value) {
           return (
             options,
             Some("'--solver' accepts euler or rk4, not '" + value + "'"),
           )
         }
-        options.solver = value
+        options.solver = Some(value)
       }
       index += 2
     } else {
@@ -1045,7 +1069,14 @@ fn run_simulate(
     println(usage())
     return 2
   }
-  if options.backend == "wasm" {
+  let options = configure_simulate(options) catch {
+    error => {
+      let (code, message) = config_failure_code(error, "simulate")
+      println(message)
+      return code
+    }
+  }
+  if effective_backend(options) == "wasm" {
     println(
       "moonfmi: the wasm backend is not implemented yet (experimental status)",
     )
@@ -1229,7 +1260,7 @@ fn simulate_fmi2(
   directory~ : String,
   start_time~ : Double,
 ) -> (Array[String], @sim.SimulationResult, Double, Double) raise SimulateFailure {
-  if options.interface == "me" {
+  if effective_interface(options) == "me" {
     let loaded = match options.platform_override {
       Some(requested) =>
         @native.load_fmi2_me_fmu(
@@ -1274,7 +1305,11 @@ fn simulate_fmi2(
           None => 1.0
         }
     }
-    let solver = if options.solver == "euler" { @sim.Euler } else { @sim.Rk4 }
+    let solver = if effective_solver(options) == "euler" {
+      @sim.Euler
+    } else {
+      @sim.Rk4
+    }
     let config = @sim.MeConfig::new(
       start_time~,
       stop_time~,
@@ -1374,7 +1409,7 @@ fn simulate_fmi3(
   directory~ : String,
   start_time~ : Double,
 ) -> (Array[String], @sim.SimulationResult, Double, Double) raise SimulateFailure {
-  if options.interface == "me" {
+  if effective_interface(options) == "me" {
     let loaded = match options.platform_override {
       Some(requested) =>
         @native.load_fmi3_me_fmu(
@@ -1419,7 +1454,11 @@ fn simulate_fmi3(
           None => 1.0
         }
     }
-    let solver = if options.solver == "euler" { @sim.Euler } else { @sim.Rk4 }
+    let solver = if effective_solver(options) == "euler" {
+      @sim.Euler
+    } else {
+      @sim.Rk4
+    }
     let config = @sim.MeConfig::new(
       start_time~,
       stop_time~,
@@ -1442,7 +1481,7 @@ fn simulate_fmi3(
     }
     loaded.dispose()
     (names, result, step_size, stop_time)
-  } else if options.interface == "se" {
+  } else if effective_interface(options) == "se" {
     let loaded = match options.platform_override {
       Some(requested) =>
         @native.load_fmi3_se_fmu(
@@ -1611,7 +1650,7 @@ fn simulate_fmi3(
 priv struct CoupleOptions {
   fmus : Array[String]
   /// `--connect` endpoints: (from participant, from variable, to participant, to variable).
-  connects : Array[(String, String, String, String)]
+  mut connects : Array[(String, String, String, String)]
   mut start_time : Double?
   mut stop_time : Double?
   mut step_size : Double?
@@ -1625,6 +1664,8 @@ priv struct CoupleOptions {
   /// `--loop-tolerance`: residual tolerance of the fixed-point iteration.
   mut loop_tolerance : Double?
   mut json : Bool
+  /// Config file (`--config`), if any.
+  mut config_path : String?
 }
 
 ///|
@@ -1731,6 +1772,7 @@ fn parse_couple_options(
     loop_iterations: None,
     loop_tolerance: None,
     json: false,
+    config_path: None,
   }
   let mut index = skip
   while index < args.length() {
@@ -1828,6 +1870,12 @@ fn parse_couple_options(
       }
       options.output = Some(args[index + 1])
       index += 2
+    } else if arg == "--config" {
+      if index + 1 >= args.length() {
+        return (options, Some("flag '--config' needs a value"))
+      }
+      options.config_path = Some(args[index + 1])
+      index += 2
     } else if arg == "--json" {
       options.json = true
       index += 1
@@ -1844,9 +1892,7 @@ fn parse_couple_options(
               Some("'--timeout' needs a positive number of seconds"),
             )
           } else {
-            options.timeout_seconds = Some(
-              @env.now() + seconds.to_uint64() * 1_000UL,
-            )
+            options.timeout_seconds = Some(deadline_in_seconds(seconds))
           }
         None =>
           return (options, Some("'" + args[index + 1] + "' is not a number"))
@@ -2197,6 +2243,13 @@ fn run_couple(
     println("moonfmi couple: " + message + "\n")
     println(usage())
     return 2
+  }
+  let options = configure_couple(options) catch {
+    error => {
+      let (code, message) = config_failure_code(error, "couple")
+      println(message)
+      return code
+    }
   }
   let host_name = @native.host_platform_name()
   let host = match @fmi.parse_host_platform(host_name) {

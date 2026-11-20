@@ -495,6 +495,10 @@ import {
 
 **2026-11-19 评估：`moonbitlang/async@0.22.9` 从"仅门禁脚本"提升为产品依赖（用户批准）。** 背景：0.7.0 的 `--sandbox` 崩溃隔离需要 CLI 派生子进程（重执行自身 + 超时强杀），产品代码无进程 API（§13.2），`@process` 是唯一能力。版本仍为 0.22.9（mooncakes 最新，未 yanked），Apache-2.0，官方维护；2026-11-15 起已在 `scripts/check.mbtx` 实战（子进程/退出码/超时 kill 均验证过）。变更：`moon.mod` import 加锁 `@0.22.9`，`src/cli` 包导入 `@process`；仅 native 后端（`src/cli` 本就 `supported_targets = "native"`），wasm 目标构建不受影响。边界如实记录：这是崩溃隔离 + 超时强杀，不是权限沙箱——子进程 FMU 仍以宿主用户身份运行。
 
+**2026-11-20 已引入：`MuVirus/moonfig@0.2.4` 进入 `moon.mod`（锁版本），仅 `src/cli` 包导入**（该包 `supported_targets = "native"`，wasm 构建不受影响）。用途：`simulate`/`couple` 的配置文件与环境变量入口——JSON/INI/dotenv 三种格式由 `format_detect` 按后缀与内容判定，环境变量用 `MOONFMI_` 前缀加双下划线分层。传递依赖仍只有 `moonbitlang/x@0.5.7`，**没有新增传递依赖**；`moon info` 的 `.mbti` diff 为空（配置层全部是包内私有项，公开 API 未变）。实现细节与取舍见 [`../design/config-layer.md`](../design/config-layer.md)，集成中发现的库能力缺口与临时替代见 [`../roadmap/moonfig-gaps.md`](../roadmap/moonfig-gaps.md)。
+
+**2026-11-20 评估：`MuVirus/moonfig@0.2.4`（第一方自有库）。** 背景：CLI 只有命令行一种输入通道——17 个长选项分散在 6 个手写解析点，没有配置文件入口，环境变量只用于 `doctor` 读 `PATH` 与 `--sandbox` 的子进程标记；实验规格无法存盘、无法进 CI 复现。`moonfig` 是同作者（MuVirus）的 MoonBit 原生配置库，提供多来源合并、类型化提取、来源追踪与校验。版本 0.2.4 经 mooncakes API 核实为最新（2026-11-20 15:11 UTC 发布，未 yanked，build_status success），Apache-2.0，下载量 285，依赖者 0（MoonFMI 将是第一个消费者）；传递依赖仅 `moonbitlang/x@0.5.7`，与本项目已锁版本一致，**不引入新的传递依赖**。0.2.x 相对 0.1.x 是破坏性重构（包路径由 `core/source/*` 改为 `core/format/*`，TOML/YAML/XML/CBOR/serde 拆成独立适配器模块），0.2.4 相对 0.2.3 同样是破坏性变更（环境变量分隔符改为按需开启、`CliSource` 接受负数值），接入须锁 `@0.2.4` 且只用 core 稳定面（`Config`/`Getter`/`Rule`）。替代方案：自研最小配置读取（约 200–300 行），但合并、校验、来源追踪都要重造并与同作者的库分叉。不引入的后果：配置层缺口保留，CLI 取值解析继续分散在 6 处。方案与取舍见 [`../design/config-layer.md`](../design/config-layer.md)，集成过程中发现的库能力缺口与临时替代见 [`../roadmap/moonfig-gaps.md`](../roadmap/moonfig-gaps.md)。关于 §13.3 规则 5（发布不足一个月不进核心路径）：该条针对未审计的第三方包，moonfig 是第一方自有库，风险性质不同——但 0.2.x 当天两次破坏性变更且无依赖者，接入会替上游试错，因此设计按阶段落地并保留行为等价性测试作闸门。
+
 ### 13.2 计划需要、但生态里没有（或不能用）的能力
 
 | 能力 | 生态现状 | 处理 |
