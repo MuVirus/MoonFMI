@@ -232,6 +232,46 @@ test "couple config file is read" {
 }
 
 ///|
+/// The couple command fills the options the command line left out, and the
+/// command line still wins.
+
+///|
+test "couple options are filled from the config file" {
+  clear_config_env()
+  let path = write_config(
+    "i2.json", "{\"couple\": {\"stop_time\": 2.0, \"loop_iterations\": 20, \"connect\": [\"a.y=b.u\"]}}",
+  )
+  let options = empty_couple_options()
+  options.config_path = Some(path)
+  let merged = configure_couple(options)
+  assert_eq(merged.stop_time, Some(2.0))
+  assert_eq(merged.loop_iterations, Some(20))
+  assert_eq(merged.connects.length(), 1)
+  assert_eq(merged.connects[0], ("a", "y", "b", "u"))
+}
+
+///|
+/// Configured connects come first, the command line's after them; a value
+/// given on the command line is not overwritten.
+
+///|
+test "configured connects are merged before the command line connects" {
+  clear_config_env()
+  let path = write_config(
+    "i3.json", "{\"couple\": {\"stop_time\": 2.0, \"connect\": [\"a.y=b.u\"]}}",
+  )
+  let options = empty_couple_options()
+  options.stop_time = Some(9.0)
+  options.connects.push(("c", "z", "d", "w"))
+  options.config_path = Some(path)
+  let merged = configure_couple(options)
+  assert_eq(merged.stop_time, Some(9.0))
+  assert_eq(merged.connects.length(), 2)
+  assert_eq(merged.connects[0], ("a", "y", "b", "u"))
+  assert_eq(merged.connects[1], ("c", "z", "d", "w"))
+}
+
+///|
 /// An illegal enum value in the config is a usage error.
 
 ///|
