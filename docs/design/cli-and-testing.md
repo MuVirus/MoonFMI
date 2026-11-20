@@ -21,6 +21,7 @@
 moonfmi validate <fmu|modelDescription.xml> [options]
 moonfmi info <fmu> [options]
 moonfmi simulate <fmu> [options]
+moonfmi couple <fmu> [options]
 moonfmi export <model-ir> [options]
 moonfmi package <dir> [options]
 moonfmi wasm <fmu|dir> [options]
@@ -84,6 +85,9 @@ moonfmi simulate model.fmu \
 | `--record` | 记录变量列表 |
 | `--fail-on-warning` | 警告即失败 |
 | `--max-steps` | 上限 |
+| `--config <path>` | 配置文件（JSON/INI/dotenv），见 [`config-layer.md`](config-layer.md) |
+
+`couple` 与 `simulate` 共用同一套配置层：`--config <path>` 加 `MOONFMI_` 前缀的环境变量，优先级为命令行 > 环境变量 > 配置文件 > 内置默认。配置段只覆盖 `simulate` 与 `couple` 两个命令，`validate`/`info`/`package`/`doctor` 仍是纯命令行。
 
 ### 2.4 `export`
 

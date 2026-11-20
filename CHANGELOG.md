@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `moonfmi simulate` and `moonfmi couple` accept `--config <path>`: a JSON,
+  INI or dotenv file (format detected from suffix and content) whose
+  `simulate` / `couple` sections carry the same options as the command
+  line. Keys are snake_case; kebab-case spellings are accepted too.
+  Precedence is command line > environment > config file > built-in
+  defaults, so an experiment spec can be stored, reviewed and replayed
+  in CI instead of being copied into a long command line.
+- `MOONFMI_*` environment variables join the same merge:
+  `MOONFMI_SIMULATE__STOP_TIME` maps to `simulate.stop_time` (double
+  underscore separates levels, single underscore stays in the key).
+- The configuration layer is built on the first-party library
+  `MuVirus/moonfig`, locked at `0.2.4` (Apache-2.0). It adds no new
+  transitive dependency and does not change the public API surface
+  (`moon info` reports no `.mbti` change).
+- Config-file failures use the existing exit-code matrix: a missing or
+  unreadable file exits 1, a syntax, type or value error exits 2.
+
+### Changed
+
+- Unknown keys inside the `simulate` / `couple` sections of a config
+  file are reported as warnings on stderr instead of aborting the run,
+  so a file may carry comment-like fields. Root-level `MOONFMI_*`
+  variables belonging to other tools are not checked.
+
+### Fixed
+
+- The `0.7.0` release link was missing from the link references at the
+  end of this file.
+
 ## [0.7.0] - 2026-11-20
 
 ### Added
@@ -149,5 +180,6 @@ tag.
 
 ## Link references
 
-[Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.7.0
 [0.6.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.6.0

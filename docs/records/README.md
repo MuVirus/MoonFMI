@@ -16,6 +16,8 @@
 
 | 日期 | 内容 |
 | --- | --- |
+| [`2026-11-20`](2026-11-20.md) | moonfig 接入：CLI 配置层（`--config`、JSON/INI/dotenv、`MOONFMI_` 环境变量）、依赖准入、能力缺口台账 |
+| [`2026-11-19`](2026-11-19.md) | 0.7.0 全量开发：sandbox/--set/couple 收口、LS-WASM 校验、矩阵导出、安全硬化、ARM CI |
 | [`2026-11-18`](2026-11-18.md) | 按优先级完善:C-11 CS 回滚、C-08 Integer/Boolean 绑定(修 ABI 参数序缺陷)、C-20 多 FMU 耦合 MVP、E-09 数组方程、MD-038 + 字段覆盖 100%、CLI 可复现性实测 |
 | [`2026-11-15`](2026-11-15.md) | P2 收尾(Dahlquist 对照、多实例)、P3 FMI 2 ME、P4 FMI 3 CS/ME、P5 CLI/诊断/打包 |
 | [`2026-11-17-b`](2026-11-17-b.md) | FMI 3 SE 实现、F-08 WASM 导出器、F-06 浏览器实测、cross-check 跨版本对照、FMPy 实测、Linux CI 首跑(R-24 关闭) |

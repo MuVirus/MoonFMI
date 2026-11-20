@@ -13,6 +13,7 @@
 | [`p0-report.md`](p0-report.md) | P0 总结：环境、命令、结果、踩坑、五个决定 |
 | [`backlog.md`](backlog.md) | 可执行任务清单、优先级、依赖 |
 | [`risks.md`](risks.md) | 风险登记、触发条件、缓解/应急 |
+| [`moonfig-gaps.md`](moonfig-gaps.md) | moonfig 集成的库能力缺口、临时替代与上游建议 |
 
 ---
 

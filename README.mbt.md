@@ -92,6 +92,29 @@ Build a deterministic `.fmu` from an unpacked directory:
 moon run cmd/main --target native -- package build/MyModel --output MyModel.fmu
 ```
 
+### Configuration files
+
+`simulate` and `couple` read their settings from a file, an environment
+variable, or the command line — in that order of precedence. The file is
+JSON, INI or `.env`; its `simulate` and `couple` sections map to the
+matching command options:
+
+```json
+{
+  "simulate": { "stop_time": 3.0, "step_size": 0.01, "set": ["h=0.5"] }
+}
+```
+
+```bash
+moon run cmd/main --target native -- simulate model.fmu --config experiment.json
+```
+
+Environment variables use the `MOONFMI_` prefix with a double underscore for
+the section: `MOONFMI_SIMULATE__STOP_TIME=3` sets `simulate.stop_time`.
+Command-line options override both. Keys are snake_case; the kebab-case
+spelling (`stop-time`) is accepted in files. An unknown key is a warning on
+stderr, not a failure.
+
 `moonfmi doctor` checks the local environment, and `moonfmi --help` lists
 every command and exit code. Add `--json` for machine-readable output; the
 shapes are versioned contracts, documented in

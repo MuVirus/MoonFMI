@@ -31,6 +31,7 @@
 | [`ffi-and-abi.md`](ffi-and-abi.md) | C ABI 映射、C shim、回调、内存 |
 | [`packaging.md`](packaging.md) | FMU 打包、路径规则、可复现构建 |
 | [`cli-and-testing.md`](cli-and-testing.md) | CLI、测试金字塔、CI、交叉检查 |
+| [`config-layer.md`](config-layer.md) | CLI 配置层：配置文件、环境变量、moonfig 集成（已实现） |
 
 ---
 
@@ -49,6 +50,9 @@
 | 结构体 | C shim | 布局/对齐风险 | MoonBit 直接映射 |
 | 导出顺序 | 源码 → WASM → native | MoonBit 不能直接导出动态库 | 先 native |
 | WASM 标准 | FMI-LS-WASM | 唯一标准 component 路径 | 自定义 ABI |
+| CLI 配置层 | moonfig core + 字段级回填 | 零新增传递依赖；补上配置文件与环境变量入口 | 自研最小配置层；全部交给 moonfig `CliSource` |
+
+> `config-layer.md` 的配置层已实现；S4（命令行解析迁到 `CliSource`）尚未实施。
 
 ---
 
