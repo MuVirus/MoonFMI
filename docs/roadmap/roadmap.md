@@ -360,6 +360,7 @@
 | `0.5` | 打包 + 源码导出 |
 | `0.6` | WASM 实验版 |
 | `0.7` | 补强批次：CLI 输入（--set）、couple 信号类型 + 环求解、LS-WASM 校验、矩阵导出、安全硬化（R2/R5/R7/sandbox）、aarch64 CI（2026-11-19，见 backlog §10.1） |
+| `0.8` | 配置层：simulate/couple 的 `--config` 文件与 `MOONFMI_*` 环境变量，moonfig 0.2.4 准入（2026-11-21，见 design/config-layer.md） |
 | `1.0` | 硬化、文档、交叉检查达标 |
 
 版本号只是建议；以退出标准为准。

@@ -30,7 +30,7 @@
 
 ## 4. SBOM(依赖清单)
 
-直接依赖(`moon.mod`,均为 MoonBit 社区注册表包;核对日期 2026-11-19):
+直接依赖(`moon.mod`;核对日期 2026-11-21):
 
 | 依赖 | 版本 | 许可证 | 用途 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -39,6 +39,7 @@
 | `moonbitlang/async` | 0.22.9 | Apache-2.0 | `--sandbox` 子进程(`src/cli`) | 0.7.0 准入,见 `research/moonbit-ecosystem.md` §13.1;仅 native |
 | `moonbitlang/x` | 0.5.7 | Apache-2.0 | `fs`、`crypto`(sha256) | 官方扩展库 |
 | `tonyfettes/c` | 0.8.0 | 见包 | C FFI 绑定(`src/backend/native`) | native 目标 |
+| `MuVirus/moonfig` | 0.2.4 | Apache-2.0 | 配置文件与环境变量 merge(`src/cli`) | first-party,0.8.0 准入,见 `research/moonbit-ecosystem.md` §13.1;仅 native,无新传递依赖 |
 
 脚本专用(不进运行时):`moonbitlang/async@0.22.9`(scripts/*.mbtx,
 tests/abi/*.mbtx)、`moonbitlang/core`(工具链自带)。测试专用:

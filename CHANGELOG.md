@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-21
+
 ### Added
 
 - `moonfmi simulate` and `moonfmi couple` accept `--config <path>`: a JSON,
@@ -181,5 +183,6 @@ tag.
 ## Link references
 
 [Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.7.0...HEAD
+[0.8.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.0
 [0.7.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.7.0
 [0.6.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.6.0
