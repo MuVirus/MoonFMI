@@ -1,9 +1,16 @@
 import {
   "moonbitlang/core/env",
   "moonbitlang/x/fs",
+  // Required by `async fn main` (moonc errors [4037] without it) but never
+  // referenced syntactically, so newer toolchains emit unused_package (warn
+  // 29) here and `--deny-warn` escalates it. Suppressed for this package
+  // only; src/cli, which actually drives the async runtime, stays fully
+  // covered. See main.mbt for why the sandbox needs this runtime.
   "moonbitlang/async",
   "MuVirus/fmi/src/cli",
 }
+
+warnings = "-unused_package"
 
 supported_targets = "native"
 
