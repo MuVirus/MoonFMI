@@ -113,6 +113,16 @@ typedef void (*moonfmi_fmi3_log_thunk)(void *closure,
                                        int32_t status,
                                        moonbit_bytes_t category,
                                        moonbit_bytes_t message);
+/* The intermediate-update thunk forwards one FMU callback into MoonBit and
+   returns the host's decision: nonzero asks the FMU to return early at the
+   update's own time (FuncRef parameters stay FFI primitives; raw C out
+   pointers must not cross into MoonBit). */
+typedef int32_t (*moonfmi_fmi3_intermediate_thunk)(void *closure,
+                                                   double intermediate_update_time,
+                                                   int32_t set_requested,
+                                                   int32_t get_allowed,
+                                                   int32_t step_finished,
+                                                   int32_t can_return_early);
 
 typedef struct moonfmi_fmi3_library {
   void *handle;
@@ -211,6 +221,9 @@ struct moonfmi_fmi3_instance {
   moonfmi_fmi3_log_thunk log_thunk;
   uint64_t log_count;
   uint64_t intermediate_updates;
+  void *intermediate_closure;
+  moonfmi_fmi3_intermediate_thunk intermediate_thunk;
+  uint64_t intermediate_early_returns;
   /* Output-clock activations reported through the clockUpdate callback. */
   uint64_t clock_updates;
   int32_t logging_enabled;
@@ -523,9 +536,14 @@ static void moonfmi_fmi3_log_message(fmi3InstanceEnvironment environment,
   moonfmi_log_lock_release();
 }
 
-/* The host declines every intermediate update: no variable access, no early
-   return. This keeps `eventModeUsed = true` instantiations legal without
-   exposing the intermediate-update machinery in the MoonBit API. */
+/* Forward one FMU intermediate update into MoonBit (when a sink is bound)
+   and carry the host's early-return decision back. Without a sink the host
+   declines everything: no variable access, no early return — which keeps
+   instantiations legal without exposing the machinery in the MoonBit API.
+   The call runs on the thread that is inside fmi3DoStep, so no extra
+   serialization is needed (unlike the FMU-threaded log callback). An early
+   return is honored only when the FMU offered one, and targets the update
+   time itself. */
 static void moonfmi_fmi3_intermediate_update(
     fmi3InstanceEnvironment environment,
     fmi3Float64 intermediateUpdateTime,
@@ -536,16 +554,29 @@ static void moonfmi_fmi3_intermediate_update(
     fmi3Boolean *earlyReturnRequested,
     fmi3Float64 *earlyReturnTime) {
   moonfmi_fmi3_instance *instance = (moonfmi_fmi3_instance *)environment;
-  if (instance != NULL) {
-    instance->intermediate_updates++;
+  if (instance == NULL) {
+    *earlyReturnRequested = fmi3False;
+    return;
   }
-  (void)intermediateUpdateTime;
-  (void)intermediateVariableSetRequested;
-  (void)intermediateVariableGetAllowed;
-  (void)intermediateStepFinished;
-  (void)canReturnEarly;
-  (void)earlyReturnTime;
-  *earlyReturnRequested = fmi3False;
+  instance->intermediate_updates++;
+  if (instance->intermediate_thunk == NULL ||
+      instance->intermediate_closure == NULL) {
+    *earlyReturnRequested = fmi3False;
+    return;
+  }
+  int32_t early_return_requested = instance->intermediate_thunk(
+      instance->intermediate_closure, (double)intermediateUpdateTime,
+      intermediateVariableSetRequested != fmi3False ? 1 : 0,
+      intermediateVariableGetAllowed != fmi3False ? 1 : 0,
+      intermediateStepFinished != fmi3False ? 1 : 0,
+      canReturnEarly != fmi3False ? 1 : 0);
+  if (early_return_requested != 0 && canReturnEarly != fmi3False) {
+    instance->intermediate_early_returns++;
+    *earlyReturnRequested = fmi3True;
+    *earlyReturnTime = intermediateUpdateTime;
+  } else {
+    *earlyReturnRequested = fmi3False;
+  }
 }
 
 /* Scheduled Execution callbacks live at the end of this file; forward
@@ -563,7 +594,11 @@ moonfmi_fmi3_instance_new(void *library_handle,
                           int32_t interface_kind,
                           int32_t logging_on,
                           void *log_closure,
-                          moonfmi_fmi3_log_thunk log_thunk) {
+                          moonfmi_fmi3_log_thunk log_thunk,
+                          int32_t event_mode_used,
+                          int32_t early_return_allowed,
+                          void *intermediate_closure,
+                          moonfmi_fmi3_intermediate_thunk intermediate_thunk) {
   moonfmi_fmi3_library *library = (moonfmi_fmi3_library *)library_handle;
   if (library == NULL) {
     moonfmi_fmi3_set_error("the FMI 3 library has already been released");
@@ -580,6 +615,8 @@ moonfmi_fmi3_instance_new(void *library_handle,
   instance->log_thunk = log_thunk;
   instance->logging_enabled = logging_on != 0;
   instance->clock_updates = 0;
+  instance->intermediate_closure = intermediate_closure;
+  instance->intermediate_thunk = intermediate_thunk;
   instance->instance_name = moonfmi_fmi3_copy_bytes(instance_name);
   instance->resource_path = moonfmi_fmi3_copy_bytes(resource_path);
   char *token_text = moonfmi_fmi3_copy_bytes(instantiation_token);
@@ -604,12 +641,15 @@ moonfmi_fmi3_instance_new(void *library_handle,
     instance->component = library->instantiate_co_simulation(
         instance->instance_name, token_text, instance->resource_path,
         fmi3False, logging_on != 0 ? fmi3True : fmi3False,
-        /* eventModeUsed = true: the master handles events via
-           EnterEventMode/UpdateDiscreteStates/EnterStepMode. */
-        fmi3True,
-        /* earlyReturnAllowed = false: the host declines intermediate
-           updates, so early return is never requested. */
-        fmi3False,
+        /* eventModeUsed from the loader: with it the master handles events
+           via EnterEventMode/UpdateDiscreteStates/EnterStepMode; FMUs
+           compiled without event support reject `true`, so the loader
+           retries with `false` (Roberts ships without EVENT_UPDATE). */
+        event_mode_used != 0 ? fmi3True : fmi3False,
+        /* earlyReturnAllowed from the loader: enables the FMU's own early
+           returns and honors host requests made through the intermediate
+           update callback. */
+        early_return_allowed != 0 ? fmi3True : fmi3False,
         /* requiredIntermediateVariables = none. */
         NULL, 0, instance, moonfmi_fmi3_log_message,
         moonfmi_fmi3_intermediate_update);
@@ -1310,4 +1350,14 @@ moonfmi_fmi3_free_fmu_state(void *handle, void *state) {
 	    return 0;
 	  }
 	  return (int64_t)instance->clock_updates;
+	}
+
+	MOONBIT_FFI_EXPORT
+	int64_t moonfmi_fmi3_intermediate_update_count(void *handle) {
+	  moonfmi_fmi3_instance *instance =
+	      (moonfmi_fmi3_instance *)handle;
+	  if (instance == NULL) {
+	    return 0;
+	  }
+	  return (int64_t)instance->intermediate_updates;
 	}

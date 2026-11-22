@@ -51,7 +51,13 @@ pub impl @fmi.CsInstance for Fmi3Instance with fn initialize(self) {
   }
   // With `eventModeUsed = true` the FMU is in event mode right after
   // initialization: settle the initial event, then enter step mode
-  // (master-algorithm.md §3.1/§3.3).
+  // (master-algorithm.md §3.1/§3.3). Without it — the FMU was instantiated
+  // with `eventModeUsed = fmi3False` (Reference-FMUs Roberts ships without
+  // event support) — the FMU already sits in Step Mode, and calling
+  // EnterStepMode here is an illegal call sequence.
+  if !self.event_mode_used {
+    return
+  }
   let mut iterations = 0
   while true {
     let info = Fmi3Instance::update_discrete_states(self) catch {
@@ -315,6 +321,13 @@ pub impl @fmi.CsInstance for Fmi3Instance with fn finish(self) {
     error =>
       raise @fmi.FmiCall(operation="fmi3Terminate", detail=error.message())
   }
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn intermediate_update_count(
+  self,
+) -> Int64 raise @fmi.SimulationError {
+  Fmi3Instance::intermediate_update_count(self)
 }
 
 ///|

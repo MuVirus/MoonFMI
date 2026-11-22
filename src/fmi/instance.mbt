@@ -70,6 +70,18 @@ pub(open) trait CsInstance {
 
   /// Terminate the instance before freeing it.
   fn finish(self : Self) -> Unit raise SimulationError
+
+  /// How many intermediate updates the FMU raised during `fmi3DoStep` so
+  /// far (FMI 3 only; one per internal solver step for the Reference-FMUs
+  /// implementation). The default reports 0 — backends without the
+  /// intermediate-update channel.
+  fn intermediate_update_count(self : Self) -> Int64 raise SimulationError = _
+}
+
+///|
+/// Default `intermediate_update_count`: no channel, no updates.
+impl CsInstance with fn intermediate_update_count(_self) -> Int64 raise SimulationError {
+  0
 }
 
 ///|

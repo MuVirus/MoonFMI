@@ -63,6 +63,26 @@ struct Fmi3LogSink {
 }
 
 ///|
+/// One FMU intermediate update, delivered from inside `fmi3DoStep`
+/// (FMI 3.0.2 §2.2.6: the FMU reports progress and offers the host the
+/// variable access and early-return negotiation). The callback answers
+/// with `true` to ask the FMU to return early at the update's own time —
+/// honored only when the update reported `can_return_early`.
+pub(all) struct Fmi3IntermediateUpdate {
+  time : Double
+  set_requested : Bool
+  get_allowed : Bool
+  step_finished : Bool
+  can_return_early : Bool
+}
+
+///|
+struct Fmi3IntermediateSink {
+  callback : (Fmi3IntermediateUpdate) -> Bool
+  active : Bool
+}
+
+///|
 /// The result of one `fmi3DoStep` call. `early_return` and
 /// `last_successful_time` only carry information when early return was
 /// allowed at instantiation; this host never allows it. The call status
@@ -82,6 +102,11 @@ pub struct Fmi3Instance {
   library : Fmi3Library
   handle : @c.Pointer[Unit]
   sink : Fmi3LogSink
+  intermediate : Fmi3IntermediateSink
+  /// Whether the CS instantiation ran with `eventModeUsed = true`; only
+  /// then does `initialize` run the event settlement and EnterStepMode
+  /// (without it the FMU leaves initialization in Step Mode already).
+  event_mode_used : Bool
   mut freed : Bool
   /// Model-description capability declarations. Generated FMUs ship
   /// fmi3Error stubs so symbol-resolving hosts (FMPy) can load them; the
@@ -188,6 +213,19 @@ extern "C" fn fmi3_instance_new(
   log_sink : (Int32, Bytes, Bytes) -> Unit,
   log_deliver : FuncRef[
     ((Int32, Bytes, Bytes) -> Unit, Int32, Bytes, Bytes) -> Unit,
+  ],
+  event_mode_used : Int32,
+  early_return_allowed : Int32,
+  intermediate_sink : (Double, Int32, Int32, Int32, Int32) -> Int32,
+  intermediate_deliver : FuncRef[
+    (
+      (Double, Int32, Int32, Int32, Int32) -> Int32,
+      Double,
+      Int32,
+      Int32,
+      Int32,
+      Int32,
+    ) -> Int32,
   ],
 ) -> @c.Pointer[Unit] = "moonfmi_fmi3_instance_new"
 
@@ -655,11 +693,18 @@ fn Fmi3Library::instantiate_common(
   interface_kind~ : Int32,
   logging_on~ : Bool,
   on_log~ : (Fmi3LogMessage) -> Unit,
+  event_mode_used~ : Bool = true,
+  early_return_allowed~ : Bool = false,
+  on_intermediate_update~ : (Fmi3IntermediateUpdate) -> Bool = fn(_) { false },
 ) -> Fmi3Instance raise Fmi3Error {
   if self.closed {
     raise Fmi3ShimRejected(detail="the library has already been unloaded")
   }
   let sink : Fmi3LogSink = { callback: on_log, active: true, }
+  let intermediate : Fmi3IntermediateSink = {
+    callback: on_intermediate_update,
+    active: true,
+  }
   let handle = fmi3_instance_new(
     self.shim,
     @utf8.encode(instance_name),
@@ -683,6 +728,43 @@ fn Fmi3Library::instantiate_common(
     fn(deliver, status, category, message) {
       deliver(status, category, message)
     },
+    if event_mode_used {
+      1
+    } else {
+      0
+    },
+    if early_return_allowed {
+      1
+    } else {
+      0
+    },
+    fn(time, set_requested, get_allowed, step_finished, can_return_early) {
+      if intermediate.active {
+        if (intermediate.callback)({
+            time,
+            set_requested: set_requested != 0,
+            get_allowed: get_allowed != 0,
+            step_finished: step_finished != 0,
+            can_return_early: can_return_early != 0,
+          }) {
+          1
+        } else {
+          0
+        }
+      } else {
+        0
+      }
+    },
+    fn(
+      deliver,
+      time,
+      set_requested,
+      get_allowed,
+      step_finished,
+      can_return_early,
+    ) {
+      deliver(time, set_requested, get_allowed, step_finished, can_return_early)
+    },
   )
   if handle.is_null() {
     raise Fmi3InstantiateFailed(instance_name~, detail=fmi3_error_text())
@@ -692,6 +774,8 @@ fn Fmi3Library::instantiate_common(
     library: self,
     handle,
     sink,
+    intermediate,
+    event_mode_used,
     freed: false,
     declared_fmu_state: false,
     declared_serialized: false,
@@ -703,8 +787,11 @@ fn Fmi3Library::instantiate_common(
 }
 
 ///|
-/// Creates a Co-Simulation instance. Event mode is enabled
-/// (`eventModeUsed = true`), early return is declined.
+/// Creates a Co-Simulation instance. `event_mode_used` follows the model
+/// description by default (FMUs compiled without event support reject
+/// `true`, so callers may retry with `false`); `early_return_allowed`
+/// enables the intermediate-update negotiation and the FMU's own early
+/// returns.
 pub fn Fmi3Library::instantiate(
   self : Fmi3Library,
   instance_name~ : String,
@@ -712,6 +799,9 @@ pub fn Fmi3Library::instantiate(
   resource_path~ : String,
   logging_on~ : Bool = true,
   on_log~ : (Fmi3LogMessage) -> Unit = fn(_) {  },
+  event_mode_used~ : Bool = true,
+  early_return_allowed~ : Bool = false,
+  on_intermediate_update~ : (Fmi3IntermediateUpdate) -> Bool = fn(_) { false },
 ) -> Fmi3Instance raise Fmi3Error {
   self.instantiate_common(
     instance_name~,
@@ -720,6 +810,9 @@ pub fn Fmi3Library::instantiate(
     interface_kind=0,
     logging_on~,
     on_log~,
+    event_mode_used~,
+    early_return_allowed~,
+    on_intermediate_update~,
   )
 }
 
@@ -2532,6 +2625,11 @@ extern "C" fn fmi3_get_interval_decimal(
 extern "C" fn fmi3_clock_update_count(handle : @c.Pointer[Unit]) -> Int64 = "moonfmi_fmi3_clock_update_count"
 
 ///|
+extern "C" fn fmi3_intermediate_update_count(
+  handle : @c.Pointer[Unit],
+) -> Int64 = "moonfmi_fmi3_intermediate_update_count"
+
+///|
 /// Whether the FMU exports the Scheduled Execution group.
 pub fn Fmi3Instance::supports_scheduled_execution(self : Fmi3Instance) -> Bool {
   shim_has_flag(self.library.shim, flag_scheduled_execution)
@@ -2616,6 +2714,14 @@ pub fn Fmi3Instance::get_interval_decimal(
 /// clockUpdate callback so far.
 pub fn Fmi3Instance::clock_update_count(self : Fmi3Instance) -> Int64 {
   fmi3_clock_update_count(self.handle)
+}
+
+///|
+/// How many intermediate updates the FMU raised through the
+/// `fmi3IntermediateUpdateCallback` so far (one per internal solver step
+/// for the Reference-FMUs implementation).
+pub fn Fmi3Instance::intermediate_update_count(self : Fmi3Instance) -> Int64 {
+  fmi3_intermediate_update_count(self.handle)
 }
 
 ///|

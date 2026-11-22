@@ -535,8 +535,14 @@ fn load_fmi3_common(
 }
 
 ///|
-/// Load an FMI 3 co-simulation FMU from raw bytes. Event mode is enabled
-/// at instantiation; the CS `step` implementation runs the event loop.
+/// Load an FMI 3 co-simulation FMU from raw bytes. `eventModeUsed` follows
+/// the model description with a retry: FMUs may declare `hasEventMode` in
+/// XML while shipping binaries compiled without event support (Reference-
+/// FMUs Roberts), and those reject `true` at instantiation — the loader
+/// then falls back to `false`, which leaves the FMU in Step Mode right
+/// after initialization. `earlyReturnAllowed` follows the two early-return
+/// capability bits so the intermediate-update negotiation and the FMU's
+/// own early returns work.
 pub fn load_fmi3_fmu(
   data : Bytes,
   host~ : @fmi.HostPlatform,
@@ -544,6 +550,7 @@ pub fn load_fmi3_fmu(
   platform_override? : String,
   logging_on? : Bool,
   on_log~ : (Fmi3LogMessage) -> Unit = fn(_) {  },
+  on_intermediate_update~ : (Fmi3IntermediateUpdate) -> Bool = fn(_) { false },
 ) -> LoadedFmu3 raise LoaderError {
   let (parsed, library, temp_directory, files) = load_fmi3_common(
     data,
@@ -553,20 +560,60 @@ pub fn load_fmi3_fmu(
     interface_kind=@schema.CoSimulation,
   )
   let resource_directory = temp_directory + "/resources"
-  let instance = Fmi3Library::instantiate(
-    library,
-    instance_name=parsed.model_name,
-    instantiation_token=parsed.instantiation_token,
-    resource_path=resource_directory,
-    logging_on=logging_on.unwrap_or(true),
-    on_log~,
+  // The CS interface carries the capability bits; a model may declare
+  // several interfaces, so scan them all (absence decides `false`).
+  let mut early_return_allowed = false
+  let mut declared_event_mode = false
+  for interface in parsed.interfaces {
+    if interface.kind is @schema.InterfaceKind::CoSimulation {
+      early_return_allowed = early_return_allowed ||
+        interface.might_return_early_from_do_step.unwrap_or(false) ||
+        interface.can_return_early_after_intermediate_update.unwrap_or(false)
+      declared_event_mode = declared_event_mode ||
+        interface.has_event_mode.unwrap_or(false)
+    }
+  }
+  // First attempt honors the declared event mode; on rejection retry
+  // without it (the FMU then stays in Step Mode after initialization).
+  let mut event_mode_used = declared_event_mode
+  let first : Fmi3Instance? = Some(
+    Fmi3Library::instantiate(
+      library,
+      instance_name=parsed.model_name,
+      instantiation_token=parsed.instantiation_token,
+      resource_path=resource_directory,
+      logging_on=logging_on.unwrap_or(true),
+      on_log~,
+      event_mode_used~,
+      early_return_allowed~,
+      on_intermediate_update~,
+    ),
   ) catch {
-    error => {
-      Fmi3Library::close(library) catch {
-        _ => ()
+    _ => None
+  }
+  let instance = match first {
+    Some(instance) => instance
+    None => {
+      event_mode_used = false
+      Fmi3Library::instantiate(
+        library,
+        instance_name=parsed.model_name,
+        instantiation_token=parsed.instantiation_token,
+        resource_path=resource_directory,
+        logging_on=logging_on.unwrap_or(true),
+        on_log~,
+        event_mode_used~,
+        early_return_allowed~,
+        on_intermediate_update~,
+      ) catch {
+        error => {
+          Fmi3Library::close(library) catch {
+            _ => ()
+          }
+          @fmi.remove_directory_best_effort(temp_directory, files)
+          raise LoadFailed(detail=error.message())
+        }
       }
-      @fmi.remove_directory_best_effort(temp_directory, files)
-      raise LoadFailed(detail=error.message())
     }
   }
   instance.declare_fmu_state(fmi3_declares_fmu_state(parsed))

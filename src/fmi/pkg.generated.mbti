@@ -140,6 +140,7 @@ pub(open) trait CsInstance {
   fn read_boolean(Self, UInt32) -> Bool raise SimulationError = _
   fn write_boolean(Self, UInt32, Bool) -> Unit raise SimulationError = _
   fn finish(Self) -> Unit raise SimulationError
+  fn intermediate_update_count(Self) -> Int64 raise SimulationError = _
 }
 
 pub(open) trait MeInstance {
