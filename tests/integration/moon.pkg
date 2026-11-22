@@ -1,5 +1,13 @@
 import {
   "MuVirus/fmi/src/backend/native" @native_backend,
+  "MuVirus/fmi/src/fmi",
+  "MuVirus/fmi/src/sim",
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+} for "test"
+
+import {
+  "MuVirus/fmi/src/backend/native" @native_backend,
   "MuVirus/fmi/src/cli",
   "MuVirus/fmi/src/export",
   "MuVirus/fmi/src/fmi",

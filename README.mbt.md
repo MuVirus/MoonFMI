@@ -195,12 +195,15 @@ directory. FMI 3 uses the same shape through `load_fmi3_fmu`.
   with constant extrapolation, coordinated multi-FMU rollback on `Discard`,
   Integer/Boolean signal connections, opt-in Jacobi fixed-point solving for
   algebraic loops with minimal-SCC loop blocks and inter-iteration state
-  restore) and through the `moonfmi couple` command. FMUs that require FMI 3
-  intermediate updates (e.g. the corpus Roberts model under CS) are not
-  loadable by the CS host yet — their ME path runs. Loop solving re-steps
-  real FMUs between Jacobi iterations without restoring FMU state only when
-  capture is unavailable — a documented approximation (see
-  [`docs/design/coupling.md`](docs/design/coupling.md) §3.5/§5).
+  restore) and through the `moonfmi couple` command. FMUs compiled without
+  event support (the corpus Roberts model under CS) instantiate with
+  `eventModeUsed = false` through the loader's fallback and step normally;
+  the intermediate-update channel (in-step callbacks with early-return
+  negotiation) is live and covered end to end by the MoonfmiClocks fixture.
+  Loop solving re-steps real FMUs between Jacobi iterations without
+  restoring FMU state only when capture is unavailable — a documented
+  approximation (see [`docs/design/coupling.md`](docs/design/coupling.md)
+  §3.5/§5).
 - FMI 3 Scheduled Execution supports fixed, calculated and countdown input
   clocks, host-triggered clocks, and output-clock cascades, but gives no
   real-time guarantee: priority only orders activations at the same instant.

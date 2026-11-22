@@ -156,10 +156,12 @@ fn run_ball(fmu_path : String) -> Unit {
 - 多个 CS FMU 的耦合在库级（`MuVirus/fmi/src/sim`：参与者、连接、按拓扑
   序步进 + 常量外推、Discard 时的整网协同回滚、Integer/Boolean 信号连接、
   可选的 Jacobi 定点环求解——最小 SCC 环块 + 轮间状态回退）和
-  `moonfmi couple 命令行均可用。要求 FMI 3 intermediate update 的 FMU
-  （如语料中的 Roberts 模型在 CS 下）暂不能被 CS 宿主加载——其 ME 路径
-  可用。环求解仅在捕获不可用时维持旧的叠加步进行为（已文档化的近似，
-  见 [`docs/design/coupling.md`](docs/design/coupling.md) §3.5/§5）。
+  `moonfmi couple 命令行均可用。未编译事件支持的 FMU（如语料中的
+  Roberts 模型在 CS 下）经 loader 的回退以 `eventModeUsed = false`
+  实例化并正常步进；intermediate-update 通道（步中回调与早退协商）
+  已生效并有 MoonfmiClocks fixture 的端到端覆盖。环求解仅在捕获不可用
+  时维持旧的叠加步进行为（已文档化的近似，见
+  [`docs/design/coupling.md`](docs/design/coupling.md) §3.5/§5）。
 - FMI 3 Scheduled Execution 支持固定、动态与 countdown 输入时钟、宿主
   触发时钟以及输出时钟级联，但不提供实时保证：priority 只决定同一时刻
   的激活顺序。
