@@ -310,6 +310,16 @@ extern "C" fn fmi3_get_float32_as_double(
 
 ///|
 #borrow(references, values)
+extern "C" fn fmi3_set_float32(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Double],
+  n_references : Int32,
+  n_values : Int32,
+) -> Int32 = "moonfmi_fmi3_set_float32_from_double"
+
+///|
+#borrow(references, values)
 extern "C" fn fmi3_get_float64(
   handle : @c.Pointer[Unit],
   references : FixedArray[UInt32],
@@ -360,6 +370,16 @@ extern "C" fn fmi3_get_uint8_as_int32(
 
 ///|
 #borrow(references, values)
+extern "C" fn fmi3_set_uint8_from_int32(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Int32],
+  n_references : Int32,
+  n_values : Int32,
+) -> Int32 = "moonfmi_fmi3_set_uint8_from_int32"
+
+///|
+#borrow(references, values)
 extern "C" fn fmi3_get_int16_as_int32(
   handle : @c.Pointer[Unit],
   references : FixedArray[UInt32],
@@ -370,6 +390,16 @@ extern "C" fn fmi3_get_int16_as_int32(
 
 ///|
 #borrow(references, values)
+extern "C" fn fmi3_set_int16_from_int32(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Int32],
+  n_references : Int32,
+  n_values : Int32,
+) -> Int32 = "moonfmi_fmi3_set_int16_from_int32"
+
+///|
+#borrow(references, values)
 extern "C" fn fmi3_get_uint16_as_int32(
   handle : @c.Pointer[Unit],
   references : FixedArray[UInt32],
@@ -377,6 +407,16 @@ extern "C" fn fmi3_get_uint16_as_int32(
   n_references : Int32,
   n_values : Int32,
 ) -> Int32 = "moonfmi_fmi3_get_uint16_as_int32"
+
+///|
+#borrow(references, values)
+extern "C" fn fmi3_set_uint16_from_int32(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Int32],
+  n_references : Int32,
+  n_values : Int32,
+) -> Int32 = "moonfmi_fmi3_set_uint16_from_int32"
 
 ///|
 #borrow(references, values)
@@ -410,6 +450,16 @@ extern "C" fn fmi3_get_uint32(
 
 ///|
 #borrow(references, values)
+extern "C" fn fmi3_set_uint32(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[UInt32],
+  n_references : Int32,
+  n_values : Int32,
+) -> Int32 = "moonfmi_fmi3_set_uint32"
+
+///|
+#borrow(references, values)
 extern "C" fn fmi3_get_int64(
   handle : @c.Pointer[Unit],
   references : FixedArray[UInt32],
@@ -417,6 +467,16 @@ extern "C" fn fmi3_get_int64(
   n_references : Int32,
   n_values : Int32,
 ) -> Int32 = "moonfmi_fmi3_get_int64"
+
+///|
+#borrow(references, values)
+extern "C" fn fmi3_set_int64(
+  handle : @c.Pointer[Unit],
+  references : FixedArray[UInt32],
+  values : FixedArray[Int64],
+  n_references : Int32,
+  n_values : Int32,
+) -> Int32 = "moonfmi_fmi3_set_int64"
 
 ///|
 #borrow(references, values)
@@ -1124,6 +1184,79 @@ pub fn Fmi3Instance::get_float32(
 }
 
 ///|
+/// Reads Float32 values (widened to Double) with an explicit value count,
+/// for array variables where one value reference covers the elements.
+pub fn Fmi3Instance::get_float32_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[Double] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_float32_capability(),
+    "fmi3GetFloat32",
+    "fmi3GetFloat32",
+  )
+  self.ensure_live("fmi3GetFloat32")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[Double] = FixedArray::make(n_values, 0.0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_float32_as_double(
+      self.handle,
+      refs,
+      values,
+      refs.length(),
+      n_values,
+    ),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetFloat32")
+  let result = Array(capacity=n_values)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+/// Writes Float32 values (the shim narrows the Double input; arrays
+/// allowed: the number of values may exceed the number of references).
+pub fn Fmi3Instance::set_float32(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  values : Array[Double],
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_float32_capability(),
+    "fmi3SetFloat32",
+    "fmi3SetFloat32",
+  )
+  self.ensure_live("fmi3SetFloat32")
+  if references.is_empty() || values.is_empty() {
+    raise Fmi3StatusFailed(operation="fmi3SetFloat32", status=Error)
+  }
+  let refs = fmi3_refs_fixed(references)
+  let buffer : FixedArray[Double] = FixedArray::make(values.length(), 0.0)
+  for index, value in values {
+    buffer[index] = value
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_set_float32(self.handle, refs, buffer, refs.length(), buffer.length()),
+  )
+  fmi3_fail_on_failure(status, "fmi3SetFloat32")
+}
+
+///|
+pub fn Fmi3Instance::set_float32_one(
+  self : Fmi3Instance,
+  reference : UInt32,
+  value : Double,
+) -> Unit raise Fmi3Error {
+  self.set_float32([reference], [value])
+}
+
+///|
 /// Reads Int8 values, widened to Int32 (range -128..127).
 pub fn Fmi3Instance::get_int8(
   self : Fmi3Instance,
@@ -1144,6 +1277,32 @@ pub fn Fmi3Instance::get_int8(
   )
   fmi3_fail_on_failure(status, "fmi3GetInt8")
   let result = Array(capacity=values.length())
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+/// Reads Int8 values (widened to Int32) with an explicit value count, for
+/// array variables where one value reference covers the elements.
+pub fn Fmi3Instance::get_int8_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[Int32] raise Fmi3Error {
+  fmi3_require(self.library.has_int8_capability(), "fmi3GetInt8", "fmi3GetInt8")
+  self.ensure_live("fmi3GetInt8")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[Int32] = FixedArray::make(n_values, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_int8_as_int32(self.handle, refs, values, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetInt8")
+  let result = Array(capacity=n_values)
   for value in values {
     result.push(value)
   }
@@ -1180,6 +1339,15 @@ pub fn Fmi3Instance::set_int8(
 }
 
 ///|
+pub fn Fmi3Instance::set_int8_one(
+  self : Fmi3Instance,
+  reference : UInt32,
+  value : Int32,
+) -> Unit raise Fmi3Error {
+  self.set_int8([reference], [value])
+}
+
+///|
 /// Reads UInt8 values, widened to Int32 (range 0..255).
 pub fn Fmi3Instance::get_uint8(
   self : Fmi3Instance,
@@ -1208,6 +1376,78 @@ pub fn Fmi3Instance::get_uint8(
     result.push(value)
   }
   result
+}
+
+///|
+/// Reads UInt8 values (widened to Int32) with an explicit value count, for
+/// array variables where one value reference covers the elements.
+pub fn Fmi3Instance::get_uint8_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[Int32] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_uint8_capability(),
+    "fmi3GetUInt8",
+    "fmi3GetUInt8",
+  )
+  self.ensure_live("fmi3GetUInt8")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[Int32] = FixedArray::make(n_values, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_uint8_as_int32(self.handle, refs, values, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetUInt8")
+  let result = Array(capacity=n_values)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+/// Writes UInt8 values (Int32 in the range 0..255).
+pub fn Fmi3Instance::set_uint8(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  values : Array[Int32],
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_uint8_capability(),
+    "fmi3SetUInt8",
+    "fmi3SetUInt8",
+  )
+  self.ensure_live("fmi3SetUInt8")
+  if references.is_empty() || values.is_empty() {
+    raise Fmi3StatusFailed(operation="fmi3SetUInt8", status=Error)
+  }
+  let refs = fmi3_refs_fixed(references)
+  let buffer : FixedArray[Int32] = FixedArray::make(values.length(), 0)
+  for index, value in values {
+    buffer[index] = value
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_set_uint8_from_int32(
+      self.handle,
+      refs,
+      buffer,
+      refs.length(),
+      buffer.length(),
+    ),
+  )
+  fmi3_fail_on_failure(status, "fmi3SetUInt8")
+}
+
+///|
+pub fn Fmi3Instance::set_uint8_one(
+  self : Fmi3Instance,
+  reference : UInt32,
+  value : Int32,
+) -> Unit raise Fmi3Error {
+  self.set_uint8([reference], [value])
 }
 
 ///|
@@ -1242,6 +1482,78 @@ pub fn Fmi3Instance::get_int16(
 }
 
 ///|
+/// Reads Int16 values (widened to Int32) with an explicit value count, for
+/// array variables where one value reference covers the elements.
+pub fn Fmi3Instance::get_int16_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[Int32] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_int16_capability(),
+    "fmi3GetInt16",
+    "fmi3GetInt16",
+  )
+  self.ensure_live("fmi3GetInt16")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[Int32] = FixedArray::make(n_values, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_int16_as_int32(self.handle, refs, values, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetInt16")
+  let result = Array(capacity=n_values)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+/// Writes Int16 values (Int32 in the range -32768..32767).
+pub fn Fmi3Instance::set_int16(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  values : Array[Int32],
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_int16_capability(),
+    "fmi3SetInt16",
+    "fmi3SetInt16",
+  )
+  self.ensure_live("fmi3SetInt16")
+  if references.is_empty() || values.is_empty() {
+    raise Fmi3StatusFailed(operation="fmi3SetInt16", status=Error)
+  }
+  let refs = fmi3_refs_fixed(references)
+  let buffer : FixedArray[Int32] = FixedArray::make(values.length(), 0)
+  for index, value in values {
+    buffer[index] = value
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_set_int16_from_int32(
+      self.handle,
+      refs,
+      buffer,
+      refs.length(),
+      buffer.length(),
+    ),
+  )
+  fmi3_fail_on_failure(status, "fmi3SetInt16")
+}
+
+///|
+pub fn Fmi3Instance::set_int16_one(
+  self : Fmi3Instance,
+  reference : UInt32,
+  value : Int32,
+) -> Unit raise Fmi3Error {
+  self.set_int16([reference], [value])
+}
+
+///|
 /// Reads UInt16 values.
 pub fn Fmi3Instance::get_uint16(
   self : Fmi3Instance,
@@ -1273,6 +1585,78 @@ pub fn Fmi3Instance::get_uint16(
 }
 
 ///|
+/// Reads UInt16 values (widened to Int32) with an explicit value count, for
+/// array variables where one value reference covers the elements.
+pub fn Fmi3Instance::get_uint16_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[Int32] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_uint16_capability(),
+    "fmi3GetUInt16",
+    "fmi3GetUInt16",
+  )
+  self.ensure_live("fmi3GetUInt16")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[Int32] = FixedArray::make(n_values, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_uint16_as_int32(self.handle, refs, values, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetUInt16")
+  let result = Array(capacity=n_values)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+/// Writes UInt16 values (Int32 in the range 0..65535).
+pub fn Fmi3Instance::set_uint16(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  values : Array[Int32],
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_uint16_capability(),
+    "fmi3SetUInt16",
+    "fmi3SetUInt16",
+  )
+  self.ensure_live("fmi3SetUInt16")
+  if references.is_empty() || values.is_empty() {
+    raise Fmi3StatusFailed(operation="fmi3SetUInt16", status=Error)
+  }
+  let refs = fmi3_refs_fixed(references)
+  let buffer : FixedArray[Int32] = FixedArray::make(values.length(), 0)
+  for index, value in values {
+    buffer[index] = value
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_set_uint16_from_int32(
+      self.handle,
+      refs,
+      buffer,
+      refs.length(),
+      buffer.length(),
+    ),
+  )
+  fmi3_fail_on_failure(status, "fmi3SetUInt16")
+}
+
+///|
+pub fn Fmi3Instance::set_uint16_one(
+  self : Fmi3Instance,
+  reference : UInt32,
+  value : Int32,
+) -> Unit raise Fmi3Error {
+  self.set_uint16([reference], [value])
+}
+
+///|
 /// Reads Int32 values.
 pub fn Fmi3Instance::get_int32(
   self : Fmi3Instance,
@@ -1291,6 +1675,36 @@ pub fn Fmi3Instance::get_int32(
   )
   fmi3_fail_on_failure(status, "fmi3GetInt32")
   let result = Array(capacity=values.length())
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+/// Reads Int32 values with an explicit value count, for array variables
+/// where one value reference covers the elements.
+pub fn Fmi3Instance::get_int32_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[Int32] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_int32_capability(),
+    "fmi3GetInt32",
+    "fmi3GetInt32",
+  )
+  self.ensure_live("fmi3GetInt32")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[Int32] = FixedArray::make(n_values, 0)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_int32(self.handle, refs, values, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetInt32")
+  let result = Array(capacity=n_values)
   for value in values {
     result.push(value)
   }
@@ -1359,6 +1773,73 @@ pub fn Fmi3Instance::get_uint32(
 }
 
 ///|
+/// Reads UInt32 values with an explicit value count, for array variables
+/// where one value reference covers the elements.
+pub fn Fmi3Instance::get_uint32_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[UInt32] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_uint32_capability(),
+    "fmi3GetUInt32",
+    "fmi3GetUInt32",
+  )
+  self.ensure_live("fmi3GetUInt32")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[UInt32] = FixedArray::make(n_values, 0U)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_uint32(self.handle, refs, values, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetUInt32")
+  let result = Array(capacity=n_values)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+/// Writes UInt32 values (arrays allowed: the number of values may exceed
+/// the number of references).
+pub fn Fmi3Instance::set_uint32(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  values : Array[UInt32],
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_uint32_capability(),
+    "fmi3SetUInt32",
+    "fmi3SetUInt32",
+  )
+  self.ensure_live("fmi3SetUInt32")
+  if references.is_empty() || values.is_empty() {
+    raise Fmi3StatusFailed(operation="fmi3SetUInt32", status=Error)
+  }
+  let refs = fmi3_refs_fixed(references)
+  let buffer : FixedArray[UInt32] = FixedArray::make(values.length(), 0U)
+  for index, value in values {
+    buffer[index] = value
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_set_uint32(self.handle, refs, buffer, refs.length(), buffer.length()),
+  )
+  fmi3_fail_on_failure(status, "fmi3SetUInt32")
+}
+
+///|
+pub fn Fmi3Instance::set_uint32_one(
+  self : Fmi3Instance,
+  reference : UInt32,
+  value : UInt32,
+) -> Unit raise Fmi3Error {
+  self.set_uint32([reference], [value])
+}
+
+///|
 /// Reads Int64 values.
 pub fn Fmi3Instance::get_int64(
   self : Fmi3Instance,
@@ -1381,6 +1862,73 @@ pub fn Fmi3Instance::get_int64(
     result.push(value)
   }
   result
+}
+
+///|
+/// Reads Int64 values with an explicit value count, for array variables
+/// where one value reference covers the elements.
+pub fn Fmi3Instance::get_int64_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[Int64] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_int64_capability(),
+    "fmi3GetInt64",
+    "fmi3GetInt64",
+  )
+  self.ensure_live("fmi3GetInt64")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[Int64] = FixedArray::make(n_values, 0L)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_int64(self.handle, refs, values, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetInt64")
+  let result = Array(capacity=n_values)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
+/// Writes Int64 values (arrays allowed: the number of values may exceed
+/// the number of references).
+pub fn Fmi3Instance::set_int64(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  values : Array[Int64],
+) -> Unit raise Fmi3Error {
+  fmi3_require(
+    self.library.has_int64_capability(),
+    "fmi3SetInt64",
+    "fmi3SetInt64",
+  )
+  self.ensure_live("fmi3SetInt64")
+  if references.is_empty() || values.is_empty() {
+    raise Fmi3StatusFailed(operation="fmi3SetInt64", status=Error)
+  }
+  let refs = fmi3_refs_fixed(references)
+  let buffer : FixedArray[Int64] = FixedArray::make(values.length(), 0L)
+  for index, value in values {
+    buffer[index] = value
+  }
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_set_int64(self.handle, refs, buffer, refs.length(), buffer.length()),
+  )
+  fmi3_fail_on_failure(status, "fmi3SetInt64")
+}
+
+///|
+pub fn Fmi3Instance::set_int64_one(
+  self : Fmi3Instance,
+  reference : UInt32,
+  value : Int64,
+) -> Unit raise Fmi3Error {
+  self.set_int64([reference], [value])
 }
 
 ///|
@@ -1436,6 +1984,36 @@ pub fn Fmi3Instance::get_uint64(
 }
 
 ///|
+/// Reads UInt64 values with an explicit value count, for array variables
+/// where one value reference covers the elements.
+pub fn Fmi3Instance::get_uint64_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[UInt64] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_uint64_capability(),
+    "fmi3GetUInt64",
+    "fmi3GetUInt64",
+  )
+  self.ensure_live("fmi3GetUInt64")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let values : FixedArray[UInt64] = FixedArray::make(n_values, 0UL)
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_uint64(self.handle, refs, values, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetUInt64")
+  let result = Array(capacity=n_values)
+  for value in values {
+    result.push(value)
+  }
+  result
+}
+
+///|
 /// Reads Boolean values. FMI 3 booleans are one byte on the wire; the shim
 /// moves them through an Int8 buffer and this method converts to Bool.
 pub fn Fmi3Instance::get_boolean(
@@ -1455,6 +2033,36 @@ pub fn Fmi3Instance::get_boolean(
   )
   fmi3_fail_on_failure(status, "fmi3GetBoolean")
   let result = Array(capacity=raw.length())
+  for value in raw {
+    result.push(value.to_int() != 0)
+  }
+  result
+}
+
+///|
+/// Reads Boolean values with an explicit value count, for array variables
+/// where one value reference covers the elements.
+pub fn Fmi3Instance::get_boolean_values(
+  self : Fmi3Instance,
+  references : Array[UInt32],
+  n_values : Int32,
+) -> Array[Bool] raise Fmi3Error {
+  fmi3_require(
+    self.library.has_boolean_capability(),
+    "fmi3GetBoolean",
+    "fmi3GetBoolean",
+  )
+  self.ensure_live("fmi3GetBoolean")
+  if n_values <= 0 {
+    return []
+  }
+  let refs = fmi3_refs_fixed(references)
+  let raw : FixedArray[Byte] = FixedArray::make(n_values, b'\x00')
+  let status = @fmi.FmiStatus::from_int32(
+    fmi3_get_boolean(self.handle, refs, raw, refs.length(), n_values),
+  )
+  fmi3_fail_on_failure(status, "fmi3GetBoolean")
+  let result = Array(capacity=n_values)
   for value in raw {
     result.push(value.to_int() != 0)
   }
@@ -1894,6 +2502,16 @@ fn Fmi3Library::has_fmu_state_capability(self : Fmi3Library) -> Bool {
 let flag_scheduled_execution : Int32 = 17
 
 ///|
+/// `fmi3ActivateModelPartition` resolves independently of the Scheduled
+/// Execution instantiate: a clocked CS/ME-only FMU exports it too.
+let flag_model_partition : Int32 = 18
+
+///|
+/// `fmi3GetIntervalDecimal`, resolved independently like the partition
+/// call.
+let flag_interval_decimal : Int32 = 19
+
+///|
 extern "C" fn fmi3_activate_model_partition(
   handle : @c.Pointer[Unit],
   clock_reference : UInt32,
@@ -1949,7 +2567,7 @@ pub fn Fmi3Instance::activate_model_partition(
   activation_time : Double,
 ) -> Unit raise Fmi3Error {
   fmi3_require(
-    self.library.has_scheduled_execution_capability(),
+    self.library.has_model_partition_capability(),
     "fmi3ActivateModelPartition",
     "fmi3ActivateModelPartition",
   )
@@ -1969,7 +2587,7 @@ pub fn Fmi3Instance::get_interval_decimal(
   reference : UInt32,
 ) -> (Double, @fmi.IntervalQualifier)? raise Fmi3Error {
   fmi3_require(
-    self.library.has_scheduled_execution_capability(),
+    self.library.has_interval_decimal_capability(),
     "fmi3GetIntervalDecimal",
     "fmi3GetIntervalDecimal",
   )
@@ -2003,4 +2621,17 @@ pub fn Fmi3Instance::clock_update_count(self : Fmi3Instance) -> Int64 {
 ///|
 fn Fmi3Library::has_scheduled_execution_capability(self : Fmi3Library) -> Bool {
   shim_has_flag(self.shim, flag_scheduled_execution)
+}
+
+///|
+/// Whether the FMU exports `fmi3ActivateModelPartition` on its own
+/// (clocked partitions under CS/ME, or Scheduled Execution).
+fn Fmi3Library::has_model_partition_capability(self : Fmi3Library) -> Bool {
+  shim_has_flag(self.shim, flag_model_partition)
+}
+
+///|
+/// Whether the FMU exports `fmi3GetIntervalDecimal` on its own.
+fn Fmi3Library::has_interval_decimal_capability(self : Fmi3Library) -> Bool {
+  shim_has_flag(self.shim, flag_interval_decimal)
 }

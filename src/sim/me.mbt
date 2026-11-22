@@ -22,6 +22,14 @@ pub struct MeConfig {
   stop_time : Double
   step_size : Double
   record : Array[UInt32]
+  /// Array outputs to record element by element (FMI 2: consecutive
+  /// references; FMI 3: one reference with an element count).
+  record_arrays : Array[RecordedArray]
+  /// When `Some`, the master runs SE-style clock activation rounds while
+  /// in event mode — after the initial event and after every settled
+  /// event — and observes the output clocks (FMI 3 clocked partitions,
+  /// 0.8.1).
+  clocks : ClockScheduling?
   solver : MeSolver
   state_count : Int32
   event_indicator_count : Int32
@@ -52,6 +60,8 @@ pub fn MeConfig::new(
   stop_time~ : Double,
   step_size~ : Double,
   record~ : Array[UInt32],
+  record_arrays~ : Array[RecordedArray] = [],
+  clocks~ : ClockScheduling? = None,
   solver~ : MeSolver = Rk4,
   state_count~ : Int32,
   event_indicator_count~ : Int32,
@@ -66,6 +76,8 @@ pub fn MeConfig::new(
     stop_time,
     step_size,
     record,
+    record_arrays,
+    clocks,
     solver,
     state_count,
     event_indicator_count,
@@ -425,22 +437,21 @@ fn me_locate_event(
 
 ///|
 /// Run the `newDiscreteStates` iteration until the FMU is settled.
-/// Returns `true` when the FMU asked to terminate. The caller decides
-/// whether to enter event mode first (mid-run) or rely on the FMU already
-/// being in event mode (right after initialization).
+/// Returns the final `EventInfo`: its `terminate_simulation` field asks
+/// for termination, its `nextEventTime` fields schedule the next time
+/// event (the master must not integrate past it — master-algorithm §4.5).
+/// The caller decides whether to enter event mode first (mid-run) or rely
+/// on the FMU already being in event mode (right after initialization).
 fn me_event_iteration(
   instance : &@fmi.MeInstance,
   max_iterations : Int32,
   time : Double,
-) -> Bool raise @fmi.SimulationError {
+) -> @fmi.EventInfo raise @fmi.SimulationError {
   let mut iterations = 0
   while true {
     let info = instance.new_discrete_states()
-    if info.terminate_simulation {
-      return true
-    }
-    if !info.new_discrete_states_needed {
-      return false
+    if info.terminate_simulation || !info.new_discrete_states_needed {
+      return info
     }
     iterations += 1
     if iterations > max_iterations {
@@ -450,30 +461,52 @@ fn me_event_iteration(
       )
     }
   }
-  false
+  {
+    new_discrete_states_needed: false,
+    terminate_simulation: false,
+    nominals_changed: false,
+    states_changed: false,
+    next_event_time_defined: false,
+    next_event_time: 0.0,
+  }
 }
 
 ///|
 /// Handle an event detected at `time`: enter event mode, settle the
-/// discrete states, return to continuous-time mode, and re-read the
-/// nominals (nominal changes, P3 exit criterion 3; the caller re-reads the
-/// continuous states afterwards). Returns `true` when the FMU asked to
-/// terminate.
+/// discrete states, run the clock activation rounds while still in event
+/// mode (when the run schedules clocks), return to continuous-time mode,
+/// and re-read the nominals (nominal changes, P3 exit criterion 3; the
+/// caller re-reads the continuous states afterwards). Returns the final
+/// `EventInfo` of the settlement; its `terminate_simulation` field asks
+/// for termination and its `nextEventTime` fields schedule the next time
+/// event.
 fn me_settle_event(
   instance : &@fmi.MeInstance,
   max_iterations : Int32,
   time : Double,
   nominals : FixedArray[Double],
-) -> Bool raise @fmi.SimulationError {
+  clocks~ : (ClockScheduling, ClockSchedule)? = None,
+) -> @fmi.EventInfo raise @fmi.SimulationError {
   instance.enter_event_mode()
-  if me_event_iteration(instance, max_iterations, time) {
-    return true
+  let info = me_event_iteration(instance, max_iterations, time)
+  if info.terminate_simulation {
+    return info
+  }
+  if clocks is Some(pair) {
+    let (scheduling, schedule) = pair
+    let _ = run_clock_rounds(
+      scheduling~,
+      schedule~,
+      t=time,
+      max_rounds=scheduling.max_rounds,
+    )
+    let _ = observe_output_clocks(scheduling~)
   }
   instance.enter_continuous_time_mode()
   // Re-read the nominals unconditionally: `nominalsOfContinuousStatesChanged`
   // is advisory, and re-reading keeps the master's copy authoritative.
   instance.get_nominals_of_continuous_states(nominals)
-  false
+  info
 }
 
 ///|
@@ -522,15 +555,46 @@ pub fn run_me_simulation(
   instance.initialize()
   // After `exitInitializationMode` the FMU is already in event mode:
   // settle the initial event, then switch to continuous time.
-  if me_event_iteration(
-      instance,
-      config.max_event_iterations,
-      config.start_time,
-    ) {
+  let initial_info = me_event_iteration(
+    instance,
+    config.max_event_iterations,
+    config.start_time,
+  )
+  if initial_info.terminate_simulation {
     raise @fmi.FmiCall(
       operation="fmi2NewDiscreteStates",
       detail="the FMU asked to terminate during the initial event",
     )
+  }
+  // The FMU's declared next time event (`nextEventTime`); the integrator
+  // must never step past it. `next_event_defined` gates the clamp because
+  // an undefined next event time reads 0.0.
+  let mut next_event_time = initial_info.next_event_time
+  let mut next_event_defined = initial_info.next_event_time_defined
+  // Clock scheduling state (FMI 3 clocked partitions, 0.8.1): the rounds
+  // run inside event mode, right after each settlement.
+  let clock_state : (ClockScheduling, ClockSchedule)? = match config.clocks {
+    Some(scheduling) =>
+      Some(
+        (
+          scheduling,
+          ClockSchedule::new(
+            clocks=scheduling.clocks,
+            start_time=config.start_time,
+          ),
+        ),
+      )
+    None => None
+  }
+  if clock_state is Some(pair) {
+    let (scheduling, schedule) = pair
+    let _ = run_clock_rounds(
+      scheduling~,
+      schedule~,
+      t=config.start_time,
+      max_rounds=scheduling.max_rounds,
+    )
+    let _ = observe_output_clocks(scheduling~)
   }
   instance.enter_continuous_time_mode()
   let nominals : FixedArray[Double] = FixedArray::make(config.state_count, 0.0)
@@ -545,10 +609,26 @@ pub fn run_me_simulation(
   for _ in config.record {
     series.push([])
   }
+  for array_output in config.record_arrays {
+    for _i = 0; _i < array_output.element_count; _i = _i + 1 {
+      series.push([])
+    }
+  }
   let record = fn(time) raise @fmi.SimulationError {
     times.push(time)
     for index, value_reference in config.record {
       series[index].push(instance.read_real(value_reference))
+    }
+    let mut offset = config.record.length()
+    for array_output in config.record_arrays {
+      let values = instance.read_real_values(
+        array_output.value_reference,
+        array_output.element_count,
+      )
+      for index, value in values {
+        series[offset + index].push(value)
+      }
+      offset += values.length()
     }
   }
   record(config.start_time)
@@ -581,12 +661,24 @@ pub fn run_me_simulation(
         }
       None => ()
     }
+    // Never integrate past a declared time event: cap the step at the
+    // remaining distance to `nextEventTime` (master-algorithm §4.5). The
+    // `next_event_defined` gate is essential — an undefined next event
+    // time reads 0.0, which would freeze the run at the start.
+    let event_cap = if next_event_defined && next_event_time > time {
+      next_event_time - time
+    } else {
+      1.0e300
+    }
     if config.adaptive {
       // --- RKF45 adaptive step: never crosses a stop or event boundary ---
       let mut h = if pending_h < config.stop_time - time {
         pending_h
       } else {
         config.stop_time - time
+      }
+      if event_cap < h {
+        h = event_cap
       }
       let n = states.length()
       let mut y5 : FixedArray[Double] = FixedArray::make(n, 0.0)
@@ -609,6 +701,11 @@ pub fn run_me_simulation(
         h = halved
       }
       let step_end = time + h
+      // A step ending exactly on the declared time event mandates event
+      // handling even when `completedIntegratorStep` does not ask for it.
+      let event_reached = (step_end - next_event_time).abs() <= time_epsilon
+      let late_enough = step_end < config.stop_time - time_epsilon
+      let at_time_event = next_event_defined && event_reached && late_enough
       let before = me_indicators(
         instance,
         config.event_indicator_count,
@@ -646,15 +743,19 @@ pub fn run_me_simulation(
           time = time + offset
           instance.set_time(time)
           instance.set_continuous_states(states)
-          if me_settle_event(
-              instance,
-              config.max_event_iterations,
-              time,
-              nominals,
-            ) {
+          let info = me_settle_event(
+            instance,
+            config.max_event_iterations,
+            time,
+            nominals,
+            clocks=clock_state,
+          )
+          if info.terminate_simulation {
             terminated = true
             break
           }
+          next_event_defined = info.next_event_time_defined
+          next_event_time = info.next_event_time
           events += 1
           // The event may have reinit the states; adopt the FMU's values.
           instance.get_continuous_states(states)
@@ -678,16 +779,20 @@ pub fn run_me_simulation(
             terminated = true
             break
           }
-          if enter_event_mode {
-            if me_settle_event(
-                instance,
-                config.max_event_iterations,
-                time,
-                nominals,
-              ) {
+          if enter_event_mode || at_time_event {
+            let info = me_settle_event(
+              instance,
+              config.max_event_iterations,
+              time,
+              nominals,
+              clocks=clock_state,
+            )
+            if info.terminate_simulation {
               terminated = true
               break
             }
+            next_event_defined = info.next_event_time_defined
+            next_event_time = info.next_event_time
             events += 1
             instance.get_continuous_states(states)
           }
@@ -696,15 +801,17 @@ pub fn run_me_simulation(
         }
       }
     } else {
-      // --- Fixed-step Euler/RK4 path: behavior unchanged ---
+      // --- Fixed-step Euler/RK4 path: recording stays on the grid; a
+      // declared time event inside the interval pulls the integrator
+      // forward to it, and the remainder of the interval follows. ---
       steps += 1
-      let target = if time + config.step_size > config.stop_time {
+      let grid_target = if time + config.step_size > config.stop_time {
         config.stop_time
       } else {
         time + config.step_size
       }
       let mut event_count = 0
-      while time < target - time_epsilon {
+      while time < grid_target - time_epsilon {
         event_count += 1
         if event_count > max_step_event_count {
           raise @fmi.FmiCall(
@@ -712,7 +819,20 @@ pub fn run_me_simulation(
             detail="more than \{max_step_event_count} events inside one step at t=\{time}",
           )
         }
-        let h = target - time
+        // Stop at the next time event when it lies inside this interval.
+        let event_pending = next_event_defined && next_event_time > time
+        let inside_grid = next_event_time < grid_target - time_epsilon
+        let step_end = if event_pending && inside_grid {
+          next_event_time
+        } else {
+          grid_target
+        }
+        // A step ending on the declared time event mandates event handling
+        // even when `completedIntegratorStep` does not ask for it.
+        let event_reached = (step_end - next_event_time).abs() <= time_epsilon
+        let late_enough = step_end < config.stop_time - time_epsilon
+        let at_time_event = next_event_defined && event_reached && late_enough
+        let h = step_end - time
         let before = me_indicators(
           instance,
           config.event_indicator_count,
@@ -724,7 +844,7 @@ pub fn run_me_simulation(
           me_indicators(
             instance,
             config.event_indicator_count,
-            target,
+            step_end,
             proposed,
           )
         } else {
@@ -748,22 +868,26 @@ pub fn run_me_simulation(
             time = time + offset
             instance.set_time(time)
             instance.set_continuous_states(states)
-            if me_settle_event(
-                instance,
-                config.max_event_iterations,
-                time,
-                nominals,
-              ) {
+            let info = me_settle_event(
+              instance,
+              config.max_event_iterations,
+              time,
+              nominals,
+              clocks=clock_state,
+            )
+            if info.terminate_simulation {
               terminated = true
               break
             }
+            next_event_defined = info.next_event_time_defined
+            next_event_time = info.next_event_time
             events += 1
             // The event may have reinit the states; adopt the FMU's values.
             instance.get_continuous_states(states)
           }
           None => {
             states = proposed
-            time = target
+            time = step_end
             // The FMU holds a mid-integration state from the last derivative
             // evaluation; bring it to the new point before recording.
             instance.set_time(time)
@@ -775,16 +899,20 @@ pub fn run_me_simulation(
               terminated = true
               break
             }
-            if enter_event_mode {
-              if me_settle_event(
-                  instance,
-                  config.max_event_iterations,
-                  time,
-                  nominals,
-                ) {
+            if enter_event_mode || at_time_event {
+              let info = me_settle_event(
+                instance,
+                config.max_event_iterations,
+                time,
+                nominals,
+                clocks=clock_state,
+              )
+              if info.terminate_simulation {
                 terminated = true
                 break
               }
+              next_event_defined = info.next_event_time_defined
+              next_event_time = info.next_event_time
               events += 1
               instance.get_continuous_states(states)
             }

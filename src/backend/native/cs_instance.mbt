@@ -73,6 +73,22 @@ pub impl @fmi.CsInstance for Fmi2Instance with fn read_real(
 }
 
 ///|
+pub impl @fmi.CsInstance for Fmi2Instance with fn read_real_values(
+  self,
+  value_reference,
+  n_values,
+) -> Array[Double] raise @fmi.SimulationError {
+  // FMI 2 addresses array elements with consecutive value references.
+  let references : Array[UInt32] = []
+  for i = 0; i < n_values; i = i + 1 {
+    references.push(value_reference + i.reinterpret_as_uint())
+  }
+  Fmi2Instance::get_real(self, references) catch {
+    error => raise @fmi.FmiCall(operation="fmi2GetReal", detail=error.message())
+  }
+}
+
+///|
 pub impl @fmi.CsInstance for Fmi2Instance with fn write_real(
   self,
   value_reference,

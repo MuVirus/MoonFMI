@@ -42,6 +42,15 @@ pub(open) trait CsInstance {
   /// Read one real output by value reference.
   fn read_real(self : Self, value_reference : UInt32) -> Double raise SimulationError
 
+  /// Read {n_values} real values behind one value reference (array
+  /// variables record their elements through this). The default reads
+  /// element by element through `read_real`; real backends override it
+  /// with their bulk read (FMI 2: consecutive references, FMI 3:
+  /// nValues).
+  fn read_real_values(self : Self, value_reference : UInt32, n_values : Int32) -> Array[
+    Double,
+  ] raise SimulationError = _
+
   /// Write one real input by value reference.
   fn write_real(self : Self, value_reference : UInt32, value : Double) -> Unit raise SimulationError
 
@@ -115,6 +124,19 @@ impl CsInstance with fn rollback(_self) -> Unit raise SimulationError {
 ///|
 impl CsInstance with fn commit_rollback_point(_self) -> Unit raise SimulationError {
   // no default capture, nothing to release
+}
+
+///|
+/// Default `read_real_values`: read element by element through
+/// `read_real`. Mocks and minimal backends need nothing more.
+impl CsInstance with fn read_real_values(self, value_reference, n_values) -> Array[
+  Double,
+] raise SimulationError {
+  let values : Array[Double] = []
+  for _i = 0; _i < n_values; _i = _i + 1 {
+    values.push(self.read_real(value_reference))
+  }
+  values
 }
 
 ///|
@@ -210,11 +232,33 @@ pub(open) trait MeInstance {
   /// Read one real value by value reference (outputs, and states reinit).
   fn read_real(self : Self, value_reference : UInt32) -> Double raise SimulationError
 
+  /// Read {n_values} real values behind one value reference (array
+  /// variables record their elements through this). The default reads
+  /// element by element through `read_real`; real backends override it
+  /// with their bulk read (FMI 2: consecutive references, FMI 3:
+  /// nValues).
+  fn read_real_values(self : Self, value_reference : UInt32, n_values : Int32) -> Array[
+    Double,
+  ] raise SimulationError = _
+
   /// Write one real value by value reference (inputs before stepping).
   fn write_real(self : Self, value_reference : UInt32, value : Double) -> Unit raise SimulationError
 
   /// Terminate the instance before freeing it.
   fn finish(self : Self) -> Unit raise SimulationError
+}
+
+///|
+/// Default `read_real_values`: read element by element through
+/// `read_real`. Mocks and minimal backends need nothing more.
+impl MeInstance with fn read_real_values(self, value_reference, n_values) -> Array[
+  Double,
+] raise SimulationError {
+  let values : Array[Double] = []
+  for _i = 0; _i < n_values; _i = _i + 1 {
+    values.push(self.read_real(value_reference))
+  }
+  values
 }
 
 ///|
@@ -280,9 +324,31 @@ pub(open) trait SeInstance {
   /// Read one real output by value reference.
   fn read_real(self : Self, value_reference : UInt32) -> Double raise SimulationError
 
+  /// Read {n_values} real values behind one value reference (array
+  /// variables record their elements through this). The default reads
+  /// element by element through `read_real`; real backends override it
+  /// with their bulk read (FMI 2: consecutive references, FMI 3:
+  /// nValues).
+  fn read_real_values(self : Self, value_reference : UInt32, n_values : Int32) -> Array[
+    Double,
+  ] raise SimulationError = _
+
   /// Write one real input by value reference.
   fn write_real(self : Self, value_reference : UInt32, value : Double) -> Unit raise SimulationError
 
   /// Terminate the instance before freeing it.
   fn finish(self : Self) -> Unit raise SimulationError
+}
+
+///|
+/// Default `read_real_values`: read element by element through
+/// `read_real`. Mocks and minimal backends need nothing more.
+impl SeInstance with fn read_real_values(self, value_reference, n_values) -> Array[
+  Double,
+] raise SimulationError {
+  let values : Array[Double] = []
+  for _i = 0; _i < n_values; _i = _i + 1 {
+    values.push(self.read_real(value_reference))
+  }
+  values
 }

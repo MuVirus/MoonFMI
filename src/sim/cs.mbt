@@ -1,4 +1,14 @@
 ///|
+/// One recorded array output: a single value reference covers
+/// `element_count` elements, each recorded as its own series named
+/// `<name>[i]` (1-based, like the model description).
+pub(all) struct RecordedArray {
+  value_reference : UInt32
+  name : String
+  element_count : Int32
+}
+
+///|
 /// Configuration of one co-simulation run (task C-10). Times follow the
 /// master-algorithm design: the grid is `start_time + k * step_size`, the
 /// final step is truncated to `stop_time`.
@@ -8,6 +18,13 @@ pub struct CsConfig {
   step_size : Double
   /// Value references to record after every communication point.
   record : Array[UInt32]
+  /// Array outputs to record element by element (FMI 2: consecutive
+  /// references; FMI 3: one reference with an element count).
+  record_arrays : Array[RecordedArray]
+  /// When `Some`, the master runs SE-style clock activation rounds at
+  /// every communication point and observes the output clocks (FMI 3
+  /// clocked partitions; 0.8.1).
+  clocks : ClockScheduling?
   /// Wall-clock deadline in the same unit as `@env.now()`; the loop
   /// aborts with `SimulationError::Timeout` once it is passed.
   deadline : UInt64?
@@ -19,9 +36,11 @@ pub fn CsConfig::new(
   stop_time~ : Double,
   step_size~ : Double,
   record~ : Array[UInt32],
+  record_arrays~ : Array[RecordedArray] = [],
+  clocks~ : ClockScheduling? = None,
   deadline~ : UInt64? = None,
 ) -> CsConfig {
-  { start_time, stop_time, step_size, record, deadline, }
+  { start_time, stop_time, step_size, record, record_arrays, clocks, deadline, }
 }
 
 ///|
@@ -107,13 +126,45 @@ pub fn run_cs_simulation(
   for _ in config.record {
     series.push([])
   }
+  for array_output in config.record_arrays {
+    for _i = 0; _i < array_output.element_count; _i = _i + 1 {
+      series.push([])
+    }
+  }
   let record = fn(t) raise @fmi.SimulationError {
     times.push(t)
     for index, value_reference in config.record {
       series[index].push(instance.read_real(value_reference))
     }
+    let mut offset = config.record.length()
+    for array_output in config.record_arrays {
+      let values = instance.read_real_values(
+        array_output.value_reference,
+        array_output.element_count,
+      )
+      for index, value in values {
+        series[offset + index].push(value)
+      }
+      offset += values.length()
+    }
   }
   record(config.start_time)
+  // Clock scheduling (FMI 3 clocked partitions, 0.8.1): SE-style
+  // activation rounds at every communication point. The schedule carries
+  // the mutable per-run state across grid points.
+  let clock_state : (ClockScheduling, ClockSchedule)? = match config.clocks {
+    Some(scheduling) =>
+      Some(
+        (
+          scheduling,
+          ClockSchedule::new(
+            clocks=scheduling.clocks,
+            start_time=config.start_time,
+          ),
+        ),
+      )
+    None => None
+  }
   let mut t = config.start_time
   let mut steps = 0
   while t < config.stop_time - time_epsilon {
@@ -123,6 +174,23 @@ pub fn run_cs_simulation(
           raise @fmi.Timeout(detail="t=\{t}")
         }
       None => ()
+    }
+    if clock_state is Some(pair) {
+      let (scheduling, schedule) = pair
+      let _ = run_clock_rounds(
+        scheduling~,
+        schedule~,
+        t~,
+        max_rounds=scheduling.max_rounds,
+      ) catch {
+        error => {
+          instance.finish() catch {
+            _ => ()
+          }
+          raise error
+        }
+      }
+      let _ = observe_output_clocks(scheduling~)
     }
     let mut h = config.step_size
     if t + h > config.stop_time {

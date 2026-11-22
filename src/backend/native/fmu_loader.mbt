@@ -663,8 +663,9 @@ fn fmi3_declares_serialized_fmu_state(
 ///|
 /// Scalar element count of a variable: the product of its dimensions, or 1
 /// for a scalar. The continuous-state buffer is flat, so an array state (for
-/// example StateSpace's x[3]) contributes three elements.
-fn fmi3_element_count(
+/// example StateSpace's x[3]) contributes three elements. The CLI uses it
+/// to expand array outputs into per-element recorder columns.
+pub fn fmi3_element_count(
   model : @schema.Fmi3ModelDescription,
   variable : @schema.Fmi3Variable,
 ) -> Int32 {
@@ -813,29 +814,17 @@ fn se_clock_of(
 }
 
 ///|
-/// Loads a Scheduled Execution FMU (roadmap: FMI 3 SE). The clock list is
-/// derived from the model description; the scheduler drives activations.
-pub fn load_fmi3_se_fmu(
-  data : Bytes,
-  host~ : @fmi.HostPlatform,
-  temp_directory~ : String,
-  platform_override? : String,
-  logging_on? : Bool,
-  on_log~ : (Fmi3LogMessage) -> Unit = fn(_) {  },
-) -> LoadedFmu3Se raise LoaderError {
-  let (parsed, library, temp_directory, files) = load_fmi3_common(
-    data,
-    host~,
-    temp_directory~,
-    platform_override?,
-    interface_kind=@schema.ScheduledExecution,
-  )
+/// Input-clock metadata and output-clock references collected from the
+/// model description: input clocks are driven by the environment
+/// (interval-based or triggered by policy), output clocks are activated
+/// by the FMU and only observed. Shared by the SE loader and the CS/ME
+/// clock scheduling.
+pub fn fmi3_clock_metadata(
+  model : @schema.Fmi3ModelDescription,
+) -> (Array[SeClock], Array[UInt32]) {
   let clocks : Array[SeClock] = []
   let output_clocks : Array[UInt32] = []
-  for variable in parsed.variables {
-    // The causality decides the scheduling role: input clocks are driven
-    // by the environment (interval-based or triggered by policy), output
-    // clocks are activated by the FMU and only observed here.
+  for variable in model.variables {
     if !(variable.payload is @schema.Fmi3Payload::Clock(_)) {
       continue
     }
@@ -853,6 +842,28 @@ pub fn load_fmi3_se_fmu(
       None => ()
     }
   }
+  (clocks, output_clocks)
+}
+
+///|
+/// Loads a Scheduled Execution FMU (roadmap: FMI 3 SE). The clock list is
+/// derived from the model description; the scheduler drives activations.
+pub fn load_fmi3_se_fmu(
+  data : Bytes,
+  host~ : @fmi.HostPlatform,
+  temp_directory~ : String,
+  platform_override? : String,
+  logging_on? : Bool,
+  on_log~ : (Fmi3LogMessage) -> Unit = fn(_) {  },
+) -> LoadedFmu3Se raise LoaderError {
+  let (parsed, library, temp_directory, files) = load_fmi3_common(
+    data,
+    host~,
+    temp_directory~,
+    platform_override?,
+    interface_kind=@schema.ScheduledExecution,
+  )
+  let (clocks, output_clocks) = fmi3_clock_metadata(parsed)
   let resource_directory = temp_directory + "/resources"
   let instance = Fmi3Library::instantiate_se(
     library,

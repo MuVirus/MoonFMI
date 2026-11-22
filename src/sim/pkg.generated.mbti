@@ -6,6 +6,10 @@ import {
 }
 
 // Values
+pub fn observe_output_clocks(scheduling~ : ClockScheduling) -> Int32 raise @fmi.SimulationError
+
+pub fn run_clock_rounds(scheduling~ : ClockScheduling, schedule~ : ClockSchedule, t~ : Double, max_rounds~ : Int32) -> Int32 raise @fmi.SimulationError
+
 pub fn run_coupled_simulation(config~ : CoupledConfig) -> SimulationResult raise @fmi.SimulationError
 
 pub fn run_cs_simulation(&@fmi.CsInstance, config~ : CsConfig) -> SimulationResult raise @fmi.SimulationError
@@ -17,6 +21,25 @@ pub fn run_se_simulation(&@fmi.SeInstance, clocks~ : Array[SeClockInfo], config~
 // Errors
 
 // Types and methods
+pub struct ClockSchedule {
+  clocks : Array[SeClockInfo]
+  next_activation : Array[Double]
+  countdown_due : Array[Double?]
+}
+pub fn ClockSchedule::new(clocks~ : Array[SeClockInfo], start_time~ : Double) -> Self
+
+pub(all) struct ClockScheduling {
+  clocks : Array[SeClockInfo]
+  trigger : (Double) -> Array[UInt32]
+  output_clocks : Array[UInt32]
+  max_rounds : Int32
+  get_interval : (UInt32) -> (Double, @fmi.IntervalQualifier)? raise @fmi.SimulationError
+  activate_partition : (UInt32, Double) -> Unit raise @fmi.SimulationError
+  get_clock : (UInt32) -> Bool raise @fmi.SimulationError
+}
+pub fn ClockScheduling::new(clocks~ : Array[SeClockInfo], get_interval~ : (UInt32) -> (Double, @fmi.IntervalQualifier)? raise @fmi.SimulationError, activate_partition~ : (UInt32, Double) -> Unit raise @fmi.SimulationError, get_clock~ : (UInt32) -> Bool raise @fmi.SimulationError, trigger? : (Double) -> Array[UInt32], output_clocks? : Array[UInt32], max_rounds? : Int32) -> Self
+pub fn ClockScheduling::trigger_all_each_step(clocks~ : Array[SeClockInfo]) -> (Double) -> Array[UInt32]
+
 pub struct CoupledConfig {
   start_time : Double
   stop_time : Double
@@ -26,8 +49,9 @@ pub struct CoupledConfig {
   deadline : UInt64?
   max_loop_iterations : Int32?
   loop_tolerance : Double
+  clock_hooks : Array[ParticipantClocks]
 }
-pub fn CoupledConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, participants~ : Array[CoupledParticipant], connections~ : Array[Coupling], deadline? : UInt64?, max_loop_iterations? : Int32?, loop_tolerance? : Double) -> Self
+pub fn CoupledConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, participants~ : Array[CoupledParticipant], connections~ : Array[Coupling], deadline? : UInt64?, max_loop_iterations? : Int32?, loop_tolerance? : Double, clock_hooks? : Array[ParticipantClocks]) -> Self
 
 pub struct CoupledParticipant {
   name : String
@@ -50,15 +74,19 @@ pub struct CsConfig {
   stop_time : Double
   step_size : Double
   record : Array[UInt32]
+  record_arrays : Array[RecordedArray]
+  clocks : ClockScheduling?
   deadline : UInt64?
 }
-pub fn CsConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], deadline? : UInt64?) -> Self
+pub fn CsConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], record_arrays? : Array[RecordedArray], clocks? : ClockScheduling?, deadline? : UInt64?) -> Self
 
 pub struct MeConfig {
   start_time : Double
   stop_time : Double
   step_size : Double
   record : Array[UInt32]
+  record_arrays : Array[RecordedArray]
+  clocks : ClockScheduling?
   solver : MeSolver
   state_count : Int32
   event_indicator_count : Int32
@@ -68,11 +96,23 @@ pub struct MeConfig {
   tolerance : Double
   max_step : Double?
 }
-pub fn MeConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], solver? : MeSolver, state_count~ : Int32, event_indicator_count~ : Int32, max_event_iterations? : Int32, deadline? : UInt64?, adaptive? : Bool, tolerance? : Double, max_step? : Double?) -> Self
+pub fn MeConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], record_arrays? : Array[RecordedArray], clocks? : ClockScheduling?, solver? : MeSolver, state_count~ : Int32, event_indicator_count~ : Int32, max_event_iterations? : Int32, deadline? : UInt64?, adaptive? : Bool, tolerance? : Double, max_step? : Double?) -> Self
 
 pub(all) enum MeSolver {
   Euler
   Rk4
+}
+
+pub(all) struct ParticipantClocks {
+  participant : String
+  get_clock : (UInt32) -> Bool raise @fmi.SimulationError
+  fire_input_clock : (UInt32, Double) -> Unit raise @fmi.SimulationError
+}
+
+pub(all) struct RecordedArray {
+  value_reference : UInt32
+  name : String
+  element_count : Int32
 }
 
 pub struct SeClockInfo {
@@ -90,12 +130,13 @@ pub struct SeConfig {
   stop_time : Double
   step_size : Double
   record : Array[UInt32]
+  record_arrays : Array[RecordedArray]
   deadline : UInt64?
   max_rounds : Int32
   trigger : (Double) -> Array[UInt32]
   output_clocks : Array[UInt32]
 }
-pub fn SeConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], deadline? : UInt64?, max_rounds? : Int32, trigger? : (Double) -> Array[UInt32], output_clocks? : Array[UInt32]) -> Self
+pub fn SeConfig::new(start_time~ : Double, stop_time~ : Double, step_size~ : Double, record~ : Array[UInt32], record_arrays? : Array[RecordedArray], deadline? : UInt64?, max_rounds? : Int32, trigger? : (Double) -> Array[UInt32], output_clocks? : Array[UInt32]) -> Self
 pub fn SeConfig::trigger_all_each_step(clocks~ : Array[SeClockInfo]) -> (Double) -> Array[UInt32]
 
 #derive(Eq)
@@ -103,6 +144,7 @@ pub(all) enum SignalType {
   Real
   Integer
   Boolean
+  Clock
 }
 
 pub(all) struct SimulationResult {

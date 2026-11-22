@@ -101,6 +101,10 @@ fn Fmi3Instance::fmi3_cs_advance(
   let target = t + h
   let mut current = t
   let mut attempts = 0
+  // A time event the FMU declared while handling events: the next do
+  // step must not cross it (master-algorithm.md §4.5). The gate matters:
+  // an undefined next event time reads 0.0.
+  let mut event_cap : Double? = None
   while current < target - fmi3_time_epsilon {
     attempts += 1
     if attempts > fmi3_max_step_retries {
@@ -109,11 +113,16 @@ fn Fmi3Instance::fmi3_cs_advance(
         detail="early return did not converge within \{fmi3_max_step_retries} attempts at t=\{t}",
       )
     }
+    let mut step_target = target
+    match event_cap {
+      Some(cap) => if cap > current && cap < target { step_target = cap }
+      None => ()
+    }
     let rollback_armed = self.saved_state is Some(_)
     let result = Fmi3Instance::do_step(
       self,
       current,
-      target - current,
+      step_target - current,
       no_set_fmu_state_prior=!rollback_armed,
     ) catch {
       error =>
@@ -145,6 +154,7 @@ fn Fmi3Instance::fmi3_cs_advance(
           )
       }
       let mut iterations = 0
+      let mut settled : @fmi.EventInfo? = None
       while true {
         let info = Fmi3Instance::update_discrete_states(self) catch {
           error =>
@@ -157,6 +167,7 @@ fn Fmi3Instance::fmi3_cs_advance(
           return target
         }
         if !info.new_discrete_states_needed {
+          settled = Some(info)
           break
         }
         iterations += 1
@@ -174,6 +185,15 @@ fn Fmi3Instance::fmi3_cs_advance(
             detail=error.message(),
           )
       }
+      match settled {
+        Some(info) =>
+          event_cap = if info.next_event_time_defined {
+            Some(info.next_event_time)
+          } else {
+            None
+          }
+        None => ()
+      }
     }
     if result.early_return {
       let resumed = result.last_successful_time
@@ -185,7 +205,7 @@ fn Fmi3Instance::fmi3_cs_advance(
       }
       current = resumed
     } else {
-      current = target
+      current = step_target
     }
   }
   target
@@ -259,6 +279,19 @@ pub impl @fmi.CsInstance for Fmi3Instance with fn read_real(
   value_reference,
 ) {
   Fmi3Instance::get_float64_one(self, value_reference) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3GetFloat64", detail=error.message())
+  }
+}
+
+///|
+pub impl @fmi.CsInstance for Fmi3Instance with fn read_real_values(
+  self,
+  value_reference,
+  n_values,
+) -> Array[Double] raise @fmi.SimulationError {
+  // One value reference covers all the elements of an FMI 3 array.
+  Fmi3Instance::get_float64_values(self, [value_reference], n_values) catch {
     error =>
       raise @fmi.FmiCall(operation="fmi3GetFloat64", detail=error.message())
   }
@@ -510,6 +543,19 @@ pub impl @fmi.MeInstance for Fmi3Instance with fn read_real(
 }
 
 ///|
+pub impl @fmi.MeInstance for Fmi3Instance with fn read_real_values(
+  self,
+  value_reference,
+  n_values,
+) -> Array[Double] raise @fmi.SimulationError {
+  // One value reference covers all the elements of an FMI 3 array.
+  Fmi3Instance::get_float64_values(self, [value_reference], n_values) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3GetFloat64", detail=error.message())
+  }
+}
+
+///|
 pub impl @fmi.MeInstance for Fmi3Instance with fn write_real(
   self,
   value_reference,
@@ -637,6 +683,19 @@ pub impl @fmi.SeInstance for Fmi3Instance with fn read_real(
   value_reference,
 ) {
   Fmi3Instance::get_float64_one(self, value_reference) catch {
+    error =>
+      raise @fmi.FmiCall(operation="fmi3GetFloat64", detail=error.message())
+  }
+}
+
+///|
+pub impl @fmi.SeInstance for Fmi3Instance with fn read_real_values(
+  self,
+  value_reference,
+  n_values,
+) -> Array[Double] raise @fmi.SimulationError {
+  // One value reference covers all the elements of an FMI 3 array.
+  Fmi3Instance::get_float64_values(self, [value_reference], n_values) catch {
     error =>
       raise @fmi.FmiCall(operation="fmi3GetFloat64", detail=error.message())
   }

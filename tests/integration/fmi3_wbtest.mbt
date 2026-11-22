@@ -95,9 +95,28 @@ test "fmi3 feedthrough roundtrips every value type" {
   instance.set_uint64([25U], [9007199254740993UL])
   instance.step(0.1, 0.1)
   assert_eq(instance.get_uint64([26U])[0], 9007199254740993UL)
-  // Float32 output, widened to Double by the shim.
+  // Every narrow integer type roundtrips through the shim's widening.
+  instance.set_int8_one(11U, -100)
+  instance.set_uint8_one(13U, 200)
+  instance.set_int16_one(15U, -30000)
+  instance.set_uint16_one(17U, 60000)
+  instance.set_uint32_one(21U, 4000000000U)
+  instance.set_int64_one(23U, 9007199254740993L)
+  instance.set_float32_one(1U, 2.5)
+  instance.step(0.2, 0.1)
+  assert_eq(instance.get_int8([12U])[0], -100)
+  assert_eq(instance.get_uint8([14U])[0], 200)
+  assert_eq(instance.get_int16([16U])[0], -30000)
+  assert_eq(instance.get_uint16([18U])[0], 60000)
+  assert_eq(instance.get_uint32([22U])[0], 4000000000U)
+  assert_eq(instance.get_int64([24U])[0], 9007199254740993L)
+  // Float32 output, widened to Double by the shim (2.5 is exact).
   let wide = instance.get_float32([2U])
   assert_eq(wide.length(), 1)
+  assert_true(
+    close_enough(wide[0], 2.5, 0.000000000001),
+    msg="Float32 output: \{wide[0]}",
+  )
   instance.terminate()
   loaded.dispose()
 }
@@ -218,5 +237,45 @@ test "fmi3 fmu state save and restore if the fmu supports it" {
     }
   }
   instance.terminate()
+  loaded.dispose()
+}
+
+///|
+test "fmi3 cs records array outputs as per-element series" {
+  let loaded = load_fmi3("fmi3/StateSpace.fmu", "fmi3-ss-rec")
+  // u = vr 9, y = vr 10; A=B=C=D=I, x(0)=0, so y(0) = u(0) = [1, 2, 3]
+  // exactly. The recorder splits the 3-element array into its own series.
+  // The input is written in the instantiated state; the master runs its
+  // own setup and initialization afterwards.
+  let instance = loaded.instance()
+  instance.set_float64([9U], [1.0, 2.0, 3.0])
+  let config = @sim.CsConfig::new(
+    start_time=0.0,
+    stop_time=0.2,
+    step_size=0.1,
+    record=[],
+    record_arrays=[{ value_reference: 10U, name: "y", element_count: 3, }],
+  )
+  let result = @sim.run_cs_simulation(instance, config~) catch {
+    error => {
+      let detail = error.message()
+      loaded.dispose()
+      abort("simulation failed: " + detail)
+    }
+  }
+  assert_eq(result.series().length(), 3)
+  assert_eq(result.times().length(), 3)
+  assert_true(
+    close_enough(result.series()[0][0], 1.0, 0.000000000001),
+    msg="y[1](0)=\{result.series()[0][0]}",
+  )
+  assert_true(
+    close_enough(result.series()[1][0], 2.0, 0.000000000001),
+    msg="y[2](0)=\{result.series()[1][0]}",
+  )
+  assert_true(
+    close_enough(result.series()[2][0], 3.0, 0.000000000001),
+    msg="y[3](0)=\{result.series()[2][0]}",
+  )
   loaded.dispose()
 }

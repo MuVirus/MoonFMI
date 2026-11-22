@@ -133,6 +133,7 @@ pub(open) trait CsInstance {
   fn rollback(Self) -> Unit raise SimulationError = _
   fn commit_rollback_point(Self) -> Unit raise SimulationError = _
   fn read_real(Self, UInt32) -> Double raise SimulationError
+  fn read_real_values(Self, UInt32, Int32) -> Array[Double] raise SimulationError = _
   fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
   fn read_integer(Self, UInt32) -> Int32 raise SimulationError = _
   fn write_integer(Self, UInt32, Int32) -> Unit raise SimulationError = _
@@ -155,6 +156,7 @@ pub(open) trait MeInstance {
   fn enter_continuous_time_mode(Self) -> Unit raise SimulationError
   fn completed_integrator_step(Self, no_set_fmu_state_prior~ : Bool) -> (Bool, Bool) raise SimulationError
   fn read_real(Self, UInt32) -> Double raise SimulationError
+  fn read_real_values(Self, UInt32, Int32) -> Array[Double] raise SimulationError = _
   fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
   fn finish(Self) -> Unit raise SimulationError
 }
@@ -167,6 +169,7 @@ pub(open) trait SeInstance {
   fn get_clock(Self, UInt32) -> Bool raise SimulationError
   fn get_interval(Self, UInt32) -> (Double, IntervalQualifier)? raise SimulationError
   fn read_real(Self, UInt32) -> Double raise SimulationError
+  fn read_real_values(Self, UInt32, Int32) -> Array[Double] raise SimulationError = _
   fn write_real(Self, UInt32, Double) -> Unit raise SimulationError
   fn finish(Self) -> Unit raise SimulationError
 }

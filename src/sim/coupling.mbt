@@ -27,12 +27,28 @@ pub fn CoupledParticipant::new(
 ///|
 /// The signal type one `Coupling` carries. Defaults to `Real`; Integer and
 /// Boolean route through the typed `CsInstance` read/write methods instead
-/// of `read_real`/`write_real`.
+/// of `read_real`/`write_real`. `Clock` routes through the participant
+/// clock hooks: the master observes the source's output clock and fires
+/// the target's input clock at the instant of a pulse (0.8.1).
 #derive(Eq)
 pub(all) enum SignalType {
   Real
   Integer
   Boolean
+  Clock
+}
+
+///|
+/// Clock hooks bound to one coupled participant: the master observes the
+/// participant's output clocks through `get_clock` (read clears the
+/// pulse) and fires its input clocks through `fire_input_clock` (the
+/// binding decides how the FMU executes the partition). A participant
+/// without hooks cannot take part in a clock connection — FMI 2 backends
+/// have no clocks.
+pub(all) struct ParticipantClocks {
+  participant : String
+  get_clock : (UInt32) -> Bool raise @fmi.SimulationError
+  fire_input_clock : (UInt32, Double) -> Unit raise @fmi.SimulationError
 }
 
 ///|
@@ -85,6 +101,10 @@ pub struct CoupledConfig {
   /// every watched loop output moved by less than this (component-wise
   /// absolute difference) between two consecutive iterations.
   loop_tolerance : Double
+  /// Clock hooks for the participants that take part in `Clock`
+  /// connections (0.8.1). Both endpoints of every clock connection must
+  /// appear here; the master rejects the run otherwise.
+  clock_hooks : Array[ParticipantClocks]
 }
 
 ///|
@@ -97,6 +117,7 @@ pub fn CoupledConfig::new(
   deadline~ : UInt64? = None,
   max_loop_iterations~ : Int32? = None,
   loop_tolerance~ : Double = 0.000000001,
+  clock_hooks~ : Array[ParticipantClocks] = [],
 ) -> CoupledConfig {
   {
     start_time,
@@ -107,6 +128,7 @@ pub fn CoupledConfig::new(
     deadline,
     max_loop_iterations,
     loop_tolerance,
+    clock_hooks,
   }
 }
 
@@ -376,9 +398,50 @@ fn sccs_of_subgraph(
 ///   cannot place form one block, iterated Jacobi-style to a fixed point
 ///   at every communication point; without it, cycles are rejected.
 ///
+
+///|
+/// Fire the cross-FMU clock connections at instant `t`: observe every
+/// source's output clock (a read clears the pulse) and, on a pulse, fire
+/// the target's input clock at that instant through its hooks. Both
+/// endpoints were validated to have hooks at configuration time.
+fn propagate_clock_pulses(
+  config~ : CoupledConfig,
+  hooks~ : Map[String, ParticipantClocks],
+  t : Double,
+) -> Unit raise @fmi.SimulationError {
+  for connection in config.connections {
+    if connection.signal is Clock {
+      match hooks.get(connection.from) {
+        Some(source) => {
+          let pulse = (source.get_clock)(connection.out_vr)
+          if pulse {
+            match hooks.get(connection.to) {
+              Some(target) => (target.fire_input_clock)(connection.in_vr, t)
+              None =>
+                raise @fmi.Config(
+                  detail="clock connection target '\{connection.to}' has no clock hooks",
+                )
+            }
+          }
+        }
+        None =>
+          raise @fmi.Config(
+            detail="clock connection source '\{connection.from}' has no clock hooks",
+          )
+      }
+    }
+  }
+}
+
+///|
 /// The recorded series of the result concatenate every participant's
 /// `record` list in declaration order; the caller knows the layout from
 /// its own configuration.
+///
+/// Cross-FMU clock connections (0.8.1): a `Clock` coupling observes the
+/// source participant's output clock after every communication step and,
+/// on a pulse, fires the target's input clock at that instant through its
+/// `ParticipantClocks` hooks. Both endpoints need hooks.
 pub fn run_coupled_simulation(
   config~ : CoupledConfig,
 ) -> SimulationResult raise @fmi.SimulationError {
@@ -400,9 +463,30 @@ pub fn run_coupled_simulation(
   if !(config.loop_tolerance >= 0.0) {
     raise @fmi.Config(detail="loop_tolerance must not be negative")
   }
+  // Clock connections never enter the signal plans or the loop analysis:
+  // they carry pulses, not samples, and cannot be part of an algebraic
+  // loop. Both endpoints need clock hooks.
+  let signal_connections : Array[Coupling] = config.connections
+    .iter()
+    .filter(fn(c) { !(c.signal is Clock) })
+    .collect()
+  let clock_hooks : Map[String, ParticipantClocks] = Map([])
+  for hooks in config.clock_hooks {
+    clock_hooks[hooks.participant] = hooks
+  }
+  for connection in config.connections {
+    if connection.signal is Clock {
+      if !(clock_hooks.contains(connection.from) &&
+        clock_hooks.contains(connection.to)) {
+        raise @fmi.Config(
+          detail="clock connection '\{connection.from}' -> '\{connection.to}' needs clock hooks for both endpoints; clock connections require FMI 3 participants with clocks",
+        )
+      }
+    }
+  }
   let schedule = build_schedule(
     config.participants,
-    config.connections,
+    signal_connections,
     config.max_loop_iterations,
   )
   // Resolve connections into per-participant input plans: for participant
@@ -422,7 +506,7 @@ pub fn run_coupled_simulation(
     watch.push([])
     source_types.push(Map([]))
   }
-  for connection in config.connections {
+  for connection in signal_connections {
     let from = index_of[connection.from]
     let to = index_of[connection.to]
     input_plans[to].push(
@@ -477,6 +561,8 @@ pub fn run_coupled_simulation(
           observed_boolean[index][value_reference] = participant.instance.read_boolean(
             value_reference,
           )
+        // Clock connections never enter the watch list.
+        Clock => abort("unreachable: clock connection in the watch list")
       }
     }
   }
@@ -517,6 +603,8 @@ pub fn run_coupled_simulation(
                 detail="connection out_vr \{out_vr} of '\{config.participants[from].name}' is not observable by the coupled run",
               )
           }
+        // Clock connections never enter the input plans.
+        Clock => abort("unreachable: clock connection in the input plans")
       }
     }
   }
@@ -540,6 +628,8 @@ pub fn run_coupled_simulation(
           observed_boolean[producer_index][value_reference] = instance.read_boolean(
             value_reference,
           )
+        // Clock connections never enter the watch list.
+        Clock => abort("unreachable: clock connection in the watch list")
       }
     }
   }
@@ -566,6 +656,8 @@ pub fn run_coupled_simulation(
           Some(value) => if value { 1.0 } else { 0.0 }
           None => 0.0
         }
+      // Clock connections never take part in an algebraic loop.
+      Clock => abort("unreachable: clock connection in a loop residual")
     }
   }
   // Coordinated rollback applies only when EVERY participant can capture
@@ -850,6 +942,9 @@ pub fn run_coupled_simulation(
       execute_grid_point(t, h)
     }
     t = t + h
+    // Cross-FMU clock pulses: a pulse the source raised during the step
+    // fires the target's input clock at the new communication point.
+    propagate_clock_pulses(config~, hooks=clock_hooks, t)
     record_row(t)
     steps += 1
   }

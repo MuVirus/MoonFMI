@@ -45,6 +45,9 @@ pub struct SeConfig {
   stop_time : Double
   step_size : Double
   record : Array[UInt32]
+  /// Array outputs to record element by element (FMI 3: one reference
+  /// with an element count).
+  record_arrays : Array[RecordedArray]
   deadline : UInt64?
   /// Upper bound on activation rounds per grid point; guards against
   /// clock cascades that never settle.
@@ -62,6 +65,7 @@ pub fn SeConfig::new(
   stop_time~ : Double,
   step_size~ : Double,
   record~ : Array[UInt32],
+  record_arrays~ : Array[RecordedArray] = [],
   deadline~ : UInt64? = None,
   max_rounds~ : Int32 = 100,
   trigger~ : (Double) -> Array[UInt32] = fn(_) { [] },
@@ -72,6 +76,7 @@ pub fn SeConfig::new(
     stop_time,
     step_size,
     record,
+    record_arrays,
     deadline,
     max_rounds,
     trigger,
@@ -143,19 +148,19 @@ pub fn run_se_simulation(
       detail="stop_time must not be before start_time",
     )
   }
-  // Next due time per interval clock (start + shift for the first tick).
-  let next_activation : Array[Double] = []
-  for clock in clocks {
-    next_activation.push(config.start_time + clock.shift)
-  }
-  // Countdown state per clock, persisted across grid points:
-  // `None` = not armed, `Some(due_time)` = absolute time it must fire.
-  // A `Changed` qualifier re-arms; after firing the clock is disarmed until
-  // the FMU reports `Changed` again.
-  let countdown_due : Array[Double?] = []
-  for _ in clocks {
-    countdown_due.push(None)
-  }
+  // Mutable per-run clock bookkeeping (next due times, countdown arming),
+  // shared with the CS/ME clock scheduling.
+  let schedule = ClockSchedule::new(clocks~, start_time=config.start_time)
+  let scheduling : ClockScheduling = ClockScheduling::new(
+    clocks~,
+    get_interval=vr => instance.get_interval(vr),
+    activate_partition=(vr, activation_time) => {
+      instance.activate_partition(vr, activation_time)
+    },
+    get_clock=vr => instance.get_clock(vr),
+    trigger=config.trigger,
+    output_clocks=config.output_clocks,
+  )
   instance.setup_experiment(
     start=config.start_time,
     stop=Some(config.stop_time),
@@ -165,6 +170,34 @@ pub fn run_se_simulation(
   let series : Array[Array[Double]] = []
   for _ in config.record {
     series.push([])
+  }
+  for array_output in config.record_arrays {
+    for _i = 0; _i < array_output.element_count; _i = _i + 1 {
+      series.push([])
+    }
+  }
+  // One recording pass: scalars, then every array element as its own
+  // series. Used at every grid point and once more at stop_time.
+  let record_values = fn() raise @fmi.SimulationError {
+    for k, vr in config.record {
+      let value = instance.read_real(vr) catch {
+        error => raise se_fail(operation="fmi3GetReal", detail=error.message())
+      }
+      series[k].push(value)
+    }
+    let mut offset = config.record.length()
+    for array_output in config.record_arrays {
+      let values = instance.read_real_values(
+        array_output.value_reference,
+        array_output.element_count,
+      ) catch {
+        error => raise se_fail(operation="fmi3GetReal", detail=error.message())
+      }
+      for index, value in values {
+        series[offset + index].push(value)
+      }
+      offset += values.length()
+    }
   }
   let mut activations = 0
   let mut t = config.start_time
@@ -181,127 +214,39 @@ pub fn run_se_simulation(
         }
       None => ()
     }
-    // Activation rounds. Round 0 collects everything the environment owes
-    // at this grid point: constant intervals, triggered policy hits and
-    // armed countdowns. Later rounds only re-poll countdown/dynamic clocks
-    // because a partition may arm one (Reference-FMUs Clocks: partition 1
-    // arms inClock3 at t=4). Triggered clocks fire once per grid point —
-    // repeating them every round would never settle.
-    let mut round = 0
-    while round < config.max_rounds {
-      let due : Array[(Double, UInt32, UInt32)] = []
-      let mut index = 0
-      for clock in clocks {
-        if clock.triggered {
-          if round == 0 && (config.trigger)(t).contains(clock.value_reference) {
-            due.push((t, clock.priority, clock.value_reference))
-          }
-        } else if clock.countdown {
-          match instance.get_interval(clock.value_reference) {
-            Some((interval, qualifier)) =>
-              if qualifier is @fmi.IntervalQualifier::Changed {
-                countdown_due[index] = Some(t + interval)
-              }
-            None => ()
-          }
-          match countdown_due[index] {
-            Some(due_time) =>
-              if due_time <= t + se_time_epsilon {
-                due.push((t, clock.priority, clock.value_reference))
-              }
-            None => ()
-          }
-        } else {
-          match clock.period {
-            Some(period) =>
-              while next_activation[index] <= t + se_time_epsilon {
-                due.push(
-                  (
-                    next_activation[index],
-                    clock.priority,
-                    clock.value_reference,
-                  ),
-                )
-                next_activation[index] = next_activation[index] + period
-              }
-            None =>
-              // Dynamic interval without countdown semantics: poll once
-              // per round and activate on a known, expired interval.
-              match instance.get_interval(clock.value_reference) {
-                Some((interval, qualifier)) =>
-                  if qualifier is @fmi.IntervalQualifier::Changed &&
-                    interval <= se_time_epsilon {
-                    due.push((t, clock.priority, clock.value_reference))
-                  }
-                None => ()
-              }
-          }
+    // Activation rounds (shared with the CS/ME clock scheduling): round 0
+    // collects everything the environment owes at this grid point, later
+    // rounds re-poll countdown/dynamic clocks until settled.
+    activations += run_clock_rounds(
+      scheduling~,
+      schedule~,
+      t~,
+      max_rounds=config.max_rounds,
+    ) catch {
+      error => {
+        instance.finish() catch {
+          _ => ()
         }
-        index += 1
+        raise error
       }
-      if due.is_empty() {
-        break
-      }
-      due.sort_by(se_due_key)
-      for entry in due {
-        instance.activate_partition(entry.2, entry.0) catch {
-          error => {
-            instance.finish() catch {
-              _ => ()
-            }
-            raise se_fail(
-              operation="fmi3ActivateModelPartition",
-              detail=error.message(),
-            )
-          }
-        }
-        activations += 1
-        // A fired countdown clock is disarmed until the FMU re-arms it.
-        let mut disarm = 0
-        for clock in clocks {
-          if clock.countdown && clock.value_reference == entry.2 {
-            countdown_due[disarm] = None
-          }
-          disarm += 1
-        }
-      }
-      round += 1
-    }
-    if round >= config.max_rounds {
-      instance.finish() catch {
-        _ => ()
-      }
-      raise @fmi.SimulationError::Config(
-        detail="clock activations did not settle within max_rounds at t=\{t}",
-      )
     }
     // Observe output clocks (Reference implementations clear the flag on
     // read, so each true observation consumes one pulse).
-    for vr in config.output_clocks {
-      let _ = instance.get_clock(vr)
-    }
+    let _ = observe_output_clocks(scheduling~)
     // Record the grid point.
     times.push(t)
-    for k, vr in config.record {
-      let value = instance.read_real(vr) catch {
-        error => {
-          instance.finish() catch {
-            _ => ()
-          }
-          raise se_fail(operation="fmi3GetReal", detail=error.message())
+    record_values() catch {
+      error => {
+        instance.finish() catch {
+          _ => ()
         }
+        raise error
       }
-      series[k].push(value)
     }
     t = t + config.step_size
   }
   times.push(config.stop_time)
-  for k, vr in config.record {
-    let value = instance.read_real(vr) catch {
-      error => raise se_fail(operation="fmi3GetReal", detail=error.message())
-    }
-    series[k].push(value)
-  }
+  record_values()
   instance.finish()
   let steps : Int32 = times.length() - 1
   { times, series, steps, events: activations, }

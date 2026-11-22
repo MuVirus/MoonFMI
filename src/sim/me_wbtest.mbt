@@ -23,6 +23,15 @@ struct MockMe {
   mut reinits : Int32
   /// Derivative evaluations performed by this mock (test instrumentation).
   mut deriv_evals : Int32
+  /// Scheduled time events in rising order. Every settled event reports
+  /// the next one via `nextEventTime` until the list is exhausted.
+  time_events : Array[Double]
+  mut time_event_index : Int32
+  /// Settled events that landed exactly on their scheduled time.
+  mut time_event_hits : Int32
+  /// True once a derivative was evaluated strictly beyond the pending
+  /// time event — the master must never cross one.
+  mut crossed_time_event : Bool
   mut finished : Bool
 }
 
@@ -33,6 +42,7 @@ fn MockMe::make(
   reinit_value? : Double,
   demand_iterations~ : Int32 = 0,
   terminate_at_event~ : Bool = false,
+  time_events~ : Array[Double] = [],
 ) -> MockMe {
   {
     state: 0.0,
@@ -47,6 +57,10 @@ fn MockMe::make(
     settles: 0,
     reinits: 0,
     deriv_evals: 0,
+    time_events,
+    time_event_index: 0,
+    time_event_hits: 0,
+    crossed_time_event: false,
     finished: false,
   }
 }
@@ -87,6 +101,12 @@ impl @fmi.MeInstance for MockMe with fn get_continuous_states(self, states) {
 impl @fmi.MeInstance for MockMe with fn get_derivatives(self, derivatives) {
   self.deriv_evals += 1
   derivatives[0] = if self.derivative_kind == 0 { -self.state } else { 1.0 }
+  if self.time_event_index < self.time_events.length() {
+    let pending = self.time_events[self.time_event_index]
+    if self.time > pending + event_time_epsilon {
+      self.crossed_time_event = true
+    }
+  }
 }
 
 ///|
@@ -138,31 +158,40 @@ impl @fmi.MeInstance for MockMe with fn new_discrete_states(self) {
       next_event_time: 0.0,
     }
   }
-  if !self.initial_done {
-    // Initial settlement: no reinit.
-    return {
-      new_discrete_states_needed: false,
-      terminate_simulation: false,
-      nominals_changed: false,
-      states_changed: false,
-      next_event_time_defined: false,
-      next_event_time: 0.0,
+  let initial = !self.initial_done
+  if !initial {
+    match self.reinit_value {
+      Some(value) => {
+        self.state = value
+        self.reinits += 1
+      }
+      None => ()
     }
   }
-  match self.reinit_value {
-    Some(value) => {
-      self.state = value
-      self.reinits += 1
+  // Report the pending time event; consume it when the settlement lands
+  // exactly on its scheduled time. The initial settlement reports it too.
+  let (defined, next) = if self.time_event_index < self.time_events.length() {
+    let scheduled = self.time_events[self.time_event_index]
+    if (self.time - scheduled).abs() <= event_time_epsilon {
+      self.time_event_index += 1
+      self.time_event_hits += 1
+      match self.time_events.get(self.time_event_index) {
+        Some(following) => (true, following)
+        None => (false, 0.0)
+      }
+    } else {
+      (true, scheduled)
     }
-    None => ()
+  } else {
+    (false, 0.0)
   }
   {
     new_discrete_states_needed: false,
     terminate_simulation: false,
     nominals_changed: false,
-    states_changed: true,
-    next_event_time_defined: false,
-    next_event_time: 0.0,
+    states_changed: !initial,
+    next_event_time_defined: defined,
+    next_event_time: next,
   }
 }
 
@@ -489,4 +518,112 @@ test "me rejects adaptive configurations" {
     max_step=Some(-1.0),
   )
   assert_true(me_config_rejected(mock, bad_max))
+}
+
+///|
+/// dx/dt = 1 with a declared time event at t = 0.6, off the 0.25 grid.
+/// The integrator must stop at the event, settle it, and continue — while
+/// recording stays on the 0.25 grid.
+test "me honors a declared time event off the grid" {
+  let mock = MockMe::make(derivative_kind=1, indicator_count=0, time_events=[
+    0.6,
+  ])
+  let config = MeConfig::new(
+    start_time=0.0,
+    stop_time=1.0,
+    step_size=0.25,
+    record=[1U],
+    solver=Rk4,
+    state_count=1,
+    event_indicator_count=0,
+  )
+  let result = run_me_simulation(mock, config~)
+  assert_true(
+    !mock.crossed_time_event,
+    msg="the master integrated past the declared time event",
+  )
+  assert_eq(mock.time_event_hits, 1)
+  assert_eq(result.events(), 1)
+  assert_eq(result.steps(), 4)
+  assert_eq(result.times().length(), 5)
+  for index in 0..<=4 {
+    let expected = index.to_double() * 0.25
+    assert_true(
+      close(result.times()[index], expected, 0.000000001),
+      msg="grid drift at \{index}: \{result.times()[index]}",
+    )
+  }
+  assert_true(mock.finished)
+}
+
+///|
+/// Periodic time events on the grid: every second grid point declares the
+/// next event; the master settles at each without freezing or drifting.
+test "me honors periodic time events on the grid" {
+  let mock = MockMe::make(derivative_kind=1, indicator_count=0, time_events=[
+    0.5, 1.0, 1.5,
+  ])
+  let config = MeConfig::new(
+    start_time=0.0,
+    stop_time=2.0,
+    step_size=0.25,
+    record=[1U],
+    solver=Rk4,
+    state_count=1,
+    event_indicator_count=0,
+  )
+  let result = run_me_simulation(mock, config~)
+  assert_true(
+    !mock.crossed_time_event,
+    msg="the master integrated past a declared time event",
+  )
+  assert_eq(mock.time_event_hits, 3)
+  assert_eq(result.events(), 3)
+  assert_eq(result.steps(), 8)
+  assert_eq(result.times().length(), 9)
+  for index in 0..<=8 {
+    let expected = index.to_double() * 0.25
+    assert_true(
+      close(result.times()[index], expected, 0.000000001),
+      msg="grid drift at \{index}: \{result.times()[index]}",
+    )
+  }
+}
+
+///|
+/// Adaptive stepping must also stop at a declared time event and record
+/// the accepted step that ends exactly on it.
+test "me adaptive honors a declared time event" {
+  let mock = MockMe::make(derivative_kind=1, indicator_count=0, time_events=[
+    0.6,
+  ])
+  let config = MeConfig::new(
+    start_time=0.0,
+    stop_time=1.0,
+    step_size=0.1,
+    record=[1U],
+    solver=Rk4,
+    state_count=1,
+    event_indicator_count=0,
+    adaptive=true,
+    tolerance=0.000001,
+  )
+  let result = run_me_simulation(mock, config~)
+  assert_true(
+    !mock.crossed_time_event,
+    msg="the master integrated past the declared time event",
+  )
+  assert_eq(mock.time_event_hits, 1)
+  assert_eq(result.events(), 1)
+  let mut saw_event_time = false
+  for t in result.times() {
+    if (t - 0.6).abs() <= 0.000000001 {
+      saw_event_time = true
+    }
+  }
+  assert_true(
+    saw_event_time,
+    msg="the accepted step ending at the time event was not recorded",
+  )
+  assert_true(mock.finished)
 }

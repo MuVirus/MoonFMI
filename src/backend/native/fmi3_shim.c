@@ -192,6 +192,11 @@ typedef struct moonfmi_fmi3_library {
   int32_t has_clock;
   int32_t has_fmu_state;
   int32_t has_scheduled_execution;
+  /* Clock-aware CS/ME-only FMUs export the partition and interval calls
+     without a ScheduledExecution instantiate; both are resolved on their
+     own so the clock scheduler can drive clocked partitions under CS/ME. */
+  int32_t has_model_partition;
+  int32_t has_interval_decimal;
   /* Retired instances keep their context alive until the library is
      released, so a callback from a buggy FMU cannot touch freed memory. */
   moonfmi_fmi3_instance *retired;
@@ -310,6 +315,13 @@ moonfmi_fmi3_library_new(void *handle) {
                                 (void *)&library->activate_model_partition) &&
       moonfmi_fmi3_resolve_into(handle, "fmi3GetIntervalDecimal",
                                 (void *)&library->get_interval_decimal);
+  /* Resolved independently of the ScheduledExecution instantiate so a
+     clocked CS/ME FMU can activate partitions and poll intervals. */
+  library->has_model_partition = moonfmi_fmi3_resolve_into(
+      handle, "fmi3ActivateModelPartition",
+      (void *)&library->activate_model_partition);
+  library->has_interval_decimal = moonfmi_fmi3_resolve_into(
+      handle, "fmi3GetIntervalDecimal", (void *)&library->get_interval_decimal);
   if (!library->has_co_simulation && !library->has_model_exchange &&
       !library->has_scheduled_execution) {
     moonfmi_fmi3_set_error(
@@ -410,7 +422,9 @@ enum {
   moonfmi_fmi3_flag_binary = 14,
   moonfmi_fmi3_flag_clock = 15,
   moonfmi_fmi3_flag_fmu_state = 16,
-  moonfmi_fmi3_flag_scheduled_execution = 17
+  moonfmi_fmi3_flag_scheduled_execution = 17,
+  moonfmi_fmi3_flag_model_partition = 18,
+  moonfmi_fmi3_flag_interval_decimal = 19
 };
 
 MOONBIT_FFI_EXPORT
@@ -457,6 +471,10 @@ moonfmi_fmi3_library_has_flag(void *handle, int32_t flag) {
     return library->has_fmu_state;
   case moonfmi_fmi3_flag_scheduled_execution:
     return library->has_scheduled_execution;
+  case moonfmi_fmi3_flag_model_partition:
+    return library->has_model_partition;
+  case moonfmi_fmi3_flag_interval_decimal:
+    return library->has_interval_decimal;
   default:
     return 0;
   }
