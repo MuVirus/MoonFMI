@@ -165,6 +165,9 @@ pub fn run_cs_simulation(
       )
     None => None
   }
+  // Any error below aborts the run; finish best-effort first so the FMU
+  // releases its state before the error propagates.
+  errdefer finish_best_effort(instance)
   let mut t = config.start_time
   let mut steps = 0
   while t < config.stop_time - time_epsilon {
@@ -177,19 +180,13 @@ pub fn run_cs_simulation(
     }
     if clock_state is Some(pair) {
       let (scheduling, schedule) = pair
-      let _ = run_clock_rounds(
+      let activations = run_clock_rounds(
         scheduling~,
         schedule~,
         t~,
         max_rounds=scheduling.max_rounds,
-      ) catch {
-        error => {
-          instance.finish() catch {
-            _ => ()
-          }
-          raise error
-        }
-      }
+      )
+      let _ = activations
       let _ = observe_output_clocks(scheduling~)
     }
     let mut h = config.step_size

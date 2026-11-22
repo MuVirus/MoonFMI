@@ -2725,11 +2725,6 @@ pub fn Fmi3Instance::intermediate_update_count(self : Fmi3Instance) -> Int64 {
 }
 
 ///|
-fn Fmi3Library::has_scheduled_execution_capability(self : Fmi3Library) -> Bool {
-  shim_has_flag(self.shim, flag_scheduled_execution)
-}
-
-///|
 /// Whether the FMU exports `fmi3ActivateModelPartition` on its own
 /// (clocked partitions under CS/ME, or Scheduled Execution).
 fn Fmi3Library::has_model_partition_capability(self : Fmi3Library) -> Bool {

@@ -12,7 +12,7 @@ test "cli version matches moon.mod" {
   let content = @fs.read_file_to_string("moon.mod")
   let mut declared : String? = None
   for line in content.split("\n") {
-    let fields = line.trim().to_string().split("\"").collect()
+    let fields = line.trim().to_owned().split("\"").collect()
     if fields.length() >= 2 && fields[0].to_owned() == "version = " {
       declared = Some(fields[1].to_owned())
       break

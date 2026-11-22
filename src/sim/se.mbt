@@ -199,15 +199,15 @@ pub fn run_se_simulation(
       offset += values.length()
     }
   }
+  // Any error below aborts the run; finish best-effort first so the FMU
+  // releases its state before the error propagates.
+  errdefer se_finish_best_effort(instance)
   let mut activations = 0
   let mut t = config.start_time
   while t < config.stop_time - se_time_epsilon {
     match config.deadline {
       Some(deadline) =>
         if @env.now() > deadline {
-          instance.finish() catch {
-            _ => ()
-          }
           raise @fmi.SimulationError::Timeout(
             detail="simulation timed out at t=\{t}",
           )
@@ -222,27 +222,13 @@ pub fn run_se_simulation(
       schedule~,
       t~,
       max_rounds=config.max_rounds,
-    ) catch {
-      error => {
-        instance.finish() catch {
-          _ => ()
-        }
-        raise error
-      }
-    }
+    )
     // Observe output clocks (Reference implementations clear the flag on
     // read, so each true observation consumes one pulse).
     let _ = observe_output_clocks(scheduling~)
     // Record the grid point.
     times.push(t)
-    record_values() catch {
-      error => {
-        instance.finish() catch {
-          _ => ()
-        }
-        raise error
-      }
-    }
+    record_values()
     t = t + config.step_size
   }
   times.push(config.stop_time)
@@ -250,4 +236,13 @@ pub fn run_se_simulation(
   instance.finish()
   let steps : Int32 = times.length() - 1
   { times, series, steps, events: activations, }
+}
+
+///|
+/// Best-effort finish for abort paths (SeInstance flavor of the CS
+/// helper); finish failures are swallowed.
+fn se_finish_best_effort(instance : &@fmi.SeInstance) -> Unit {
+  instance.finish() catch {
+    _ => ()
+  }
 }

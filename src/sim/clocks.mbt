@@ -192,3 +192,13 @@ pub fn observe_output_clocks(
   }
   ticks
 }
+
+///|
+/// Best-effort finish for abort paths: the FMU releases its state before
+/// the error propagates; finish failures are swallowed. Used as an
+/// `errdefer` body in the CS/SE masters.
+fn finish_best_effort(instance : &@fmi.CsInstance) -> Unit {
+  instance.finish() catch {
+    _ => ()
+  }
+}
