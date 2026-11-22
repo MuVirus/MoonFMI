@@ -35,6 +35,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | 目录 | 内容 | 适合谁读 |
 | --- | --- | --- |
 | [`standards/`](standards/README.md) | FMI 2.0.4 / 3.0.2 标准梳理、API、模型描述、随附 XSD 与头文件 | 所有人，尤其是实现者 |
+| [`guides/`](guides/quick-start.md) | 任务指南：快速上手等「我要做成 X」的操作路径 | 使用者 |
 | [`research/`](research/README.md) | FMPy、fmi-rs、WASM-FMI、MoonBit 生态、其他工具的研究 | 架构与选型 |
 | [`design/`](design/README.md) | 总体架构、导入器、主算法、导出器、WASM 策略、ABI、验证、打包、CLI 与测试 | 实现者 |
 | [`roadmap/`](roadmap/README.md) | 分阶段路线图、P0 详细执行计划、任务 backlog、风险清单 | 项目管理者与贡献者 |

@@ -16,6 +16,7 @@
 
 | 日期 | 内容 |
 | --- | --- |
+| [`2026-11-22`](2026-11-22.md) | 0.8.1 需求缺口收尾：ME time event、FMI 3 setter/数组、CS/ME 时钟调度与 couple 时钟连线、MD-007/052 + 规则矩阵、Stair/Roberts 语料、版本政策对齐 |
 | [`2026-11-20`](2026-11-20.md) | moonfig 接入：CLI 配置层（`--config`、JSON/INI/dotenv、`MOONFMI_` 环境变量）、依赖准入、能力缺口台账 |
 | [`2026-11-19`](2026-11-19.md) | 0.7.0 全量开发：sandbox/--set/couple 收口、LS-WASM 校验、矩阵导出、安全硬化、ARM CI |
 | [`2026-11-18`](2026-11-18.md) | 按优先级完善:C-11 CS 回滚、C-08 Integer/Boolean 绑定(修 ABI 参数序缺陷)、C-20 多 FMU 耦合 MVP、E-09 数组方程、MD-038 + 字段覆盖 100%、CLI 可复现性实测 |

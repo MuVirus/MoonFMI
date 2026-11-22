@@ -317,9 +317,20 @@ Scheduled Execution 把模型划分为由时钟驱动的分区。主算法职责
 - 输入时钟必须声明 `priority`（SE FMU 里缺失由 MD-037 报错）；输出时钟不得声明（MD-036）；
 - `fmi3SetClock` 支持显式激活/去激活（`SeInstance::set_clock`），CLI 暂不暴露脚本化触发通道；
 - 与 CS/ME 的变量交换一致性仍由模型侧保证，调度器只负责按时激活；
-- 记录器目前只记录 Float64 输出（Clocks 的计数器是 Int32，因此 CLI JSON 的 `outputs` 为空，属已知限制）。
+- 记录器支持 Float64 标量与 Float64 数组输出（数组按元素拆 `name[i]` 列）；Int32 等其它类型不在记录器内（Clocks 的计数器是 Int32，因此 CLI JSON 的 `outputs` 为空，属已知限制，测试用类型化通道读取）。
 
-### 5.3 验收
+### 5.3 CS/ME 复用同一调度（0.8.1）
+
+激活轮次提炼为 `run_clock_rounds`（`src/sim/clocks.mbt`），基于闭包结构的
+`ClockScheduling`。CS 主算法在每个通信点前跑轮次并观察输出时钟；ME 在
+初始事件与每次事件结算后（仍在事件模式内）跑轮次。CS 的
+`fmi3DoStep` 同时消费 `nextEventTime`，不跨越 FMU 声明的时间事件。
+带时钟的 CS/ME-only FMU 导出的 `fmi3GetIntervalDecimal` /
+`fmi3ActivateModelPartition` 独立于 Scheduled Execution 解析。官方语料
+没有 CS/ME 接口的时钟模型，该路径目前由 mock 白盒测试覆盖
+（`src/sim/clocks_wbtest.mbt`），自建时钟测试 FMU 见 backlog 遗留项。
+
+### 5.4 验收
 
 `tests/integration/se_wbtest.mbt`：
 - Reference-FMUs `Clocks.fmu`（SE-only；constant/triggered/countdown 输入时钟 + 输出时钟）驱动 10 s：分区激活 15 次（inClock1 10 + inClock2 4 + inClock3 1），计数器 10/4/1/15 与模型描述中的参考时间线一致，`clock_update` 通知 4 次；

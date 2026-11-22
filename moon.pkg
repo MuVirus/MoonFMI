@@ -1,1 +1,6 @@
+import {
+  "MuVirus/fmi/src/cli",
+  "moonbitlang/x/fs",
+} for "wbtest"
 
+supported_targets = "native"

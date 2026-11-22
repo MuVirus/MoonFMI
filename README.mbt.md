@@ -17,10 +17,15 @@ name.
   validated too when the archive carries WebAssembly components.
 - Run a Co-Simulation or Model Exchange simulation with CSV or JSON output,
   or a Scheduled Execution run for FMI 3 clocks (`simulate`); set inputs and
-  parameters per type with `--set name=value` before initialization.
+  parameters per type with `--set name=value` before initialization. Time
+  events (`nextEventTime`) are scheduled for FMI 2 and FMI 3, Float64 array
+  outputs are recorded as per-element `name[i]` columns, and FMI 3 clocked
+  partitions run under CS and ME like they do under SE.
 - Couple several FMUs into one co-simulation with typed signal connections
-  (Real, Integer, Boolean), opt-in algebraic-loop solving and per-connection
-  signal-type inference (`couple`).
+  (Real, Integer, Boolean), clock connections between FMI 3 participants
+  (a source output-clock pulse fires the target input clock), opt-in
+  algebraic-loop solving and per-connection signal-type inference
+  (`couple`).
 - Build a deterministic `.fmu` from an unpacked directory (`package`).
 - Export restricted explicit models back to source-code FMUs (FMI 2/3) or an
   experimental WASM component FMU, including FMI 3 arrays and dense matrix

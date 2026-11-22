@@ -5,7 +5,74 @@ All notable, user-visible changes to MoonFMI are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+Version numbers always take the smallest possible increment (patch first,
+no skipping): fixes go to the patch number, features to the minor number,
+and a breaking JSON-contract change bumps the `/vN` suffix before it may
+touch the module version.
+
+## [0.8.1] - 2026-11-22
+
+### Added
+
+- The Model Exchange master schedules FMI 2/3 time events:
+  `EventInfo.nextEventTime` is now consumed — the integrator never steps
+  past a declared event, the event is settled when the step lands on it
+  (adaptive and fixed-step paths), and fixed-grid recording stays on the
+  grid. Until now only indicator crossings and `completedIntegratorStep`
+  could trigger event handling, so a model reporting only time events
+  was integrated across them.
+- FMI 3 gains the six missing typed setters (`fmi3SetFloat32`,
+  `fmi3SetUInt8`, `fmi3SetInt16`, `fmi3SetUInt16`, `fmi3SetUInt32`,
+  `fmi3SetInt64`) with per-value `set_*_one` forms; the C shim already
+  resolved them, so no shim change was needed. The `--set` override
+  accepts every numeric FMI 3 kind (including `UInt64`, previously
+  absent from `--set`); Binary and Clock remain non-settable scalars.
+- Array variables generalize: ten numeric `get_<type>_values(references,
+  n_values)` bulk reads join `get_float64_values`, and the simulation
+  recorder supports Float64 array outputs — `CsConfig`/`MeConfig`/
+  `SeConfig` accept `record_arrays` and the CLI expands each element
+  into its own `name[i]` CSV/JSON column (FMI 2 through consecutive
+  references, FMI 3 through the native `nValues` read).
+- FMI 3 clocked partitions under CS/ME (previously Scheduled Execution
+  only): the SE activation rounds were extracted into a shared
+  `run_clock_rounds` over a closure-based `ClockScheduling`; `CsConfig`
+  and `MeConfig` accept `clocks` and run the rounds at communication
+  points (CS) and inside event mode (ME). The CLI wires the schedule
+  automatically when the model declares clocks. `fmi3GetIntervalDecimal`
+  and `fmi3ActivateModelPartition` resolve independently of the
+  Scheduled Execution instantiate, so clocked CS/ME-only FMUs work, and
+  the FMI 3 CS step body consumes `nextEventTime` so `do_step` never
+  crosses a declared FMU time event.
+- `moonfmi couple` supports cross-FMU clock connections: `SignalType`
+  gains `Clock`; after every communication step the master observes the
+  source participant's output clock and, on a pulse, fires the target's
+  input clock through new `ParticipantClocks` hooks. Both endpoints
+  need hooks (FMI 2 participants are rejected). Clock connections are
+  excluded from the algebraic-loop analysis.
+- Validation rules MD-007 and MD-052 now carry their own codes:
+  an unknown `variableNamingConvention` reports MD-007 (previously the
+  generic `STRUCTURE`), and a non-integer `<BaseUnit>` exponent reports
+  MD-052 (previously rejected as a generic structure error). All 44
+  implemented rules plus MD-037/MD-038 now have explicit positive and
+  negative cases, machine-checked by a data-driven rule-matrix test.
+- Integration tests cover the remaining corpus samples: fmi2/Stair and
+  fmi3/Stair under CS (second counting through the typed integer
+  channel) and fmi3/Roberts under ME (Robertson kinetics on a short
+  horizon). Every corpus FMU now runs in at least one supported
+  interface.
+- New `docs/guides/quick-start.md` walks from fetching the reference
+  corpus to the first simulations and JSON outputs.
+
+### Fixed
+
+- The CLI version string (`moonfmi version`, previously `0.7.0`) now
+  matches the module version; a root-package test locks the two
+  together. Releases take the smallest possible version increment.
+- Documentation drift: the exit-code table in
+  `docs/design/cli-and-testing.md` disagreed with the authoritative
+  contract in `docs/cli-json.md` (1 = validation failure, 3 = unreadable
+  input); `doctor` and `tests/data/README.md` still pointed at the
+  retired `fetch-fmus.mjs` script instead of `fetch-fmus.mbtx`.
 
 ## [0.8.0] - 2026-11-21
 
@@ -182,7 +249,8 @@ tag.
 
 ## Link references
 
-[Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.1
 [0.8.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.0
 [0.7.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.7.0
 [0.6.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.6.0

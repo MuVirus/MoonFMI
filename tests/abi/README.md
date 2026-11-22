@@ -98,7 +98,7 @@ node tests/abi/check-host.mjs
 ## 5. 复现顺序
 
 ```bash
-node tests/data/fetch-fmus.mjs                     # 取测试语料
+moon run tests/data/fetch-fmus.mbtx --target native   # 取测试语料
 powershell -File tests/abi/build-fixture.ps1       # 或 sh tests/abi/build-fixture.sh
 node tests/abi/check-abi.mjs                       # ABI 基线
 powershell -File tests/abi/run-fmi2-host.ps1       # C 参考宿主

@@ -50,7 +50,7 @@
 | B-12 ✅ | MD-010…020 变量规则 | P1 | L | B-10 | 正反例 |
 | B-13 ✅ | MD-030…036 数组/Clock | P1 | L | B-08 | FMI 3 正反例 |
 | B-14 ✅ | MD-040…049 模型结构 | P1 | L | B-10 | FMI 2/3 正反例 |
-| B-15 ✅ | MD-050…054 单位/类型 | P1 | M | B-10 | 正反例 |
+| B-15 ✅ | MD-050…054 单位/类型 | P1 | M | B-10 | 正反例；MD-052（整数指数）于 0.8.1 补实现——0.7.0 收尾时该行误标完成 |
 | B-16 ✅ | MD-060…063 安全规则 | P1 | M | B-03/B-04 | 恶意语料 |
 | B-17 ✅ | 诊断对象/排序/去重 | P1 | M | B-11…B-16 | golden 快照 |
 | B-18 ✅ | `moonfmi validate` 文本/JSON | P1 | M | B-17 | 退出码/JSON 稳定 |
@@ -190,6 +190,29 @@
 > H-08 的差分 fuzz 抓到 FMI 2 合成 `der(x)` 的 `derivative` 属性写成
 > VR 而非 1 基 ModelVariables 位置——首个"状态变量声明在最前"的模型
 > 生成的 XML 无法通过校验；已修复并纳入回归。
+
+---
+
+## 10.2 0.8.1 增量（2026-11-22，需求清单缺口收尾，全部完成）
+
+| ID | 任务 | 优先级 | 规模 | 验收 |
+| --- | --- | --- | --- | --- |
+| R-01 ✅ | ME time event 调度（nextEventTime 钳制，FMI 2/3 共用 master） | P1 | M | 白盒 mock 单次/周期/自适应事件；现有参照轨迹全部中性 |
+| R-02 ✅ | FMI 3 补齐 6 种 setter + CLI `--set` 全数值类型 | P1 | M | Feedthrough 全类型往返（Float32/Int8/UInt8/Int16/UInt16/UInt32/Int64/UInt64） |
+| R-03 ✅ | 数组 get 泛化（10 数值类 n_values）+ 数组记录器（FMI 2 连续 VR / FMI 3 nValues）+ CLI `name[i]` 列 | P1 | L | StateSpace y[1..3] 端到端 |
+| R-04 ✅ | CS/ME 时钟调度（SE 轮次提炼为 `run_clock_rounds`；CS 通信点 / ME 事件模式插入；CS do_step 消费 nextEventTime） | P1 | L | mock 白盒全覆盖；SE 集成时间线不变 |
+| R-05 ✅ | couple 跨 FMU 时钟连线（SignalType::Clock + ParticipantClocks） | P2 | M | mock 连线时序 + 缺 hooks 拒绝 |
+| R-06 ✅ | MD-007/MD-052 发自身码 + 46 条规则正例矩阵 | P1 | M | 数据驱动矩阵测试；反例 44/44 |
+| R-07 ✅ | Stair（fmi2/fmi3 CS）+ Roberts（fmi3 ME）集成测试 | P2 | S | 语料 13 个样品全部进入至少一个接口的集成测试 |
+| R-08 ✅ | 版本对齐与版本政策（最小递增） | P2 | S | 根包测试锁 moon.mod 与 CLI 版本一致 |
+
+**遗留（新增 open 项）**：
+
+- Roberts CS：FMU 声明 `providesIntermediateUpdate`，宿主需实现 FMI 3
+  intermediate-update 通道后才可加载（见
+  [`../reports/crosscheck.md`](../reports/crosscheck.md)）；
+- 自建带时钟的最小 C 测试 FMU：官方语料没有 CS/ME 接口的时钟模型，
+  CS/ME 时钟路径目前只有 mock 白盒证据。
 
 ---
 

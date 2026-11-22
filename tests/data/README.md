@@ -8,9 +8,9 @@
 
 | 文件 | 作用 |
 | --- | --- |
-| `manifest.json` | 8 个 Reference-FMUs 样品的来源、大小、SHA-256、接口、二进制路径 |
-| `fetch-fmus.mjs` | 按清单下载、解压、缓存、校验；支持离线模式 |
-| `model-description/` | 5 个 `modelDescription.xml` 样品 |
+| `manifest.json` | 13 个 Reference-FMUs 样品的来源、大小、SHA-256、接口、二进制路径 |
+| `fetch-fmus.mbtx` | 按清单下载、解压、缓存、校验；支持离线模式 |
+| `model-description/` | 17 个 `modelDescription.xml` 样品（正例 / 结构反例 / 语义反例 / 恶意样品） |
 | `xsd-cases.json` | 每个 XML 样品的 XSD 预期结果 |
 | `validate-xsd.ps1` | 可选的外部 XSD 对照工具（PowerShell + .NET） |
 
@@ -19,10 +19,10 @@
 ## 2. 取 FMU
 
 ```bash
-node tests/data/fetch-fmus.mjs            # 缺什么取什么，然后全量校验
-node tests/data/fetch-fmus.mjs --offline  # 绝不下载，只校验缓存
-node tests/data/fetch-fmus.mjs --force    # 清空缓存后重新下载
-node tests/data/fetch-fmus.mjs --list     # 打印样品 id / 版本 / 接口
+moon run tests/data/fetch-fmus.mbtx --target native            # 缺什么取什么，然后全量校验
+moon run tests/data/fetch-fmus.mbtx --target native -- --offline  # 绝不下载，只校验缓存
+moon run tests/data/fetch-fmus.mbtx --target native -- --force    # 清空缓存后重新下载
+moon run tests/data/fetch-fmus.mbtx --target native -- --list     # 打印样品 id / 版本 / 接口
 ```
 
 缓存布局：

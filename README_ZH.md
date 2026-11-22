@@ -16,9 +16,12 @@ mooncakes 上的模块名是 `MuVirus/fmi`；仓库仍叫 `MoonFMI`。
   manifest 一并校验。
 - 运行联合仿真或模型交换仿真，输出 CSV 或 JSON；FMI 3 还可按时钟运行
   调度执行（`simulate`）；初始化前可按类型设置输入与参数
-  （`--set 名称=值`）。
+  （`--set 名称=值`）。FMI 2/3 的时间事件（`nextEventTime`）会被调度，
+  Float64 数组输出按元素拆成 `name[i]` 列，FMI 3 带时钟的模型在 CS/ME
+  下与 SE 一样运行。
 - 把多个 FMU 耦合成一次联合仿真：类型化信号连接（Real/Integer/Boolean）、
-  按连接自动推断信号类型、可选的代数环定点求解（`couple`）。
+  FMI 3 参与者之间的时钟连线（源输出时钟脉冲触发目标输入时钟）、按连接
+  自动推断信号类型、可选的代数环定点求解（`couple`）。
 - 从已解压目录构建确定性的 `.fmu`（`package`）。
 - 把受限的显式模型导出回源码 FMU（FMI 2/3）或实验性的 WASM 组件 FMU，
   支持 FMI 3 数组与按元素展开的稠密矩阵方程。
