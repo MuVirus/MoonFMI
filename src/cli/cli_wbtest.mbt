@@ -264,3 +264,31 @@ test "parse_nonnegative_int accepts digits only" {
   assert_true(parse_nonnegative_int("3x") is None)
   assert_true(parse_nonnegative_int("999999999999") is None)
 }
+
+///|
+/// The CLI version string must stay in sync with the `version` field of
+/// `moon.mod`: releases always take the smallest possible increment, and a
+/// mismatch here means one of the two constants was bumped alone. The test
+/// resolves `moon.mod` from the package directory or the repository root,
+/// whichever the runner's working directory lands on.
+test "cli version matches moon.mod" {
+  let path = if @fs.path_exists("../../moon.mod") {
+    "../../moon.mod"
+  } else if @fs.path_exists("moon.mod") {
+    "moon.mod"
+  } else {
+    abort("moon.mod not found from the runner working directory")
+  }
+  let content = @fs.read_file_to_string(path)
+  let mut declared : String? = None
+  for line in content.split("\n") {
+    let fields = line.trim().to_owned().split("\"").collect()
+    if fields.length() >= 2 && fields[0].to_owned() == "version = " {
+      declared = Some(fields[1].to_owned())
+      break
+    }
+  }
+  // No `version = "…"` line means the moon.mod layout changed; fail loudly.
+  guard! declared is Some(declared)
+  assert_eq(declared, version_string())
+}
