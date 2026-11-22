@@ -187,7 +187,16 @@ fn command_help(command : String) -> String {
 }
 
 ///|
-let moonfmi_version : String = "0.7.0"
+/// CLI version, kept in sync with the `version` field of `moon.mod`; the
+/// root-package whitebox test asserts the two agree. Releases always take
+/// the smallest possible version increment (patch first, no skipping).
+let moonfmi_version : String = "0.8.1"
+
+///|
+/// The version reported by `moonfmi version` and `moonfmi --json` payloads.
+pub fn version_string() -> String {
+  moonfmi_version
+}
 
 ///|
 /// JSON string escaping for the stable `--json` output.
@@ -1011,21 +1020,120 @@ fn csv_double(value : Double) -> String {
 
 ///|
 /// Value references and names of all FMI 3 Float64 outputs, in document
-/// order. Float32 outputs are skipped (the recorder is Double based).
+/// order, plus the array outputs with their element counts. Array outputs
+/// are recorded element by element as `<name>[i]` columns (1-based, like
+/// the model description). Float32 outputs are skipped (the recorder is
+/// Double based).
 fn real_outputs_fmi3(
   model : @schema.Fmi3ModelDescription,
-) -> Array[(UInt32, String)] {
+) -> (Array[(UInt32, String)], Array[@sim.RecordedArray]) {
   let outputs : Array[(UInt32, String)] = []
+  let arrays : Array[@sim.RecordedArray] = []
   for variable in model.variables {
     if variable.effective_causality() == Output {
-      if variable.type_kind is Float64 && variable.dimensions.is_empty() {
-        // Array outputs need an explicit element count at read time and are
-        // not part of the scalar recorder yet.
-        outputs.push((variable.value_reference, variable.name))
+      if variable.type_kind is Float64 {
+        if variable.dimensions.is_empty() {
+          outputs.push((variable.value_reference, variable.name))
+        } else {
+          arrays.push(@sim.RecordedArray::{
+            value_reference: variable.value_reference,
+            name: variable.name,
+            element_count: @native.fmi3_element_count(model, variable),
+          })
+        }
       }
     }
   }
-  outputs
+  (outputs, arrays)
+}
+
+///|
+/// Column names for a simulation result: one per scalar output, then one
+/// per element of every recorded array output (`name[i]`, 1-based).
+fn recorder_names(
+  outputs : Array[(UInt32, String)],
+  array_outputs : Array[@sim.RecordedArray],
+) -> Array[String] {
+  let names : Array[String] = []
+  for output in outputs {
+    names.push(output.1)
+  }
+  for array_output in array_outputs {
+    for i = 0; i < array_output.element_count; i = i + 1 {
+      names.push("\{array_output.name}[\{i + 1}]")
+    }
+  }
+  names
+}
+
+///|
+/// Scheduler view of the input clocks: constant intervals come from the
+/// model description, countdown clocks are polled, triggered clocks fire
+/// through a policy. Shared by the SE and the CS/ME clock paths.
+fn scheduler_clocks(clocks : Array[@native.SeClock]) -> Array[@sim.SeClockInfo] {
+  let infos : Array[@sim.SeClockInfo] = []
+  for clock in clocks {
+    let countdown = clock.variability
+      is @schema.ClockIntervalVariability::Countdown
+    let period : Double? = if countdown || clock.triggered {
+      None
+    } else {
+      clock.interval_decimal
+    }
+    infos.push(
+      @sim.SeClockInfo::new(
+        value_reference=clock.value_reference,
+        priority=clock.priority,
+        period~,
+        shift=clock.shift_decimal.unwrap_or(0.0),
+        triggered=clock.triggered,
+        countdown~,
+      ),
+    )
+  }
+  infos
+}
+
+///|
+/// Bind the FMI 3 clock calls of one loaded instance into the scheduling
+/// surface the sim masters consume, with the deterministic default
+/// trigger policy (every triggered clock fires at every point).
+fn fmi3_clock_scheduling(
+  instance : @native.Fmi3Instance,
+  clocks : Array[@native.SeClock],
+  output_clocks : Array[UInt32],
+) -> @sim.ClockScheduling {
+  let infos = scheduler_clocks(clocks)
+  let trigger = @sim.ClockScheduling::trigger_all_each_step(clocks=infos)
+  @sim.ClockScheduling::new(
+    clocks=infos,
+    trigger~,
+    output_clocks~,
+    get_interval=vr => {
+      instance.get_interval_decimal(vr) catch {
+        error =>
+          raise @fmi.FmiCall(
+            operation="fmi3GetIntervalDecimal",
+            detail=error.message(),
+          )
+      }
+    },
+    activate_partition=(vr, activation_time) => {
+      instance.activate_model_partition(vr, activation_time) catch {
+        error =>
+          raise @fmi.FmiCall(
+            operation="fmi3ActivateModelPartition",
+            detail=error.message(),
+          )
+      }
+    },
+    get_clock=vr => {
+      instance.get_clock_one(vr) catch {
+        error =>
+          raise @fmi.FmiCall(operation="fmi3GetClock", detail=error.message())
+      }
+    },
+  )
 }
 
 ///|
@@ -1433,10 +1541,20 @@ fn simulate_fmi3(
       }
       None => ()
     }
-    let outputs = real_outputs_fmi3(loaded.model())
+    let (outputs, array_outputs) = real_outputs_fmi3(loaded.model())
     let references : Array[UInt32] = []
     for output in outputs {
       references.push(output.0)
+    }
+    // FMI 3 clocked partitions: schedule the input clocks and observe the
+    // output clocks when the model declares any (0.8.1).
+    let (clock_metas, output_clocks) = @native.fmi3_clock_metadata(
+      loaded.model(),
+    )
+    let clock_scheduling = if clock_metas.is_empty() && output_clocks.is_empty() {
+      None
+    } else {
+      Some(fmi3_clock_scheduling(loaded.instance(), clock_metas, output_clocks))
     }
     let step_size = match options.step_size {
       Some(value) => value
@@ -1464,6 +1582,8 @@ fn simulate_fmi3(
       stop_time~,
       step_size~,
       record=references,
+      record_arrays=array_outputs,
+      clocks=clock_scheduling,
       solver~,
       state_count=loaded.state_count,
       event_indicator_count=loaded.event_indicator_count,
@@ -1475,10 +1595,7 @@ fn simulate_fmi3(
         raise map_run_failure(error)
       }
     }
-    let names : Array[String] = []
-    for output in outputs {
-      names.push(output.1)
-    }
+    let names = recorder_names(outputs, array_outputs)
     loaded.dispose()
     (names, result, step_size, stop_time)
   } else if effective_interface(options) == "se" {
@@ -1503,7 +1620,7 @@ fn simulate_fmi3(
         "--set is not supported with --interface se",
       )
     }
-    let outputs = real_outputs_fmi3(loaded.model())
+    let (outputs, array_outputs) = real_outputs_fmi3(loaded.model())
     let references : Array[UInt32] = []
     for output in outputs {
       references.push(output.0)
@@ -1524,36 +1641,16 @@ fn simulate_fmi3(
           None => 1.0
         }
     }
-    // Scheduler view of the input clocks: constant intervals come from the
-    // model description, countdown clocks are polled, triggered clocks fire
-    // through the default policy (every triggered clock at every grid
-    // point). The CLI has no scripted trigger channel yet.
-    let clocks : Array[@sim.SeClockInfo] = []
-    for clock in loaded.clocks {
-      let countdown = clock.variability
-        is @schema.ClockIntervalVariability::Countdown
-      let period : Double? = if countdown || clock.triggered {
-        None
-      } else {
-        clock.interval_decimal
-      }
-      clocks.push(
-        @sim.SeClockInfo::new(
-          value_reference=clock.value_reference,
-          priority=clock.priority,
-          period~,
-          shift=clock.shift_decimal.unwrap_or(0.0),
-          triggered=clock.triggered,
-          countdown~,
-        ),
-      )
-    }
+    // Scheduler view of the input clocks (shared with the CS/ME clock
+    // paths); the CLI has no scripted trigger channel yet.
+    let clocks = scheduler_clocks(loaded.clocks)
     let trigger = @sim.SeConfig::trigger_all_each_step(clocks~)
     let config = @sim.SeConfig::new(
       start_time~,
       stop_time~,
       step_size~,
       record=references,
+      record_arrays=array_outputs,
       deadline=options.timeout_seconds,
       trigger~,
       output_clocks=loaded.output_clocks,
@@ -1564,10 +1661,7 @@ fn simulate_fmi3(
         raise map_run_failure(error)
       }
     }
-    let names : Array[String] = []
-    for output in outputs {
-      names.push(output.1)
-    }
+    let names = recorder_names(outputs, array_outputs)
     loaded.dispose()
     (names, result, step_size, stop_time)
   } else {
@@ -1594,10 +1688,20 @@ fn simulate_fmi3(
       }
       None => ()
     }
-    let outputs = real_outputs_fmi3(loaded.model())
+    let (outputs, array_outputs) = real_outputs_fmi3(loaded.model())
     let references : Array[UInt32] = []
     for output in outputs {
       references.push(output.0)
+    }
+    // FMI 3 clocked partitions: schedule the input clocks and observe the
+    // output clocks when the model declares any (0.8.1).
+    let (clock_metas, output_clocks) = @native.fmi3_clock_metadata(
+      loaded.model(),
+    )
+    let clock_scheduling = if clock_metas.is_empty() && output_clocks.is_empty() {
+      None
+    } else {
+      Some(fmi3_clock_scheduling(loaded.instance(), clock_metas, output_clocks))
     }
     let step_size = match options.step_size {
       Some(value) => value
@@ -1620,6 +1724,8 @@ fn simulate_fmi3(
       stop_time~,
       step_size~,
       record=references,
+      record_arrays=array_outputs,
+      clocks=clock_scheduling,
       deadline=options.timeout_seconds,
     )
     let result = @sim.run_cs_simulation(loaded.instance(), config~) catch {
@@ -1628,10 +1734,7 @@ fn simulate_fmi3(
         raise map_run_failure(error)
       }
     }
-    let names : Array[String] = []
-    for output in outputs {
-      names.push(output.1)
-    }
+    let names = recorder_names(outputs, array_outputs)
     loaded.dispose()
     (names, result, step_size, stop_time)
   }
@@ -2025,6 +2128,7 @@ fn signal_type_name(signal : @sim.SignalType) -> String {
     Real => "Real"
     Integer => "Integer"
     Boolean => "Boolean"
+    Clock => "Clock"
   }
 }
 

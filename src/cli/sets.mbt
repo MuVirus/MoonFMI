@@ -4,10 +4,21 @@
 /// sees it as its start value.
 
 ///|
-/// The typed value of a `--set` override.
+/// The typed value of a `--set` override. The FMI 2 binding only ever
+/// produces `RealValue`/`Int32Value`/`BoolValue`/`StrValue`; the narrower
+/// FMI 3 kinds carry their own target type so the writer is unambiguous —
+/// an FMU rejects a typed write whose width does not match the variable.
 priv enum SetValueKind {
   RealValue(Double)
-  IntValue(Int32)
+  Float32Value(Double)
+  Int8Value(Int32)
+  UInt8Value(Int32)
+  Int16Value(Int32)
+  UInt16Value(Int32)
+  Int32Value(Int32)
+  UInt32Value(UInt32)
+  Int64Value(Int64)
+  UInt64Value(UInt64)
   BoolValue(Bool)
   StrValue(String)
 }
@@ -53,10 +64,10 @@ fn resolve_set_fmi2(
         variable.effective_causality(),
         match variable.payload {
           Real(_) => Some(SetPayloadKind::Real)
-          Integer(_) => Some(SetPayloadKind::Int)
+          Integer(_) => Some(SetPayloadKind::Int32)
           Boolean(_) => Some(SetPayloadKind::Bool)
           Str(_) => Some(SetPayloadKind::Str)
-          Enumeration(_) => Some(SetPayloadKind::Int)
+          Enumeration(_) => Some(SetPayloadKind::Int32)
         },
         "Real, Integer, Boolean, String or Enumeration",
       )
@@ -66,8 +77,9 @@ fn resolve_set_fmi2(
 
 ///|
 /// Resolve a `--set` operand against an FMI 3 typed model description.
-/// Only kinds the binding layer can write are settable (Float64, Int32,
-/// Boolean, String; enumerations ride Int32).
+/// Every numeric kind the binding layer can write is settable (Float32
+/// rides Double, Int8/UInt8/Int16/UInt16/Int32 and enumerations ride
+/// Int32); Binary and Clock have no scalar `--set` form.
 fn resolve_set_fmi3(
   model : @schema.Fmi3ModelDescription,
   name : String,
@@ -90,14 +102,21 @@ fn resolve_set_fmi3(
         variable.value_reference,
         variable.effective_causality(),
         match variable.type_kind {
+          Float32 => Some(SetPayloadKind::Float32)
           Float64 => Some(SetPayloadKind::Real)
-          Int32 => Some(SetPayloadKind::Int)
-          Enumeration => Some(SetPayloadKind::Int)
+          Int8 => Some(SetPayloadKind::Int8)
+          UInt8 => Some(SetPayloadKind::UInt8)
+          Int16 => Some(SetPayloadKind::Int16)
+          UInt16 => Some(SetPayloadKind::UInt16)
+          Int32 | Enumeration => Some(SetPayloadKind::Int32)
+          UInt32 => Some(SetPayloadKind::UInt32)
+          Int64 => Some(SetPayloadKind::Int64)
+          UInt64 => Some(SetPayloadKind::UInt64)
           Boolean => Some(SetPayloadKind::Bool)
           Str => Some(SetPayloadKind::Str)
-          _ => None
+          Binary | Clock => None
         },
-        "Float64, Int32, Boolean, String or Enumeration",
+        "Float32, Float64, Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, Boolean, String or Enumeration",
       )
     }
   }
@@ -108,7 +127,15 @@ fn resolve_set_fmi3(
 /// versions' resolution paths.
 priv enum SetPayloadKind {
   Real
-  Int
+  Float32
+  Int8
+  UInt8
+  Int16
+  UInt16
+  Int32
+  UInt32
+  Int64
+  UInt64
   Bool
   Str
 }
@@ -151,12 +178,71 @@ fn resolve_set_common(
           }
           RealValue(parsed)
         }
-        Int => {
+        Float32 => {
+          let parsed = @string.parse_double(raw) catch {
+            _ => return Err("'" + raw + "' is not a number for '" + name + "'")
+          }
+          Float32Value(parsed)
+        }
+        Int8 => {
           let parsed = @string.parse_int(raw) catch {
             _ =>
               return Err("'" + raw + "' is not an integer for '" + name + "'")
           }
-          IntValue(parsed)
+          Int8Value(parsed)
+        }
+        UInt8 => {
+          let parsed = @string.parse_int(raw) catch {
+            _ =>
+              return Err("'" + raw + "' is not an integer for '" + name + "'")
+          }
+          UInt8Value(parsed)
+        }
+        Int16 => {
+          let parsed = @string.parse_int(raw) catch {
+            _ =>
+              return Err("'" + raw + "' is not an integer for '" + name + "'")
+          }
+          Int16Value(parsed)
+        }
+        UInt16 => {
+          let parsed = @string.parse_int(raw) catch {
+            _ =>
+              return Err("'" + raw + "' is not an integer for '" + name + "'")
+          }
+          UInt16Value(parsed)
+        }
+        Int32 => {
+          let parsed = @string.parse_int(raw) catch {
+            _ =>
+              return Err("'" + raw + "' is not an integer for '" + name + "'")
+          }
+          Int32Value(parsed)
+        }
+        UInt32 => {
+          let parsed = @string.parse_uint(raw) catch {
+            _ =>
+              return Err(
+                "'" + raw + "' is not an unsigned integer for '" + name + "'",
+              )
+          }
+          UInt32Value(parsed)
+        }
+        Int64 => {
+          let parsed = @string.parse_int64(raw) catch {
+            _ =>
+              return Err("'" + raw + "' is not an integer for '" + name + "'")
+          }
+          Int64Value(parsed)
+        }
+        UInt64 => {
+          let parsed = @string.parse_uint64(raw) catch {
+            _ =>
+              return Err(
+                "'" + raw + "' is not an unsigned integer for '" + name + "'",
+              )
+          }
+          UInt64Value(parsed)
         }
         Bool =>
           match parse_set_boolean(raw) {
@@ -191,7 +277,16 @@ fn apply_sets_fmi2(
           instance.set_real_one(entry.value_reference, value)
           None
         }
-        IntValue(value) => {
+        Float32Value(_)
+        | Int8Value(_)
+        | UInt8Value(_)
+        | Int16Value(_)
+        | UInt16Value(_)
+        | UInt32Value(_)
+        | Int64Value(_)
+        | UInt64Value(_) =>
+          abort("FMI 2 --set resolution cannot produce this value kind")
+        Int32Value(value) => {
           instance.set_integer_one(entry.value_reference, value)
           None
         }
@@ -228,8 +323,40 @@ fn apply_sets_fmi3(
           instance.set_float64_one(entry.value_reference, value)
           None
         }
-        IntValue(value) => {
+        Float32Value(value) => {
+          instance.set_float32_one(entry.value_reference, value)
+          None
+        }
+        Int8Value(value) => {
+          instance.set_int8_one(entry.value_reference, value)
+          None
+        }
+        UInt8Value(value) => {
+          instance.set_uint8_one(entry.value_reference, value)
+          None
+        }
+        Int16Value(value) => {
+          instance.set_int16_one(entry.value_reference, value)
+          None
+        }
+        UInt16Value(value) => {
+          instance.set_uint16_one(entry.value_reference, value)
+          None
+        }
+        Int32Value(value) => {
           instance.set_int32_one(entry.value_reference, value)
+          None
+        }
+        UInt32Value(value) => {
+          instance.set_uint32_one(entry.value_reference, value)
+          None
+        }
+        Int64Value(value) => {
+          instance.set_int64_one(entry.value_reference, value)
+          None
+        }
+        UInt64Value(value) => {
+          instance.set_uint64([entry.value_reference], [value])
           None
         }
         BoolValue(value) => {

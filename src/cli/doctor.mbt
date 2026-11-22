@@ -134,14 +134,14 @@ fn run_doctor(argv : Array[String], skip : Int32) -> Int32 {
     checks.push({
       name: "test-corpus",
       status: Ok_,
-      detail: "tests/data/.cache present (run node tests/data/fetch-fmus.mjs to refresh)",
+      detail: "tests/data/.cache present (run `moon run tests/data/fetch-fmus.mbtx --target native` to refresh)",
       required: false,
     })
   } else {
     checks.push({
       name: "test-corpus",
       status: Skip,
-      detail: "tests/data/.cache missing: run `node tests/data/fetch-fmus.mjs`",
+      detail: "tests/data/.cache missing: run `moon run tests/data/fetch-fmus.mbtx --target native`",
       required: false,
     })
   }
