@@ -246,17 +246,20 @@ pub fn SchemaError::diagnostic(self : SchemaError) -> Diagnostic {
 }
 
 ///|
-/// Build the standard structural diagnostic for a position.
+/// Build the standard structural diagnostic for a position. Parse-level
+/// rule violations pass their MD code (e.g. MD-007, MD-052) so the report
+/// names the rule instead of the generic `STRUCTURE` fallback.
 pub fn structure_error(
   message~ : String,
   path~ : String,
   line~ : Int32,
   column~ : Int32,
   hint? : String,
+  code~ : String = "STRUCTURE",
 ) -> SchemaError {
   Failed(
     Diagnostic::new(
-      code="STRUCTURE",
+      code~,
       severity=Error,
       message~,
       path~,

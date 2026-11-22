@@ -81,6 +81,7 @@ fn parse_fmi2_model(
     "variableNamingConvention",
     NamingConvention::parse,
     path=root_path,
+    code="MD-007",
   )
   let description = optional_attr(root, "description", path=root_path)
   let author = optional_attr(root, "author", path=root_path)
@@ -652,19 +653,22 @@ fn parse_fmi2_unit(
 }
 
 ///|
+/// Parse a `<BaseUnit>`; the SI exponents must be integers (rule MD-052),
+/// which is enforced by the `code` handed to `optional_int32`. FMI 3
+/// reuses this function for its own `<BaseUnit>` elements.
 fn parse_fmi2_base_unit(
   element : XmlElement,
   path : String,
 ) -> BaseUnit raise SchemaError {
   {
-    kg: optional_int32(element, "kg", path~).unwrap_or(0),
-    m: optional_int32(element, "m", path~).unwrap_or(0),
-    s: optional_int32(element, "s", path~).unwrap_or(0),
-    a: optional_int32(element, "A", path~).unwrap_or(0),
-    kelvin: optional_int32(element, "K", path~).unwrap_or(0),
-    mol: optional_int32(element, "mol", path~).unwrap_or(0),
-    cd: optional_int32(element, "cd", path~).unwrap_or(0),
-    rad: optional_int32(element, "rad", path~).unwrap_or(0),
+    kg: optional_int32(element, "kg", path~, code="MD-052").unwrap_or(0),
+    m: optional_int32(element, "m", path~, code="MD-052").unwrap_or(0),
+    s: optional_int32(element, "s", path~, code="MD-052").unwrap_or(0),
+    a: optional_int32(element, "A", path~, code="MD-052").unwrap_or(0),
+    kelvin: optional_int32(element, "K", path~, code="MD-052").unwrap_or(0),
+    mol: optional_int32(element, "mol", path~, code="MD-052").unwrap_or(0),
+    cd: optional_int32(element, "cd", path~, code="MD-052").unwrap_or(0),
+    rad: optional_int32(element, "rad", path~, code="MD-052").unwrap_or(0),
     factor: optional_double(element, "factor", path~).unwrap_or(1.0),
     offset: optional_double(element, "offset", path~).unwrap_or(0.0),
   }

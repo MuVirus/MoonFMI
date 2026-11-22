@@ -41,7 +41,7 @@ pub fn parse_double_value(String, path~ : String, line~ : Int32, column~ : Int32
 
 pub fn parse_fmi_version(String, path~ : String, line~ : Int32, column~ : Int32) -> FmiVersion raise SchemaError
 
-pub fn parse_int32_value(String, path~ : String, line~ : Int32, column~ : Int32) -> Int32 raise SchemaError
+pub fn parse_int32_value(String, path~ : String, line~ : Int32, column~ : Int32, code? : String) -> Int32 raise SchemaError
 
 pub fn parse_int64_value(String, path~ : String, line~ : Int32, column~ : Int32) -> Int64 raise SchemaError
 
@@ -53,7 +53,7 @@ pub fn parse_uint64_value(String, path~ : String, line~ : Int32, column~ : Int32
 
 pub fn split_ws_list(String) -> Array[String]
 
-pub fn structure_error(message~ : String, path~ : String, line~ : Int32, column~ : Int32, hint? : String) -> SchemaError
+pub fn structure_error(message~ : String, path~ : String, line~ : Int32, column~ : Int32, hint? : String, code? : String) -> SchemaError
 
 pub fn validate_fmi2(Fmi2ModelDescription, Fmi2Index) -> Array[Diagnostic]
 

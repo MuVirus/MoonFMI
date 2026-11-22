@@ -55,6 +55,31 @@ let fmi2_default_structure : String = "\n    <Outputs>\n      <Unknown index=\"2
 let fmi3_default_structure : String = "\n    <Output valueReference=\"2\"/>\n"
 
 ///|
+/// The canonical FMI 2 minimal positive document: an input → output chain.
+let fmi2_minimal_xml : String = fmi2_doc(
+  variables="\n    <ScalarVariable name=\"u\" valueReference=\"0\" causality=\"input\" variability=\"continuous\" initial=\"exact\">\n      <Real start=\"0\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"y\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Real/>\n    </ScalarVariable>\n",
+  structure=fmi2_default_structure,
+)
+
+///|
+/// The canonical FMI 3 minimal positive document: an input → output pair.
+let fmi3_minimal_xml : String = fmi3_doc(
+  variables="\n    <Float64 name=\"u\" valueReference=\"0\" causality=\"input\" variability=\"continuous\" initial=\"exact\" start=\"0\"/>\n    <Float64 name=\"y\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"calculated\"/>\n",
+  structure="\n    <Output valueReference=\"1\"/>\n    <InitialUnknown valueReference=\"1\"/>\n",
+)
+
+///|
+/// The canonical FMI 2 rich positive document: units, types, logs,
+/// experiment, a derivative, an enumeration and a full model structure.
+let fmi2_full_xml : String = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"2.0\" modelName=\"Full\" guid=\"{g}\" generationTool=\"MoonFMI\" variableNamingConvention=\"structured\" numberOfEventIndicators=\"2\">\n  <CoSimulation modelIdentifier=\"Full\" canHandleVariableCommunicationStepSize=\"true\" canRunAsynchronuously=\"true\"/>\n  <UnitDefinitions>\n    <Unit name=\"m\">\n      <BaseUnit m=\"1\"/>\n      <DisplayUnit name=\"mm\" factor=\"0.001\"/>\n    </Unit>\n  </UnitDefinitions>\n  <TypeDefinitions>\n    <SimpleType name=\"Position\">\n      <Real quantity=\"Position\" unit=\"m\"/>\n    </SimpleType>\n    <SimpleType name=\"Mode\">\n      <Enumeration>\n        <Item name=\"Off\" value=\"0\"/>\n        <Item name=\"On\" value=\"1\"/>\n      </Enumeration>\n    </SimpleType>\n  </TypeDefinitions>\n  <LogCategories>\n    <Category name=\"logEvents\" description=\"events\"/>\n  </LogCategories>\n  <DefaultExperiment startTime=\"0\" stopTime=\"3\" tolerance=\"0.0001\" stepSize=\"0.001\"/>\n  <ModelVariables>\n    <ScalarVariable name=\"h\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"exact\" description=\"position\">\n      <Real start=\"1\" declaredType=\"Position\" reinit=\"true\" unit=\"m\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"der(h)\" valueReference=\"2\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Real derivative=\"1\" declaredType=\"Position\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"mode\" valueReference=\"3\" causality=\"local\" variability=\"discrete\" initial=\"calculated\">\n      <Enumeration declaredType=\"Mode\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"flag\" valueReference=\"4\" causality=\"parameter\" variability=\"tunable\" initial=\"exact\">\n      <Boolean start=\"true\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"label\" valueReference=\"5\" causality=\"parameter\" variability=\"fixed\" initial=\"exact\">\n      <String start=\"hello\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"count\" valueReference=\"6\" causality=\"output\" variability=\"discrete\" initial=\"calculated\">\n      <Integer min=\"0\" max=\"10\"/>\n    </ScalarVariable>\n  </ModelVariables>\n  <ModelStructure>\n    <Outputs>\n      <Unknown index=\"1\" dependencies=\"6\" dependenciesKind=\"dependent\"/>\n      <Unknown index=\"2\" dependencies=\"\"/>\n      <Unknown index=\"6\"/>\n    </Outputs>\n    <Derivatives>\n      <Unknown index=\"2\"/>\n    </Derivatives>\n    <InitialUnknowns>\n      <Unknown index=\"2\"/>\n      <Unknown index=\"6\"/>\n    </InitialUnknowns>\n  </ModelStructure>\n</fmiModelDescription>\n"
+
+///|
+/// The canonical FMI 3 rich positive document: all three interfaces,
+/// arrays with dimensions, an alias, a constant clock, binary and string
+/// starts, and a model structure with an event indicator.
+let fmi3_full_xml : String = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"3.0\" modelName=\"F3\" instantiationToken=\"{t}\">\n  <ModelExchange modelIdentifier=\"F3\" needsCompletedIntegratorStep=\"true\"/>\n  <CoSimulation modelIdentifier=\"F3\" hasEventMode=\"true\"/>\n  <ScheduledExecution modelIdentifier=\"F3\"/>\n  <TypeDefinitions>\n    <EnumerationType name=\"Mode\">\n      <Item name=\"Off\" value=\"0\"/>\n      <Item name=\"On\" value=\"1\"/>\n    </EnumerationType>\n    <BinaryType name=\"Blob\" mimeType=\"image/png\" maxSize=\"1024\"/>\n  </TypeDefinitions>\n  <ModelVariables>\n    <UInt32 name=\"n\" valueReference=\"0\" causality=\"structuralParameter\" variability=\"fixed\" start=\"3\"/>\n    <Float64 name=\"vec\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Dimension valueReference=\"0\"/>\n      <Alias name=\"v\" description=\"velocity alias\"/>\n    </Float64>\n    <Float64 name=\"mat\" valueReference=\"2\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Dimension start=\"2\"/>\n      <Dimension valueReference=\"0\"/>\n    </Float64>\n    <Clock name=\"tick\" valueReference=\"3\" causality=\"parameter\" variability=\"tunable\" intervalVariability=\"constant\" intervalDecimal=\"0.1\" priority=\"5\"/>\n    <Binary name=\"payload\" valueReference=\"4\" causality=\"parameter\" variability=\"fixed\" declaredType=\"Blob\">\n      <Start value=\"DEADBEEF\"/>\n    </Binary>\n    <String name=\"label\" valueReference=\"5\" causality=\"parameter\" variability=\"fixed\">\n      <Start value=\"hello\"/>\n      <Start value=\"world\"/>\n    </String>\n    <Enumeration name=\"mode\" valueReference=\"6\" causality=\"parameter\" variability=\"fixed\" declaredType=\"Mode\" start=\"1\"/>\n  </ModelVariables>\n  <ModelStructure>\n    <Output valueReference=\"1\"/>\n    <Output valueReference=\"2\"/>\n    <InitialUnknown valueReference=\"1\"/>\n    <InitialUnknown valueReference=\"2\"/>\n    <EventIndicator valueReference=\"1\"/>\n  </ModelStructure>\n</fmiModelDescription>\n"
+
+///|
 fn run_validate(xml : String) -> ValidationReport {
   let (_, report) = parse_and_validate(@utf8.encode(xml))
   report
@@ -79,10 +104,7 @@ test "fmi version identity attribute" {
 
 ///|
 test "fmi2 minimal document parses and validates" {
-  let xml = fmi2_doc(
-    variables="\n    <ScalarVariable name=\"u\" valueReference=\"0\" causality=\"input\" variability=\"continuous\" initial=\"exact\">\n      <Real start=\"0\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"y\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Real/>\n    </ScalarVariable>\n",
-    structure=fmi2_default_structure,
-  )
+  let xml = fmi2_minimal_xml
   let report = run_validate(xml)
   assert_eq(report.error_count(), 0)
   assert_eq(report.warning_count(), 0)
@@ -90,7 +112,7 @@ test "fmi2 minimal document parses and validates" {
 
 ///|
 test "fmi2 parses units, types, logs and experiment" {
-  let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"2.0\" modelName=\"Full\" guid=\"{g}\" generationTool=\"MoonFMI\" variableNamingConvention=\"structured\" numberOfEventIndicators=\"2\">\n  <CoSimulation modelIdentifier=\"Full\" canHandleVariableCommunicationStepSize=\"true\" canRunAsynchronuously=\"true\"/>\n  <UnitDefinitions>\n    <Unit name=\"m\">\n      <BaseUnit m=\"1\"/>\n      <DisplayUnit name=\"mm\" factor=\"0.001\"/>\n    </Unit>\n  </UnitDefinitions>\n  <TypeDefinitions>\n    <SimpleType name=\"Position\">\n      <Real quantity=\"Position\" unit=\"m\"/>\n    </SimpleType>\n    <SimpleType name=\"Mode\">\n      <Enumeration>\n        <Item name=\"Off\" value=\"0\"/>\n        <Item name=\"On\" value=\"1\"/>\n      </Enumeration>\n    </SimpleType>\n  </TypeDefinitions>\n  <LogCategories>\n    <Category name=\"logEvents\" description=\"events\"/>\n  </LogCategories>\n  <DefaultExperiment startTime=\"0\" stopTime=\"3\" tolerance=\"0.0001\" stepSize=\"0.001\"/>\n  <ModelVariables>\n    <ScalarVariable name=\"h\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"exact\" description=\"position\">\n      <Real start=\"1\" declaredType=\"Position\" reinit=\"true\" unit=\"m\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"der(h)\" valueReference=\"2\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Real derivative=\"1\" declaredType=\"Position\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"mode\" valueReference=\"3\" causality=\"local\" variability=\"discrete\" initial=\"calculated\">\n      <Enumeration declaredType=\"Mode\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"flag\" valueReference=\"4\" causality=\"parameter\" variability=\"tunable\" initial=\"exact\">\n      <Boolean start=\"true\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"label\" valueReference=\"5\" causality=\"parameter\" variability=\"fixed\" initial=\"exact\">\n      <String start=\"hello\"/>\n    </ScalarVariable>\n    <ScalarVariable name=\"count\" valueReference=\"6\" causality=\"output\" variability=\"discrete\" initial=\"calculated\">\n      <Integer min=\"0\" max=\"10\"/>\n    </ScalarVariable>\n  </ModelVariables>\n  <ModelStructure>\n    <Outputs>\n      <Unknown index=\"1\" dependencies=\"6\" dependenciesKind=\"dependent\"/>\n      <Unknown index=\"2\" dependencies=\"\"/>\n      <Unknown index=\"6\"/>\n    </Outputs>\n    <Derivatives>\n      <Unknown index=\"2\"/>\n    </Derivatives>\n    <InitialUnknowns>\n      <Unknown index=\"2\"/>\n      <Unknown index=\"6\"/>\n    </InitialUnknowns>\n  </ModelStructure>\n</fmiModelDescription>\n"
+  let xml = fmi2_full_xml
   let model = parse_model_description(@utf8.encode(xml))
   let m = match model {
     V2(m) => m
@@ -133,16 +155,13 @@ test "fmi2 interface with source files" {
 
 ///|
 test "fmi3 minimal document parses and validates" {
-  let xml = fmi3_doc(
-    variables="\n    <Float64 name=\"u\" valueReference=\"0\" causality=\"input\" variability=\"continuous\" initial=\"exact\" start=\"0\"/>\n    <Float64 name=\"y\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"calculated\"/>\n",
-    structure="\n    <Output valueReference=\"1\"/>\n    <InitialUnknown valueReference=\"1\"/>\n",
-  )
+  let xml = fmi3_minimal_xml
   assert_true(run_validate(xml).is_valid())
 }
 
 ///|
 test "fmi3 parses arrays, alias, clock and binary" {
-  let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"3.0\" modelName=\"F3\" instantiationToken=\"{t}\">\n  <ModelExchange modelIdentifier=\"F3\" needsCompletedIntegratorStep=\"true\"/>\n  <CoSimulation modelIdentifier=\"F3\" hasEventMode=\"true\"/>\n  <ScheduledExecution modelIdentifier=\"F3\"/>\n  <TypeDefinitions>\n    <EnumerationType name=\"Mode\">\n      <Item name=\"Off\" value=\"0\"/>\n      <Item name=\"On\" value=\"1\"/>\n    </EnumerationType>\n    <BinaryType name=\"Blob\" mimeType=\"image/png\" maxSize=\"1024\"/>\n  </TypeDefinitions>\n  <ModelVariables>\n    <UInt32 name=\"n\" valueReference=\"0\" causality=\"structuralParameter\" variability=\"fixed\" start=\"3\"/>\n    <Float64 name=\"vec\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Dimension valueReference=\"0\"/>\n      <Alias name=\"v\" description=\"velocity alias\"/>\n    </Float64>\n    <Float64 name=\"mat\" valueReference=\"2\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Dimension start=\"2\"/>\n      <Dimension valueReference=\"0\"/>\n    </Float64>\n    <Clock name=\"tick\" valueReference=\"3\" causality=\"parameter\" variability=\"tunable\" intervalVariability=\"constant\" intervalDecimal=\"0.1\" priority=\"5\"/>\n    <Binary name=\"payload\" valueReference=\"4\" causality=\"parameter\" variability=\"fixed\" declaredType=\"Blob\">\n      <Start value=\"DEADBEEF\"/>\n    </Binary>\n    <String name=\"label\" valueReference=\"5\" causality=\"parameter\" variability=\"fixed\">\n      <Start value=\"hello\"/>\n      <Start value=\"world\"/>\n    </String>\n    <Enumeration name=\"mode\" valueReference=\"6\" causality=\"parameter\" variability=\"fixed\" declaredType=\"Mode\" start=\"1\"/>\n  </ModelVariables>\n  <ModelStructure>\n    <Output valueReference=\"1\"/>\n    <Output valueReference=\"2\"/>\n    <InitialUnknown valueReference=\"1\"/>\n    <InitialUnknown valueReference=\"2\"/>\n    <EventIndicator valueReference=\"1\"/>\n  </ModelStructure>\n</fmiModelDescription>\n"
+  let xml = fmi3_full_xml
   let model = parse_model_description(@utf8.encode(xml))
   let m = match model {
     V3(m) => m
@@ -250,6 +269,14 @@ test "structural errors: order, unknown elements, missing sections" {
     structure="",
   )
   assert_true(rule_codes(xml5).contains("STRUCTURE"))
+}
+
+///|
+test "MD-007 rejects an unknown variableNamingConvention" {
+  let fmi2 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"2.0\" modelName=\"M\" guid=\"{g}\" variableNamingConvention=\"typo\">\n  <CoSimulation modelIdentifier=\"M\"/>\n  <ModelVariables/>\n  <ModelStructure/>\n</fmiModelDescription>\n"
+  assert_true(rule_codes(fmi2).contains("MD-007"))
+  let fmi3 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"3.0\" modelName=\"M\" instantiationToken=\"{t}\" variableNamingConvention=\"typo\">\n  <CoSimulation modelIdentifier=\"M\"/>\n  <ModelVariables/>\n  <ModelStructure/>\n</fmiModelDescription>\n"
+  assert_true(rule_codes(fmi3).contains("MD-007"))
 }
 
 ///|
@@ -603,6 +630,25 @@ test "MD-050/MD-051 unit references warn" {
 }
 
 ///|
+/// MD-052: BaseUnit exponents must be integers. The violation aborts
+/// parsing, so it surfaces as the single parse diagnostic. FMI 3 reuses
+/// the same BaseUnit parser.
+test "MD-052 rejects a non-integer BaseUnit exponent" {
+  let fmi2 = fmi2_doc(
+    variables="",
+    structure="",
+    extra="\n  <UnitDefinitions>\n    <Unit name=\"R\">\n      <BaseUnit kg=\"-0.5\"/>\n    </Unit>\n  </UnitDefinitions>\n",
+  )
+  assert_true(rule_codes(fmi2).contains("MD-052"))
+  let fmi3 = fmi3_doc(
+    variables="",
+    structure="",
+    extra="\n  <UnitDefinitions>\n    <Unit name=\"R\">\n      <BaseUnit m=\"-0.5\"/>\n    </Unit>\n  </UnitDefinitions>\n",
+  )
+  assert_true(rule_codes(fmi3).contains("MD-052"))
+}
+
+///|
 test "MD-053/MD-054 type definitions" {
   let collision = fmi2_doc(
     variables="\n    <ScalarVariable name=\"y\" valueReference=\"0\" causality=\"output\" variability=\"continuous\" initial=\"calculated\">\n      <Real/>\n    </ScalarVariable>\n",
@@ -704,6 +750,104 @@ test "golden snapshot of a semantic-invalid report" {
       #|"[MD-006] error: guid must not be empty (/fmiModelDescription)\n[MD-062] error: modelIdentifier '../bad' is not safe (/fmiModelDescription/CoSimulation)\n[MD-012] error: causality 'parameter' does not allow variability 'continuous' (/fmiModelDescription/ModelVariables/ScalarVariable[1], line 5, column 5)\n[MD-013] warning: variable declares initial='exact' but has no start value (/fmiModelDescription/ModelVariables/ScalarVariable[1], line 5, column 5)\n[MD-014] error: min (9) must not exceed max (1) (/fmiModelDescription/ModelVariables/ScalarVariable[1], line 5, column 5)\n[MD-050] warning: unit 'ghost' is not defined in <UnitDefinitions> (/fmiModelDescription/ModelVariables/ScalarVariable[2], line 8, column 5)"
     ),
   )
+}
+
+///|
+/// Every implemented rule also carries an explicit positive case: a
+/// document that exercises the rule's subject and must not trigger it.
+/// The table is the machine-checked counterpart of the rule catalog in
+/// docs/standards/model-description.md §10 (44 rules) plus the two
+/// parse-level FMI 3 rules MD-037/MD-038 that live beyond it.
+test "rule matrix: every rule has a positive case" {
+  // FMI 2: a ModelExchange input may set canHandleMultipleSetPerTimeInstant.
+  let md019 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"2.0\" modelName=\"M\" guid=\"{g}\">\n  <ModelExchange modelIdentifier=\"M\"/>\n  <ModelVariables>\n    <ScalarVariable name=\"u\" valueReference=\"0\" causality=\"input\" variability=\"discrete\" initial=\"exact\" canHandleMultipleSetPerTimeInstant=\"true\">\n      <Integer start=\"0\"/>\n    </ScalarVariable>\n  </ModelVariables>\n  <ModelStructure/>\n</fmiModelDescription>\n"
+  // FMI 3: a clocks attribute that names an existing clock.
+  let md034 = fmi3_doc(
+    variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"input\" intervalVariability=\"constant\" intervalDecimal=\"1\" priority=\"0\"/>\n    <Boolean name=\"b\" valueReference=\"1\" causality=\"input\" variability=\"discrete\" clocks=\"0\"/>\n",
+    structure="",
+  )
+  // FMI 3: a triggered clock without a fixed interval.
+  let md035 = fmi3_doc(
+    variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"parameter\" variability=\"tunable\" intervalVariability=\"triggered\"/>\n",
+    structure="",
+  )
+  // FMI 3: a ScheduledExecution input clock that declares its priority.
+  let md037 = fmi3_doc(
+    variables="\n    <Clock name=\"c\" valueReference=\"0\" causality=\"input\" intervalVariability=\"constant\" intervalDecimal=\"1\" priority=\"0\"/>\n",
+    structure="",
+    extra="  <ScheduledExecution modelIdentifier=\"M\"/>\n",
+  )
+  // FMI 3: well-formed root-level Annotations with typed entries.
+  let md038 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"3.0\" modelName=\"M\" instantiationToken=\"{t}\">\n  <CoSimulation modelIdentifier=\"M\"/>\n  <ModelVariables/>\n  <ModelStructure/>\n  <Annotations>\n    <Annotation type=\"vendor.notes\">notes payload</Annotation>\n  </Annotations>\n</fmiModelDescription>\n"
+  // FMI 3: a ContinuousStateDerivative over a variable with derivative attr.
+  let md046 = fmi3_doc(
+    variables="\n    <Float64 name=\"x\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"exact\" start=\"0\"/>\n    <Float64 name=\"der(x)\" valueReference=\"2\" causality=\"output\" variability=\"continuous\" initial=\"calculated\" derivative=\"1\"/>\n",
+    structure="\n    <Output valueReference=\"2\"/>\n    <ContinuousStateDerivative valueReference=\"2\"/>\n",
+  )
+  // FMI 2: a displayUnit reference that resolves to a defined display unit.
+  let md051 = fmi2_doc(
+    variables="\n    <ScalarVariable name=\"h\" valueReference=\"1\" causality=\"output\" variability=\"continuous\" initial=\"exact\">\n      <Real start=\"1\" unit=\"m\" displayUnit=\"mm\"/>\n    </ScalarVariable>\n",
+    structure="\n    <Outputs>\n      <Unknown index=\"1\"/>\n    </Outputs>\n",
+    extra="\n  <UnitDefinitions>\n    <Unit name=\"m\">\n      <BaseUnit m=\"1\"/>\n      <DisplayUnit name=\"mm\" factor=\"0.001\"/>\n    </Unit>\n  </UnitDefinitions>\n",
+  )
+  // FMI 2: relative source file references stay inside the FMU root.
+  let md063 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<fmiModelDescription fmiVersion=\"2.0\" modelName=\"M\" guid=\"{g}\">\n  <ModelExchange modelIdentifier=\"M\">\n    <SourceFiles>\n      <File name=\"src.c\"/>\n      <File name=\"lib/model.c\"/>\n    </SourceFiles>\n  </ModelExchange>\n  <ModelVariables/>\n  <ModelStructure/>\n</fmiModelDescription>\n"
+  let cases : Array[(String, String)] = [
+    ("MD-001", fmi2_minimal_xml),
+    ("MD-002", fmi2_minimal_xml),
+    ("MD-003", fmi2_minimal_xml),
+    ("MD-004", fmi2_minimal_xml),
+    ("MD-005", fmi2_minimal_xml),
+    ("MD-006", fmi2_minimal_xml),
+    ("MD-007", fmi2_full_xml),
+    ("MD-010", fmi2_full_xml),
+    ("MD-011", fmi3_full_xml),
+    ("MD-012", fmi2_minimal_xml),
+    ("MD-013", fmi2_full_xml),
+    ("MD-014", fmi2_full_xml),
+    ("MD-015", fmi2_full_xml),
+    ("MD-016", fmi2_full_xml),
+    ("MD-017", fmi2_full_xml),
+    ("MD-018", fmi2_full_xml),
+    ("MD-019", md019),
+    ("MD-020", fmi3_full_xml),
+    ("MD-030", fmi3_full_xml),
+    ("MD-031", fmi3_full_xml),
+    ("MD-032", fmi3_full_xml),
+    ("MD-033", fmi3_full_xml),
+    ("MD-034", md034),
+    ("MD-035", md035),
+    ("MD-036", fmi3_full_xml),
+    ("MD-037", md037),
+    ("MD-038", md038),
+    ("MD-040", fmi2_full_xml),
+    ("MD-041", fmi2_full_xml),
+    ("MD-042", fmi2_full_xml),
+    ("MD-043", fmi2_full_xml),
+    ("MD-044", fmi2_full_xml),
+    ("MD-045", fmi3_full_xml),
+    ("MD-046", md046),
+    ("MD-047", fmi3_full_xml),
+    ("MD-048", fmi3_full_xml),
+    ("MD-049", fmi2_full_xml),
+    ("MD-050", fmi2_full_xml),
+    ("MD-051", md051),
+    ("MD-052", fmi2_full_xml),
+    ("MD-053", fmi2_full_xml),
+    ("MD-054", fmi2_full_xml),
+    ("MD-060", fmi2_minimal_xml),
+    ("MD-061", fmi2_minimal_xml),
+    ("MD-062", fmi2_minimal_xml),
+    ("MD-063", md063),
+  ]
+  for case in cases {
+    let (code, xml) = case
+    let codes = rule_codes(xml)
+    assert_true(
+      !codes.contains(code),
+      msg="positive case for \{code} triggered it: \{codes}",
+    )
+  }
 }
 
 ///|

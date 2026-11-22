@@ -110,6 +110,7 @@ fn parse_fmi3_model(
     "variableNamingConvention",
     NamingConvention::parse,
     path=root_path,
+    code="MD-007",
   )
   let description = optional_attr(root, "description", path=root_path)
   let author = optional_attr(root, "author", path=root_path)

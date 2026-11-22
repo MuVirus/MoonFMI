@@ -347,6 +347,7 @@ fn optional_int32(
   element : XmlElement,
   name : String,
   path~ : String,
+  code~ : String = "STRUCTURE",
 ) -> Int32? raise SchemaError {
   match optional_attr(element, name, path~) {
     Some(text) =>
@@ -356,6 +357,7 @@ fn optional_int32(
           path~,
           line=line_of(element),
           column=column_of(element),
+          code~,
         ),
       )
     None => None
@@ -414,12 +416,14 @@ fn column_of(element : XmlElement) -> Int32 {
 
 ///|
 /// Read an optional enumeration attribute; an unknown value is a structure
-/// error with the offending text in the message.
+/// error with the offending text in the message. `code~` names the rule
+/// the attribute belongs to (defaults to the generic STRUCTURE fallback).
 fn[T] optional_enum(
   element : XmlElement,
   name : String,
   parse : (String) -> T?,
   path~ : String,
+  code~ : String = "STRUCTURE",
 ) -> T? raise SchemaError {
   match optional_attr(element, name, path~) {
     Some(text) =>
@@ -431,6 +435,7 @@ fn[T] optional_enum(
             path~,
             line=line_of(element),
             column=column_of(element),
+            code~,
           )
       }
     None => None

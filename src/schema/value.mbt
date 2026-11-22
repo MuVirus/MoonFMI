@@ -11,8 +11,9 @@ fn fail_value(
   path~ : String,
   line~ : Int32,
   column~ : Int32,
+  code~ : String = "STRUCTURE",
 ) -> SchemaError {
-  structure_error(message~, path~, line~, column~)
+  structure_error(message~, path~, line~, column~, code~)
 }
 
 ///|
@@ -70,12 +71,14 @@ pub fn parse_uint32_value(
 }
 
 ///|
-/// Parse an `xs:int` attribute (FMI 2 integer bounds and starts).
+/// Parse an `xs:int` attribute (FMI 2 integer bounds and starts). `code~`
+/// names the owning rule for non-integer text (MD-052 for unit exponents).
 pub fn parse_int32_value(
   text : String,
   path~ : String,
   line~ : Int32,
   column~ : Int32,
+  code~ : String = "STRUCTURE",
 ) -> Int32 raise SchemaError {
   @string.parse_int(text) catch {
     _ =>
@@ -84,6 +87,7 @@ pub fn parse_int32_value(
         path~,
         line~,
         column~,
+        code~,
       )
   }
 }
