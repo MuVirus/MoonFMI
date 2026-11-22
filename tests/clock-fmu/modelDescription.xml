@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription fmiVersion="3.0" modelName="MoonfmiClocks" instantiationToken="{8f0e1c2a-77b1-4f0e-9d5a-moonfmi0001}" generationTool="MoonFMI-test-fixture">
+  <ModelExchange modelIdentifier="MoonfmiClocks" needsCompletedIntegratorStep="true"/>
+  <CoSimulation modelIdentifier="MoonfmiClocks" canHandleVariableCommunicationStepSize="true" providesIntermediateUpdate="true" canReturnEarlyAfterIntermediateUpdate="true" hasEventMode="true"/>
+  <ModelVariables>
+    <Int32 name="constant_counter" valueReference="0" causality="output" variability="discrete" initial="exact" start="0"/>
+    <Int32 name="triggered_counter" valueReference="1" causality="output" variability="discrete" initial="exact" start="0"/>
+    <Int32 name="countdown_counter" valueReference="2" causality="output" variability="discrete" initial="exact" start="0"/>
+    <Int32 name="early_return_requests" valueReference="3" causality="output" variability="discrete" initial="exact" start="0"/>
+    <Float64 name="clock_time" valueReference="4" causality="output" variability="continuous" initial="exact" start="0"/>
+    <Float64 name="der(clock_time)" valueReference="5" causality="output" variability="continuous" initial="calculated" derivative="4"/>
+    <Clock name="in_constant" valueReference="6" causality="input" intervalVariability="constant" intervalDecimal="0.1" priority="0"/>
+    <Clock name="in_triggered" valueReference="7" causality="input" intervalVariability="triggered" priority="1"/>
+    <Clock name="in_countdown" valueReference="8" causality="input" intervalVariability="countdown" priority="2"/>
+    <Clock name="out_clock" valueReference="9" causality="output" intervalVariability="triggered"/>
+    <Float64 name="constant_count_f64" valueReference="10" causality="output" variability="continuous" initial="calculated"/>
+    <Float64 name="triggered_count_f64" valueReference="11" causality="output" variability="continuous" initial="calculated"/>
+    <Float64 name="countdown_count_f64" valueReference="12" causality="output" variability="continuous" initial="calculated"/>
+  </ModelVariables>
+  <ModelStructure>
+    <Output valueReference="0"/>
+    <Output valueReference="1"/>
+    <Output valueReference="2"/>
+    <Output valueReference="3"/>
+    <Output valueReference="4"/>
+    <Output valueReference="5"/>
+    <Output valueReference="10"/>
+    <Output valueReference="11"/>
+    <Output valueReference="12"/>
+    <ContinuousStateDerivative valueReference="5"/>
+    <InitialUnknown valueReference="5"/>
+  </ModelStructure>
+</fmiModelDescription>
