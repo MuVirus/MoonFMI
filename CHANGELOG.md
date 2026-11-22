@@ -10,6 +10,41 @@ no skipping): fixes go to the patch number, features to the minor number,
 and a breaking JSON-contract change bumps the `/vN` suffix before it may
 touch the module version.
 
+## [0.8.2] - 2026-11-23
+
+### Added
+
+- The intermediate-update channel is real: `fmi3IntermediateUpdateCallback`
+  forwards each in-step report into a MoonBit callback (time, variable
+  access flags, early-return offer), the host's decision is carried back
+  to the FMU, and `fmi3DoStep` early returns are resumed from
+  `lastSuccessfulTime` by the existing step body. `eventModeUsed` and
+  `earlyReturnAllowed` follow the model description's capability bits
+  instead of being hardcoded, and `fmi3Instance::intermediate_update_count`
+  exposes the callback volume. Reference-FMUs Roberts raises ~20000
+  callbacks over its 0.02 s horizon.
+- Roberts (fmi3) finally runs under CS: the loader honors the declared
+  event mode and retries without it when the FMU's binaries reject
+  `eventModeUsed = true` (its sources ship without `EVENT_UPDATE`, though
+  the XML declares `hasEventMode` — the old "requires intermediate-update
+  support" attribution in the reports was wrong).
+- The self-built clock fixture `tests/clock-fmu/` (MoonfmiClocks) gives
+  the CS/ME clock paths and the cross-FMU clock connections their first
+  real-FMU evidence: CS grid activation of constant/triggered/countdown
+  clocks, ME event-mode rounds, an end-to-end early-return negotiation,
+  and a `couple` clock connection between two instances. The tests
+  compile the C source with clang and skip cleanly without one.
+- `CsInstance` exposes `intermediate_update_count` (0 for backends
+  without the channel).
+
+### Fixed
+
+- The 0.8.1 attribution: Roberts' CS rejection came from binaries
+  compiled without `EVENT_UPDATE` rejecting `eventModeUsed = true`, not
+  from a missing intermediate-update host channel —
+  `docs/reports/crosscheck.md`, the roadmap backlog and the test file
+  comments say so now.
+
 ## [0.8.1] - 2026-11-22
 
 ### Added
@@ -249,7 +284,8 @@ tag.
 
 ## Link references
 
-[Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.2
 [0.8.1]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.1
 [0.8.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.0
 [0.7.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.7.0

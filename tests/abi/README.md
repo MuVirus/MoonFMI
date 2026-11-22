@@ -2,7 +2,7 @@
 
 `tests/abi` 保存 ABI 基线、C 参考宿主，以及动态加载和日志测试用的 C 样品。
 
-所有构建产物都写进 `tests/abi/.cache/`，该目录已被忽略，不进 git。`scripts/check.ps1` 和 `scripts/check.sh` 会在跑测试前先构建一次。
+所有构建产物都写进 `tests/abi/.cache/`，该目录已被忽略，不进 git。`scripts/check.mbtx` 会在跑测试前先构建一次。
 
 ## 1. 动态加载样品
 
@@ -11,15 +11,10 @@
 | `fixture.c` | 正常库：整数加法、浮点乘法、填结构体、接回调 |
 | `dependency.c` | 被 `broken.c` 依赖的小库，编译后会被删掉 |
 | `broken.c` | 故意依赖一个不存在的库，用来验证“缺依赖”诊断 |
-| `build-fixture.ps1` | Windows 构建脚本（PowerShell + clang） |
-| `build-fixture.sh` | Linux 构建脚本（sh + clang） |
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/abi/build-fixture.ps1
-```
+| `build-fixture.mbtx` | MoonBit 构建脚本（moon run + clang；探测 PATH 与 `~/.moon/bin` 的 clang） |
 
 ```bash
-sh tests/abi/build-fixture.sh
+moon run tests/abi/build-fixture.mbtx --target native
 ```
 
 Windows 产物是 `libmoonfmi_fixture.dll` 和 `libmoonfmi_broken.dll`，Linux 产物是 `libmoonfmi_fixture.so` 和 `libmoonfmi_broken.so`。`broken` 依赖的库在构建完成后立即删除，因此它一定是“加载失败”的状态。
@@ -49,7 +44,7 @@ tests/abi/.cache/probe > tests/abi/baselines/x86_64-linux.json
 比较：
 
 ```bash
-node tests/abi/check-abi.mjs
+moon run tests/abi/check-abi.mbtx --target native
 ```
 
 脚本先用 `--header` 问出本机对应的基准文件名，再逐字段比较。缺失字段、多出字段、值不一致都会打印成 `fmi2.sizeof.fmi2Boolean: expected 4, got 8` 这样的行。新增平台时先提交一份基线，再让检查脚本去比。
@@ -79,13 +74,13 @@ node tests/abi/check-abi.mjs
 `fmi2_host.c` 是一个只依赖官方头文件和平台加载器的独立 C 程序。它加载 `BouncingBall.fmu` 里的动态库，以 10 ms 步长跑到 3 秒，每 0.5 秒采样一次 `(time, h, v)`，输出 JSON。这份输出是 MoonBit 后端的对照答案。
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File tests/abi/run-fmi2-host.ps1
-node tests/abi/check-host.mjs
+moon run tests/abi/run-fmi2-host.mbtx --target native
+moon run tests/abi/check-host.mbtx --target native
 ```
 
 ```bash
 sh tests/abi/run-fmi2-host.sh
-node tests/abi/check-host.mjs
+moon run tests/abi/check-host.mbtx --target native
 ```
 
 基准在 `baselines/fmi2-bouncingball.json`，共 6 个采样点。比较用相对误差 1e-9，因为两个宿主累积 300 步浮点加法的方式相同，差异只应来自打印精度。
@@ -99,8 +94,8 @@ node tests/abi/check-host.mjs
 
 ```bash
 moon run tests/data/fetch-fmus.mbtx --target native   # 取测试语料
-powershell -File tests/abi/build-fixture.ps1       # 或 sh tests/abi/build-fixture.sh
-node tests/abi/check-abi.mjs                       # ABI 基线
-powershell -File tests/abi/run-fmi2-host.ps1       # C 参考宿主
-node tests/abi/check-host.mjs                      # 对照基准
+moon run tests/abi/build-fixture.mbtx --target native
+moon run tests/abi/check-abi.mbtx --target native                       # ABI 基线
+moon run tests/abi/run-fmi2-host.mbtx --target native  # C 参考宿主
+moon run tests/abi/check-host.mbtx --target native                      # 对照基准
 ```

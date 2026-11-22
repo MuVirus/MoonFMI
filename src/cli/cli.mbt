@@ -190,7 +190,7 @@ fn command_help(command : String) -> String {
 /// CLI version, kept in sync with the `version` field of `moon.mod`; the
 /// root-package whitebox test asserts the two agree. Releases always take
 /// the smallest possible version increment (patch first, no skipping).
-let moonfmi_version : String = "0.8.1"
+let moonfmi_version : String = "0.8.2"
 
 ///|
 /// The version reported by `moonfmi version` and `moonfmi --json` payloads.

@@ -206,13 +206,22 @@
 | R-07 ✅ | Stair（fmi2/fmi3 CS）+ Roberts（fmi3 ME）集成测试 | P2 | S | 语料 13 个样品全部进入至少一个接口的集成测试 |
 | R-08 ✅ | 版本对齐与版本政策（最小递增） | P2 | S | 根包测试锁 moon.mod 与 CLI 版本一致 |
 
-**遗留（新增 open 项）**：
+**遗留（0.8.1 记录的两项，已于 0.8.2 关闭）**：
 
-- Roberts CS：FMU 声明 `providesIntermediateUpdate`，宿主需实现 FMI 3
-  intermediate-update 通道后才可加载（见
-  [`../reports/crosscheck.md`](../reports/crosscheck.md)）；
-- 自建带时钟的最小 C 测试 FMU：官方语料没有 CS/ME 接口的时钟模型，
-  CS/ME 时钟路径目前只有 mock 白盒证据。
+- ~~Roberts CS~~：0.8.2 修正归因——拒绝实例化源于二进制未编译
+  `EVENT_UPDATE` 而非缺 intermediate-update 通道；loader 现按声明加回退
+  实例化，CS 路径进入集成测试（R-09）；
+- ~~自建带时钟的最小 C 测试 FMU~~：0.8.2 交付 `tests/clock-fmu/`
+  （MoonfmiClocks，CS+ME 接口 + 输入/输出时钟 + 步中回调早退协商），
+  CS/ME 时钟调度与 couple 时钟连线均有真 FMU 证据（R-09）。
+
+---
+
+## 10.3 0.8.2 增量（2026-11-23，遗留项收尾，全部完成）
+
+| ID | 任务 | 优先级 | 规模 | 验收 |
+| --- | --- | --- | --- | --- |
+| R-09 ✅ | Roberts CS（event-mode 回退）+ intermediate-update 通道做实 + MoonfmiClocks 自建时钟 FMU（CS/ME/couple/早退协商端到端） | P1 | L | Roberts CS 集成测试 + ~2 万次步中回调计数；MoonfmiClocks 四类端到端测试全绿；clang 缺失时 SKIP |
 
 ---
 

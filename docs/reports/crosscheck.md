@@ -34,11 +34,14 @@
 
 `skip` means the FMU does not offer that interface or state shape (an
 SE-only model under CS, or an ME run of a stateless model); the P4/P7
-integration tests cover those directly. `fmi3/Roberts.fmu under CS skips
-because the FMU requires FMI 3 intermediate-update capabilities (declares
-`providesIntermediateUpdate/`hasEventMode and returns no component
-without them); its ME path runs, and CS support for intermediate-update
-FMUs is future work.
+integration tests cover those directly. Roberts CS ran `skip` in the
+0.7.0 matrix because its binaries were compiled without `EVENT_UPDATE`
+and rejected the hardcoded `eventModeUsed = true` at instantiation — a
+binary/XML mismatch, **not** a missing intermediate-update host channel
+(the FMU never checks the callback or the required-variable list). Since
+0.8.2 the loader retries without event mode, and the CS path runs
+(`stair_roberts_wbtest.mbt`), with the intermediate-update channel
+exercised end to end by the MoonfmiClocks fixture.
 
 ## 2. Cross-version trajectory comparison (FMI 2 vs FMI 3)
 

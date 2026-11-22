@@ -319,16 +319,21 @@ Scheduled Execution 把模型划分为由时钟驱动的分区。主算法职责
 - 与 CS/ME 的变量交换一致性仍由模型侧保证，调度器只负责按时激活；
 - 记录器支持 Float64 标量与 Float64 数组输出（数组按元素拆 `name[i]` 列）；Int32 等其它类型不在记录器内（Clocks 的计数器是 Int32，因此 CLI JSON 的 `outputs` 为空，属已知限制，测试用类型化通道读取）。
 
-### 5.3 CS/ME 复用同一调度（0.8.1）
+### 5.3 CS/ME 复用同一调度（0.8.1 引入，0.8.2 有真 FMU 证据）
 
 激活轮次提炼为 `run_clock_rounds`（`src/sim/clocks.mbt`），基于闭包结构的
 `ClockScheduling`。CS 主算法在每个通信点前跑轮次并观察输出时钟；ME 在
-初始事件与每次事件结算后（仍在事件模式内）跑轮次。CS 的
-`fmi3DoStep` 同时消费 `nextEventTime`，不跨越 FMU 声明的时间事件。
+初始事件与每次事件结算后（仍在事件模式内）跑轮次——ME 的 constant 时钟
+按“事件点追及”语义补跑错过的刻（每网格点轮次属于 SE/CS 语义）。
+CS 的 `fmi3DoStep` 同时消费 `nextEventTime`，不跨越 FMU 声明的时间事件。
 带时钟的 CS/ME-only FMU 导出的 `fmi3GetIntervalDecimal` /
-`fmi3ActivateModelPartition` 独立于 Scheduled Execution 解析。官方语料
-没有 CS/ME 接口的时钟模型，该路径目前由 mock 白盒测试覆盖
-（`src/sim/clocks_wbtest.mbt`），自建时钟测试 FMU 见 backlog 遗留项。
+`fmi3ActivateModelPartition` 独立于 Scheduled Execution 解析。
+
+验证分两层：mock 白盒（`src/sim/clocks_wbtest.mbt`）覆盖轮次语义，自建
+fixture MoonfmiClocks（`tests/clock-fmu/`，CS+ME 接口 + 输入/输出时钟 +
+intermediate-update 早退协商）经 `tests/integration/clock_fmu_wbtest.mbt`
+提供真 FMU 端到端证据——CS 网格激活时间线、ME 事件模式轮次、couple 跨
+FMU 时钟连线。
 
 ### 5.4 验收
 

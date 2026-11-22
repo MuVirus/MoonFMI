@@ -16,6 +16,7 @@
 
 | 日期 | 内容 |
 | --- | --- |
+| [`2026-11-23`](2026-11-23.md) | 0.8.2 遗留项收尾：Roberts CS 归因修正与 event-mode 回退、intermediate-update 通道、自建时钟 FMU MoonfmiClocks（CS/ME/couple/早退协商端到端） |
 | [`2026-11-22`](2026-11-22.md) | 0.8.1 需求缺口收尾：ME time event、FMI 3 setter/数组、CS/ME 时钟调度与 couple 时钟连线、MD-007/052 + 规则矩阵、Stair/Roberts 语料、版本政策对齐 |
 | [`2026-11-20`](2026-11-20.md) | moonfig 接入：CLI 配置层（`--config`、JSON/INI/dotenv、`MOONFMI_` 环境变量）、依赖准入、能力缺口台账 |
 | [`2026-11-19`](2026-11-19.md) | 0.7.0 全量开发：sandbox/--set/couple 收口、LS-WASM 校验、矩阵导出、安全硬化、ARM CI |
