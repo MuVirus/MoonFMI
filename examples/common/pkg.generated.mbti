@@ -1,0 +1,26 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/fmi/examples/common"
+
+import {
+  "MuVirus/fmi/src/schema",
+  "MuVirus/fmi/src/sim",
+}
+
+// Values
+pub fn arguments() -> Array[String]
+
+pub fn[T] fail(Int32, String) -> T
+
+pub fn fmi2_columns(@schema.Fmi2ModelDescription) -> Array[(UInt32, String)]
+
+pub fn fmi3_columns(@schema.Fmi3ModelDescription) -> Array[(UInt32, String)]
+
+pub fn to_csv(Array[String], @sim.SimulationResult) -> String
+
+// Errors
+
+// Types and methods
+
+// Type aliases
+
+// Traits

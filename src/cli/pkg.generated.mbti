@@ -1,0 +1,26 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/fmi/src/cli"
+
+// Values
+pub fn is_sandbox_child() -> Bool
+
+pub fn run(Array[String], (String) -> Bytes raise ReadError) -> Int32
+
+pub async fn run_sandboxed(Array[String]) -> Int32?
+
+pub fn usage() -> String
+
+pub fn version_string() -> String
+
+pub fn wants_sandbox(Array[String]) -> Bool
+
+// Errors
+pub(all) suberror ReadError {
+  Failed(String)
+}
+
+// Types and methods
+
+// Type aliases
+
+// Traits

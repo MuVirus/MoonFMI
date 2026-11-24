@@ -30,6 +30,8 @@ preferred_target = "wasm"
 
 这意味着默认构建偏向 wasm。对 native 导入器，需要在开发/CI 中显式 `--target native`，或在包级别做 target 条件编译。
 
+> **后记（2026-11-24）**：项目已把 `preferred_target` 改为 `native`——native 导入器是首个可用路径，而 wasm 规范后端让 `src/backend/native` / `src/cli` 这类 native-only 包拿不到 `.mbti`，公开接口既进不了 CI 的接口一致性检查，编辑器里也没有补全。改后这四个包补上了接口文件；上文的分析与当时的其他结论不受影响。
+
 ---
 
 ## 2. 动态加载

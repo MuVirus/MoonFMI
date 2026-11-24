@@ -10,6 +10,37 @@ no skipping): fixes go to the patch number, features to the minor number,
 and a breaking JSON-contract change bumps the `/vN` suffix before it may
 touch the module version.
 
+## [Unreleased]
+
+### Added
+
+- `examples/`: runnable examples for the library API — `validate-model`
+  (static model-description validation, no dynamic library involved),
+  `simulate-cs`, `simulate-me`, `couple-fmus` (two FMUs in one coupled run,
+  with the value references looked up by variable name) and
+  `export-source-fmu` (model IR to a source FMU plus a deterministic `.fmu`)
+  — together with a `moonfmi` command-line cheat sheet (commands, options,
+  exit codes, the configuration layer). The quality gate runs every example,
+  so the documented code cannot rot.
+
+### Changed
+
+- The module's canonical backend is now `native` (`preferred_target` in
+  `moon.mod`), matching the project's first usable path. The native-only
+  packages — `src/backend/native`, `src/cli`, `cmd/main` and
+  `tests/integration` — gain a generated interface, so their public API
+  changes are now caught by the CI interface check, and editors can
+  complete and navigate inside them. The already generated interfaces are
+  byte-identical; `wasm` remains a supported target
+  (`moon check --target wasm`, `moon test --target wasm`).
+- `src/backend/wasm/pkg.generated.mbti` is removed: the package is
+  wasm-only, and `moon info` only writes interfaces for the canonical
+  backend, so the file could no longer be regenerated (verified for
+  `moon info`, `moon check --target wasm`, `moon build --target wasm` and
+  `moon test --target wasm`). Its public interface is therefore no longer
+  covered by the CI interface check until the wasm backend has real
+  content to expose.
+
 ## [0.8.2] - 2026-11-23
 
 ### Added

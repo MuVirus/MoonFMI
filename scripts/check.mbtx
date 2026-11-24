@@ -75,6 +75,67 @@ async fn run_script_step(name : String, script : String) -> Unit raise {
 }
 
 ///|
+// The examples are executable documentation: run them so they cannot rot.
+// They need the corpus FMUs (fetched by tests/data/fetch-fmus.mbtx) and the
+// native backend, both of which the CI job already provides. Their output
+// goes to .moonfmi-tmp/, which is gitignored.
+async fn run_example_step(
+  name : String,
+  example : String,
+  args : Array[String],
+) -> Unit raise {
+  run_step(
+    name,
+    "moon",
+    ["run", "examples/" + example, "--target", "native", "--"] + args,
+  )
+}
+
+///|
+async fn run_examples() -> Unit raise {
+  run_example_step(
+    "example: validate (FMI 2)",
+    "validate-model",
+    ["tests/data/.cache/fmi2/BouncingBall.fmu"],
+  )
+  run_example_step(
+    "example: validate (FMI 3)",
+    "validate-model",
+    ["tests/data/.cache/fmi3/BouncingBall.fmu"],
+  )
+  run_example_step(
+    "example: co-simulation",
+    "simulate-cs",
+    [
+      "tests/data/.cache/fmi2/BouncingBall.fmu",
+      ".moonfmi-tmp/example-ball.csv",
+    ],
+  )
+  run_example_step(
+    "example: model exchange",
+    "simulate-me",
+    [
+      "tests/data/.cache/fmi2/VanDerPol.fmu",
+      ".moonfmi-tmp/example-vdp.csv",
+    ],
+  )
+  run_example_step(
+    "example: coupled simulation",
+    "couple-fmus",
+    [
+      "tests/data/.cache/fmi2/Dahlquist.fmu",
+      "tests/data/.cache/fmi2/Feedthrough.fmu",
+      ".moonfmi-tmp/example-coupled.csv",
+    ],
+  )
+  run_example_step(
+    "example: source export",
+    "export-source-fmu",
+    [".moonfmi-tmp/example-export"],
+  )
+}
+
+///|
 // Probe whether a tool is invokable; missing commands surface as spawn
 // errors, which count as absent.
 async fn probe(cmd : String, args : Array[String]) -> Bool {
@@ -192,6 +253,8 @@ async fn main raise {
     ["test", "--target", "native", "--release", "--deny-warn", "-p", integration_package],
   )
   run_step("test: wasm", "moon", ["test", "--target", "wasm", "--deny-warn"])
+
+  run_examples()
 
   check_public_interface(initial)
 

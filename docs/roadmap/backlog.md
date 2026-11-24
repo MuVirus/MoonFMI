@@ -143,6 +143,7 @@
 | G-04 ✅ | 安全审查/沙箱方案 | P2 | L | C-04 ✅ | security-review.md(残余风险 R1..R7) |
 | G-05 ✅ | 文档/示例/迁移 | P1 | M | 全程 | 新用户可跑通 |
 | G-06 ✅ | 发布检查/SBOM | P2 | M | 全部 | release-checklist.md + SBOM |
+| G-07 ✅ | `examples/` 可运行示例目录 + `moonfmi` 命令行速查 | P1 | M | G-05 | 5 个示例（校验/CS/ME/耦合/导出）+ README；质量闸门逐步执行，示例不会腐烂（2026-11-23） |
 
 ---
 

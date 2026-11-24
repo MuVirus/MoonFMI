@@ -36,6 +36,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | --- | --- | --- |
 | [`standards/`](standards/README.md) | FMI 2.0.4 / 3.0.2 标准梳理、API、模型描述、随附 XSD 与头文件 | 所有人，尤其是实现者 |
 | [`guides/`](guides/quick-start.md) | 任务指南：快速上手等「我要做成 X」的操作路径 | 使用者 |
+| [`../examples/`](../examples/README.md) | 可运行示例：库用法示例与 `moonfmi` 命令行速查（仓库根目录，不在 `docs/` 下） | 使用者 |
 | [`research/`](research/README.md) | FMPy、fmi-rs、WASM-FMI、MoonBit 生态、其他工具的研究 | 架构与选型 |
 | [`design/`](design/README.md) | 总体架构、导入器、主算法、导出器、WASM 策略、ABI、验证、打包、CLI 与测试 | 实现者 |
 | [`roadmap/`](roadmap/README.md) | 分阶段路线图、P0 详细执行计划、任务 backlog、风险清单 | 项目管理者与贡献者 |
@@ -221,6 +222,7 @@ tests/
 - 任何设计决策变更，应在 `design/` 对应文档中记录“决策 / 理由 / 替代方案 / 影响”。
 - 每个阶段结束，在 `records/` 新增一份实施记录，写清实际命令、证据、与计划的偏差和遗留问题；记录是历史快照，不回改。
 - 新增外部依赖前，先在 `research/moonbit-ecosystem.md` 中补充评估，避免核心包被不成熟依赖锁死；**并且必须先告知用户**：为什么需要、候选版本与是否最新、许可证、维护状态、替代方案、不引入的后果，得到确认后再改 `moon.mod`。已用依赖的升级同样要先告知。评估结果与当前版本清单写在 `research/moonbit-ecosystem.md` §13。
+- 「可运行证明」放仓库根目录的 [`../examples/`](../examples/README.md)：每个子目录是一个独立的可执行包，只依赖 `src/` 下的公开 API。示例会被 `scripts/check.mbtx` 的 examples 步骤执行，因此文档里的代码不会腐烂；改公开 API 后要同步示例。
 - 路线图中的阶段完成标准应可验证（测试、交叉检查、性能指标），避免“代码写完即完成”。
 
 ---

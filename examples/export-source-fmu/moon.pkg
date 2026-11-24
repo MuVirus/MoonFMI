@@ -1,0 +1,7 @@
+import {
+  "MuVirus/fmi/examples/common",
+  "MuVirus/fmi/src/export",
+  "MuVirus/fmi/src/schema",
+}
+
+pkgtype(kind: "executable")

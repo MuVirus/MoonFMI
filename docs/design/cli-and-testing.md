@@ -299,6 +299,15 @@ model.fmu
 - wasm component 校验；
 - 不在 CI 中跑无限 fuzz，使用固定种子 + 时间预算。
 
+### 6.7 示例
+
+仓库根目录的 `examples/` 是可运行文档：每个子目录一个可执行包，只依赖
+`src/` 下的公开 API（校验模型描述、CS 仿真、ME 仿真、多 FMU 耦合、导出
+源码 FMU），外加一份 `moonfmi` 命令行速查表。
+
+示例不另起测试框架——`scripts/check.mbtx` 的 examples 步骤逐个执行它们，
+因此示例与公开 API 不会各自腐烂；改公开 API 后必须同步示例。
+
 ---
 
 ## 7. CI 矩阵

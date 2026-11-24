@@ -1,0 +1,401 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "MuVirus/fmi/src/backend/native"
+
+import {
+  "MuVirus/fmi/src/fmi",
+  "MuVirus/fmi/src/schema",
+  "tonyfettes/c/pointer",
+}
+
+// Values
+pub fn backend_tag(@fmi.Fmu) -> String
+
+pub fn fmi3_clock_metadata(@schema.Fmi3ModelDescription) -> (Array[SeClock], Array[UInt32])
+
+pub fn fmi3_element_count(@schema.Fmi3ModelDescription, @schema.Fmi3Variable) -> Int32
+
+pub fn host_platform_name() -> String
+
+pub fn load_fmi2_fmu(Bytes, host~ : @fmi.HostPlatform, temp_directory~ : String, platform_override? : String, logging_on? : Bool, on_log? : (Fmi2LogMessage) -> Unit) -> LoadedFmu2 raise LoaderError
+
+pub fn load_fmi2_me_fmu(Bytes, host~ : @fmi.HostPlatform, temp_directory~ : String, platform_override? : String, logging_on? : Bool, on_log? : (Fmi2LogMessage) -> Unit) -> LoadedFmu2Me raise LoaderError
+
+pub fn load_fmi3_fmu(Bytes, host~ : @fmi.HostPlatform, temp_directory~ : String, platform_override? : String, logging_on? : Bool, on_log? : (Fmi3LogMessage) -> Unit, on_intermediate_update? : (Fmi3IntermediateUpdate) -> Bool) -> LoadedFmu3 raise LoaderError
+
+pub fn load_fmi3_me_fmu(Bytes, host~ : @fmi.HostPlatform, temp_directory~ : String, platform_override? : String, logging_on? : Bool, on_log? : (Fmi3LogMessage) -> Unit) -> LoadedFmu3Me raise LoaderError
+
+pub fn load_fmi3_se_fmu(Bytes, host~ : @fmi.HostPlatform, temp_directory~ : String, platform_override? : String, logging_on? : Bool, on_log? : (Fmi3LogMessage) -> Unit) -> LoadedFmu3Se raise LoaderError
+
+// Errors
+pub(all) suberror DynamicLibraryError {
+  LibraryNotFound(path~ : String)
+  MissingDependency(path~ : String, os_message~ : String)
+  LoadFailed(path~ : String, os_message~ : String)
+  SymbolNotFound(path~ : String, symbol~ : String, os_message~ : String)
+  CloseFailed(path~ : String, os_message~ : String)
+}
+pub fn DynamicLibraryError::message(Self) -> String
+
+pub(all) suberror Fmi2Error {
+  Fmi2LibraryLoad(DynamicLibraryError)
+  Fmi2LibraryUnload(DynamicLibraryError)
+  Fmi2ShimRejected(detail~ : String)
+  Fmi2InstantiateFailed(instance_name~ : String, detail~ : String)
+  Fmi2InstanceFreed(operation~ : String)
+  Fmi2StatusFailed(operation~ : String, status~ : @fmi.FmiStatus)
+  Fmi2InstancesAlive(count~ : Int32)
+  Fmi2CapabilityMissing(operation~ : String, capability~ : String)
+  Fmi2InvalidArgument(operation~ : String, detail~ : String)
+}
+pub fn Fmi2Error::message(Self) -> String
+
+pub(all) suberror Fmi3Error {
+  Fmi3LibraryLoad(DynamicLibraryError)
+  Fmi3LibraryUnload(DynamicLibraryError)
+  Fmi3ShimRejected(detail~ : String)
+  Fmi3InstantiateFailed(instance_name~ : String, detail~ : String)
+  Fmi3InstanceFreed(operation~ : String)
+  Fmi3StatusFailed(operation~ : String, status~ : @fmi.FmiStatus)
+  Fmi3CapabilityMissing(operation~ : String, detail~ : String)
+  Fmi3InstancesAlive(count~ : Int32)
+}
+pub fn Fmi3Error::message(Self) -> String
+
+pub(all) suberror LoaderError {
+  Rejected(detail~ : String)
+  LoadFailed(detail~ : String)
+}
+pub fn LoaderError::message(Self) -> String
+
+// Types and methods
+pub struct DynamicLibrary {
+  handle : @pointer.Pointer[Unit]
+  path : String
+  mut closed : Bool
+}
+pub fn DynamicLibrary::close(Self) -> Unit raise DynamicLibraryError
+pub fn[T] DynamicLibrary::funcref(Self, String) -> FuncRef[T] raise DynamicLibraryError
+pub fn DynamicLibrary::is_closed(Self) -> Bool
+pub fn DynamicLibrary::open(String) -> Self raise DynamicLibraryError
+pub fn DynamicLibrary::path(Self) -> String
+pub fn DynamicLibrary::symbol(Self, String) -> @pointer.Pointer[Unit] raise DynamicLibraryError
+
+pub struct Fmi2Instance {
+  library : Fmi2Library
+  handle : @pointer.Pointer[Unit]
+  sink : Fmi2LogSink
+  mut freed : Bool
+  mut declared_fmu_state : Bool
+  mut declared_serialized : Bool
+  mut saved_state : @pointer.Pointer[Unit]?
+}
+pub fn Fmi2Instance::completed_integrator_step(Self, no_set_fmu_state_prior? : Bool) -> (Bool, Bool) raise Fmi2Error
+pub fn Fmi2Instance::declare_fmu_state(Self, Bool) -> Unit
+pub fn Fmi2Instance::declare_serialized_fmu_state(Self, Bool) -> Unit
+pub fn Fmi2Instance::deserialize_fmu_state(Self, FixedArray[Byte]) -> @pointer.Pointer[Unit] raise Fmi2Error
+pub fn Fmi2Instance::do_step(Self, Double, Double, new_step? : Bool) -> @fmi.FmiStatus
+pub fn Fmi2Instance::enter_continuous_time_mode(Self) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::enter_event_mode(Self) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::enter_initialization_mode(Self) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::exit_initialization_mode(Self) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::finish(Self) -> Unit raise @fmi.SimulationError
+pub fn Fmi2Instance::free(Self) -> Unit
+pub fn Fmi2Instance::free_fmu_state(Self, @pointer.Pointer[Unit]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::get_boolean(Self, Array[UInt32]) -> Array[Bool] raise Fmi2Error
+pub fn Fmi2Instance::get_boolean_one(Self, UInt32) -> Bool raise Fmi2Error
+pub fn Fmi2Instance::get_continuous_states(Self, FixedArray[Double]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::get_derivatives(Self, FixedArray[Double]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::get_event_indicators(Self, FixedArray[Double]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::get_fmu_state(Self) -> @pointer.Pointer[Unit] raise Fmi2Error
+pub fn Fmi2Instance::get_integer(Self, Array[UInt32]) -> Array[Int32] raise Fmi2Error
+pub fn Fmi2Instance::get_integer_one(Self, UInt32) -> Int32 raise Fmi2Error
+pub fn Fmi2Instance::get_nominals_of_continuous_states(Self, FixedArray[Double]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::get_real(Self, Array[UInt32]) -> Array[Double] raise Fmi2Error
+pub fn Fmi2Instance::get_real_one(Self, UInt32) -> Double raise Fmi2Error
+pub fn Fmi2Instance::get_string(Self, Array[UInt32]) -> Array[String] raise Fmi2Error
+pub fn Fmi2Instance::get_string_one(Self, UInt32) -> String raise Fmi2Error
+pub fn Fmi2Instance::initialize(Self) -> Unit raise @fmi.SimulationError
+pub fn Fmi2Instance::is_freed(Self) -> Bool
+pub fn Fmi2Instance::log_count(Self) -> UInt64
+pub fn Fmi2Instance::new_discrete_states(Self) -> @fmi.EventInfo raise Fmi2Error
+pub fn Fmi2Instance::read_real(Self, UInt32) -> Double raise @fmi.SimulationError
+pub fn Fmi2Instance::serialize_fmu_state(Self, @pointer.Pointer[Unit]) -> FixedArray[Byte] raise Fmi2Error
+pub fn Fmi2Instance::set_boolean(Self, Array[UInt32], Array[Bool]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_boolean_one(Self, UInt32, Bool) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_continuous_states(Self, FixedArray[Double]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_fmu_state(Self, @pointer.Pointer[Unit]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_integer(Self, Array[UInt32], Array[Int32]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_integer_one(Self, UInt32, Int32) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_real(Self, Array[UInt32], Array[Double]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_real_one(Self, UInt32, Double) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_string(Self, Array[UInt32], Array[String]) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_string_one(Self, UInt32, String) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::set_time(Self, Double) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::setup_experiment(Self, start_time~ : Double, stop_time? : Double, tolerance? : Double) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::step(Self, Double, Double) -> Unit raise @fmi.SimulationError
+pub fn Fmi2Instance::supports_fmu_state(Self) -> Bool
+pub fn Fmi2Instance::supports_integer_boolean(Self) -> Bool
+pub fn Fmi2Instance::supports_serialized_fmu_state(Self) -> Bool
+pub fn Fmi2Instance::supports_serialized_state_size(Self) -> Bool
+pub fn Fmi2Instance::supports_string(Self) -> Bool
+pub fn Fmi2Instance::terminate(Self) -> Unit raise Fmi2Error
+pub fn Fmi2Instance::write_real(Self, UInt32, Double) -> Unit raise @fmi.SimulationError
+pub impl @fmi.CsInstance for Fmi2Instance
+pub impl @fmi.MeInstance for Fmi2Instance
+
+pub struct Fmi2Library {
+  library : DynamicLibrary
+  shim : @pointer.Pointer[Unit]
+  mut open_instances : Int32
+  mut closed : Bool
+}
+pub fn Fmi2Library::close(Self) -> Unit raise Fmi2Error
+pub fn Fmi2Library::instantiate(Self, instance_name~ : String, guid~ : String, resource_path~ : String, logging_on? : Bool, on_log? : (Fmi2LogMessage) -> Unit) -> Fmi2Instance raise Fmi2Error
+pub fn Fmi2Library::instantiate_me(Self, instance_name~ : String, guid~ : String, resource_path~ : String, logging_on? : Bool, on_log? : (Fmi2LogMessage) -> Unit) -> Fmi2Instance raise Fmi2Error
+pub fn Fmi2Library::is_closed(Self) -> Bool
+pub fn Fmi2Library::open(String) -> Self raise Fmi2Error
+pub fn Fmi2Library::open_instance_count(Self) -> Int32
+pub fn Fmi2Library::path(Self) -> String
+pub fn Fmi2Library::version(Self) -> String
+
+pub(all) struct Fmi2LogMessage {
+  status : @fmi.FmiStatus
+  instance_name : String
+  category : String
+  message : String
+}
+
+type Fmi2LogSink
+
+pub(all) struct Fmi3DoStepResult {
+  status : @fmi.FmiStatus
+  event_handling_needed : Bool
+  terminate_simulation : Bool
+  early_return : Bool
+  last_successful_time : Double
+}
+
+pub struct Fmi3Instance {
+  library : Fmi3Library
+  handle : @pointer.Pointer[Unit]
+  sink : Fmi3LogSink
+  intermediate : Fmi3IntermediateSink
+  event_mode_used : Bool
+  mut freed : Bool
+  mut declared_fmu_state : Bool
+  mut declared_serialized : Bool
+  mut saved_state : @pointer.Pointer[Unit]?
+  mut pending_tolerance : Double?
+  mut pending_start : Double
+  mut pending_stop : Double?
+}
+pub fn Fmi3Instance::activate_model_partition(Self, UInt32, Double) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::activate_partition(Self, UInt32, Double) -> Unit raise @fmi.SimulationError
+pub fn Fmi3Instance::clock_update_count(Self) -> Int64
+pub fn Fmi3Instance::completed_integrator_step(Self, no_set_fmu_state_prior? : Bool) -> (Bool, Bool) raise Fmi3Error
+pub fn Fmi3Instance::declare_fmu_state(Self, Bool) -> Unit
+pub fn Fmi3Instance::declare_serialized_fmu_state(Self, Bool) -> Unit
+pub fn Fmi3Instance::do_step(Self, Double, Double, no_set_fmu_state_prior? : Bool) -> Fmi3DoStepResult raise Fmi3Error
+pub fn Fmi3Instance::enter_continuous_time_mode(Self) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::enter_event_mode(Self) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::enter_step_mode(Self) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::finish(Self) -> Unit raise @fmi.SimulationError
+pub fn Fmi3Instance::free(Self) -> Unit
+pub fn Fmi3Instance::free_fmu_state(Self, @pointer.Pointer[Unit]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::get_binary(Self, Array[UInt32]) -> Array[Bytes] raise Fmi3Error
+pub fn Fmi3Instance::get_binary_one(Self, UInt32) -> Bytes raise Fmi3Error
+pub fn Fmi3Instance::get_boolean(Self, Array[UInt32]) -> Array[Bool] raise Fmi3Error
+pub fn Fmi3Instance::get_boolean_values(Self, Array[UInt32], Int32) -> Array[Bool] raise Fmi3Error
+pub fn Fmi3Instance::get_clock(Self, UInt32) -> Bool raise @fmi.SimulationError
+pub fn Fmi3Instance::get_clock_one(Self, UInt32) -> Bool raise Fmi3Error
+pub fn Fmi3Instance::get_continuous_state_derivatives(Self, FixedArray[Double]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::get_continuous_states(Self, FixedArray[Double]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::get_derivatives(Self, FixedArray[Double]) -> Unit raise @fmi.SimulationError
+pub fn Fmi3Instance::get_event_indicators(Self, FixedArray[Double]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::get_float32(Self, Array[UInt32]) -> Array[Double] raise Fmi3Error
+pub fn Fmi3Instance::get_float32_values(Self, Array[UInt32], Int32) -> Array[Double] raise Fmi3Error
+pub fn Fmi3Instance::get_float64(Self, Array[UInt32]) -> Array[Double] raise Fmi3Error
+pub fn Fmi3Instance::get_float64_one(Self, UInt32) -> Double raise Fmi3Error
+pub fn Fmi3Instance::get_float64_values(Self, Array[UInt32], Int32) -> Array[Double] raise Fmi3Error
+pub fn Fmi3Instance::get_fmu_state(Self) -> @pointer.Pointer[Unit] raise Fmi3Error
+pub fn Fmi3Instance::get_int16(Self, Array[UInt32]) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_int16_values(Self, Array[UInt32], Int32) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_int32(Self, Array[UInt32]) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_int32_values(Self, Array[UInt32], Int32) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_int64(Self, Array[UInt32]) -> Array[Int64] raise Fmi3Error
+pub fn Fmi3Instance::get_int64_values(Self, Array[UInt32], Int32) -> Array[Int64] raise Fmi3Error
+pub fn Fmi3Instance::get_int8(Self, Array[UInt32]) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_int8_values(Self, Array[UInt32], Int32) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_interval(Self, UInt32) -> (Double, @fmi.IntervalQualifier)? raise @fmi.SimulationError
+pub fn Fmi3Instance::get_interval_decimal(Self, UInt32) -> (Double, @fmi.IntervalQualifier)? raise Fmi3Error
+pub fn Fmi3Instance::get_nominals_of_continuous_states(Self, FixedArray[Double]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::get_string(Self, Array[UInt32]) -> Array[String] raise Fmi3Error
+pub fn Fmi3Instance::get_string_one(Self, UInt32) -> String raise Fmi3Error
+pub fn Fmi3Instance::get_uint16(Self, Array[UInt32]) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_uint16_values(Self, Array[UInt32], Int32) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_uint32(Self, Array[UInt32]) -> Array[UInt32] raise Fmi3Error
+pub fn Fmi3Instance::get_uint32_values(Self, Array[UInt32], Int32) -> Array[UInt32] raise Fmi3Error
+pub fn Fmi3Instance::get_uint64(Self, Array[UInt32]) -> Array[UInt64] raise Fmi3Error
+pub fn Fmi3Instance::get_uint64_values(Self, Array[UInt32], Int32) -> Array[UInt64] raise Fmi3Error
+pub fn Fmi3Instance::get_uint8(Self, Array[UInt32]) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::get_uint8_values(Self, Array[UInt32], Int32) -> Array[Int32] raise Fmi3Error
+pub fn Fmi3Instance::initialize(Self) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::intermediate_update_count(Self) -> Int64
+pub fn Fmi3Instance::is_freed(Self) -> Bool
+pub fn Fmi3Instance::log_count(Self) -> UInt64
+pub fn Fmi3Instance::new_discrete_states(Self) -> @fmi.EventInfo raise @fmi.SimulationError
+pub fn Fmi3Instance::read_real(Self, UInt32) -> Double raise @fmi.SimulationError
+pub fn Fmi3Instance::set_binary(Self, Array[UInt32], Array[Bytes]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_binary_one(Self, UInt32, Bytes) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_boolean(Self, Array[UInt32], Array[Bool]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_boolean_one(Self, UInt32, Bool) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_clock(Self, UInt32, Bool) -> Unit raise @fmi.SimulationError
+pub fn Fmi3Instance::set_clock_one(Self, UInt32, Bool) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_continuous_states(Self, FixedArray[Double]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_float32(Self, Array[UInt32], Array[Double]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_float32_one(Self, UInt32, Double) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_float64(Self, Array[UInt32], Array[Double]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_float64_one(Self, UInt32, Double) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_fmu_state(Self, @pointer.Pointer[Unit]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_int16(Self, Array[UInt32], Array[Int32]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_int16_one(Self, UInt32, Int32) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_int32(Self, Array[UInt32], Array[Int32]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_int32_one(Self, UInt32, Int32) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_int64(Self, Array[UInt32], Array[Int64]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_int64_one(Self, UInt32, Int64) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_int8(Self, Array[UInt32], Array[Int32]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_int8_one(Self, UInt32, Int32) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_string(Self, Array[UInt32], Array[String]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_string_one(Self, UInt32, String) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_time(Self, Double) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_uint16(Self, Array[UInt32], Array[Int32]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_uint16_one(Self, UInt32, Int32) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_uint32(Self, Array[UInt32], Array[UInt32]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_uint32_one(Self, UInt32, UInt32) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_uint64(Self, Array[UInt32], Array[UInt64]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_uint8(Self, Array[UInt32], Array[Int32]) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::set_uint8_one(Self, UInt32, Int32) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::setup_experiment(Self, start_time~ : Double, stop_time? : Double, tolerance? : Double) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::step(Self, Double, Double) -> Unit raise @fmi.SimulationError
+pub fn Fmi3Instance::supports_fmu_state(Self) -> Bool
+pub fn Fmi3Instance::supports_scheduled_execution(Self) -> Bool
+pub fn Fmi3Instance::terminate(Self) -> Unit raise Fmi3Error
+pub fn Fmi3Instance::update_discrete_states(Self) -> @fmi.EventInfo raise Fmi3Error
+pub fn Fmi3Instance::write_real(Self, UInt32, Double) -> Unit raise @fmi.SimulationError
+pub impl @fmi.CsInstance for Fmi3Instance
+pub impl @fmi.MeInstance for Fmi3Instance
+pub impl @fmi.SeInstance for Fmi3Instance
+
+type Fmi3IntermediateSink
+
+pub(all) struct Fmi3IntermediateUpdate {
+  time : Double
+  set_requested : Bool
+  get_allowed : Bool
+  step_finished : Bool
+  can_return_early : Bool
+}
+
+pub struct Fmi3Library {
+  library : DynamicLibrary
+  shim : @pointer.Pointer[Unit]
+  mut open_instances : Int32
+  mut closed : Bool
+}
+pub fn Fmi3Library::close(Self) -> Unit raise Fmi3Error
+pub fn Fmi3Library::instantiate(Self, instance_name~ : String, instantiation_token~ : String, resource_path~ : String, logging_on? : Bool, on_log? : (Fmi3LogMessage) -> Unit, event_mode_used? : Bool, early_return_allowed? : Bool, on_intermediate_update? : (Fmi3IntermediateUpdate) -> Bool) -> Fmi3Instance raise Fmi3Error
+pub fn Fmi3Library::instantiate_me(Self, instance_name~ : String, instantiation_token~ : String, resource_path~ : String, logging_on? : Bool, on_log? : (Fmi3LogMessage) -> Unit) -> Fmi3Instance raise Fmi3Error
+pub fn Fmi3Library::instantiate_se(Self, instance_name~ : String, instantiation_token~ : String, resource_path~ : String, logging_on? : Bool, on_log? : (Fmi3LogMessage) -> Unit) -> Fmi3Instance raise Fmi3Error
+pub fn Fmi3Library::is_closed(Self) -> Bool
+pub fn Fmi3Library::open(String) -> Self raise Fmi3Error
+pub fn Fmi3Library::open_instance_count(Self) -> Int32
+pub fn Fmi3Library::path(Self) -> String
+pub fn Fmi3Library::version(Self) -> String
+
+pub(all) struct Fmi3LogMessage {
+  status : @fmi.FmiStatus
+  category : String
+  message : String
+}
+
+type Fmi3LogSink
+
+pub(all) struct LoadedFmu2 {
+  model : @schema.Fmi2ModelDescription
+  directory : String
+  files : Array[String]
+  library : Fmi2Library
+  instance : Fmi2Instance
+}
+pub fn LoadedFmu2::dispose(Self) -> Unit
+pub fn LoadedFmu2::instance(Self) -> Fmi2Instance
+pub fn LoadedFmu2::model(Self) -> @schema.Fmi2ModelDescription
+
+pub(all) struct LoadedFmu2Me {
+  model : @schema.Fmi2ModelDescription
+  directory : String
+  files : Array[String]
+  library : Fmi2Library
+  instance : Fmi2Instance
+  state_count : Int32
+  event_indicator_count : Int32
+}
+pub fn LoadedFmu2Me::dispose(Self) -> Unit
+pub fn LoadedFmu2Me::instance(Self) -> Fmi2Instance
+pub fn LoadedFmu2Me::model(Self) -> @schema.Fmi2ModelDescription
+
+pub(all) struct LoadedFmu3 {
+  model : @schema.Fmi3ModelDescription
+  directory : String
+  files : Array[String]
+  library : Fmi3Library
+  instance : Fmi3Instance
+}
+pub fn LoadedFmu3::dispose(Self) -> Unit
+pub fn LoadedFmu3::instance(Self) -> Fmi3Instance
+pub fn LoadedFmu3::model(Self) -> @schema.Fmi3ModelDescription
+
+pub(all) struct LoadedFmu3Me {
+  model : @schema.Fmi3ModelDescription
+  directory : String
+  files : Array[String]
+  library : Fmi3Library
+  instance : Fmi3Instance
+  state_count : Int32
+  event_indicator_count : Int32
+}
+pub fn LoadedFmu3Me::dispose(Self) -> Unit
+pub fn LoadedFmu3Me::instance(Self) -> Fmi3Instance
+pub fn LoadedFmu3Me::model(Self) -> @schema.Fmi3ModelDescription
+
+pub(all) struct LoadedFmu3Se {
+  model : @schema.Fmi3ModelDescription
+  directory : String
+  files : Array[String]
+  library : Fmi3Library
+  instance : Fmi3Instance
+  clocks : Array[SeClock]
+  output_clocks : Array[UInt32]
+}
+pub fn LoadedFmu3Se::dispose(Self) -> Unit
+pub fn LoadedFmu3Se::instance(Self) -> Fmi3Instance
+pub fn LoadedFmu3Se::model(Self) -> @schema.Fmi3ModelDescription
+
+pub struct NativeBackend {
+  loaded : Bool
+}
+pub fn NativeBackend::is_loaded(Self) -> Bool
+pub fn NativeBackend::new() -> Self
+
+pub struct SeClock {
+  value_reference : UInt32
+  variability : @schema.ClockIntervalVariability
+  interval_decimal : Double?
+  shift_decimal : Double?
+  priority : UInt32
+  triggered : Bool
+}
+
+// Type aliases
+
+// Traits

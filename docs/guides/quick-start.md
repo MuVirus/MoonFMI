@@ -56,10 +56,21 @@
    import `src/{fmi,sim,backend/native}`；脱离仓库目录时用已发布的
    mooncakes 版本。
 
+6. 看可运行示例：仓库根目录的 [`../../examples/`](../../examples/README.md)
+   有五个可执行示例（校验模型描述、CS 仿真、ME 仿真、多 FMU 耦合、导出
+   源码 FMU），外加一份 `moonfmi` 命令行速查表。示例只依赖 `src/` 下的
+   公开 API，可以直接抄进自己的工程：
+
+   ```bash
+   moon run examples/simulate-cs --target native -- \
+       tests/data/.cache/fmi2/BouncingBall.fmu ball.csv
+   ```
+
 ## 常见坑与下一步
 
-- `preferred_target` 是 wasm；跑 CLI 必须显式 `--target native`，否则
-  `src/cli` 不参与编译。
+- `preferred_target` 是 native（2026-11-24 起）：`moon run cmd/main` 默认就走
+  native，`src/cli` 会参与编译；CI 里仍然显式写 `--target native`，避免以后
+  规范后端再变时踩坑。
 - `simulate` 加载的 FMU 解包到临时目录，`dispose` 时删除；目录必须为空。
 - 退出码、JSON 契约字段见 [`../cli-json.md`](../cli-json.md)——两个数字
   是契约的一部分，脚本不要猜。

@@ -1,0 +1,13 @@
+import {
+  "MuVirus/fmi/examples/common",
+  "MuVirus/fmi/src/backend/native",
+  "MuVirus/fmi/src/fmi",
+  "MuVirus/fmi/src/schema",
+  "MuVirus/fmi/src/sim",
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+}
+
+supported_targets = "native"
+
+pkgtype(kind: "executable")

@@ -184,6 +184,11 @@ whole FMU there so the native library and its resources have real paths.
 `dispose()` releases the instance, unloads the library, and removes the
 directory. FMI 3 uses the same shape through `load_fmi3_fmu`.
 
+Runnable versions of the above live in [`examples/`](examples/README.md):
+validating a model description, a CS simulation, an ME simulation, coupling
+several FMUs, exporting a source FMU, plus a `moonfmi` command-line cheat
+sheet.
+
 ## Known limits
 
 - The Model Exchange integrators are fixed-step Euler and classic RK4 only.
@@ -228,6 +233,8 @@ directory. FMI 3 uses the same shape through `load_fmi3_fmu`.
 ## Documentation
 
 - [`docs/AGENTS.md`](docs/AGENTS.md) — the documentation map.
+- [`examples/`](examples/README.md) — runnable examples and the command-line
+  cheat sheet.
 - [`docs/design/architecture.md`](docs/design/architecture.md) — package
   layout and design decisions.
 - [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md) — phases and open

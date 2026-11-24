@@ -12,7 +12,7 @@
 | 沙箱 | 只能访问宿主显式授予的能力 |
 | 浏览器 | 无需安装 native 依赖，适合在线演示/教学/轻量工具 |
 | 分发 | 比 `.dll/.so` 更容易做签名、版本管理、CDN 分发 |
-| MoonBit | 项目 `preferred_target = "wasm"`，WASM 是自然目标 |
+| MoonBit | 项目最初 `preferred_target = "wasm"`（2026-11-24 起改为 native），WASM 仍是受支持的目标 |
 
 但 WASM 不是“免费的可移植性”：
 

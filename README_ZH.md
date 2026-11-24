@@ -148,6 +148,9 @@ fn run_ball(fmu_path : String) -> Unit {
 让动态库和资源都有真实路径。`dispose()` 负责释放实例、卸载动态库并删除
 该目录。FMI 3 走同样的流程，只是换成 `load_fmi3_fmu`。
 
+完整可运行的示例见 [`examples/`](examples/README.md)：校验模型描述、CS 仿真、
+ME 仿真、多 FMU 耦合、导出源码 FMU，以及一份 `moonfmi` 命令行速查表。
+
 ## 已知限制
 
 - 模型交换（ME）的积分器只有定步长 Euler 与经典 RK4。MoonFMI 不是通用
@@ -181,6 +184,7 @@ fn run_ball(fmu_path : String) -> Unit {
 ## 文档
 
 - [`docs/AGENTS.md`](docs/AGENTS.md) —— 文档地图。
+- [`examples/`](examples/README.md) —— 可运行示例与命令行速查。
 - [`docs/design/architecture.md`](docs/design/architecture.md) —— 包布局与
   设计决策。
 - [`docs/roadmap/roadmap.md`](docs/roadmap/roadmap.md) —— 阶段划分与待办。

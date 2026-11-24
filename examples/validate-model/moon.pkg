@@ -1,0 +1,9 @@
+import {
+  "MuVirus/fmi/examples/common",
+  "MuVirus/fmi/src/fmi",
+  "MuVirus/fmi/src/schema",
+  "moonbitlang/core/env",
+  "moonbitlang/x/fs",
+}
+
+pkgtype(kind: "executable")

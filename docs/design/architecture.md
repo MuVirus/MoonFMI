@@ -71,6 +71,13 @@ tests/
   data/             语料清单与下载脚本
   abi/              sizeof/offsetof 基线与 C 对照
   spikes/           P0 一次性验证
+examples/           可运行示例（库用法 + moonfmi 命令行速查）
+  common/           示例共用的小工具
+  validate-model/   校验模型描述
+  simulate-cs/      联合仿真
+  simulate-me/      模型交换仿真
+  couple-fmus/      多 FMU 耦合仿真
+  export-source-fmu/ 导出源码 FMU
 ```
 
 包名采用 `MuVirus/fmi/src/schema` 形式，`backend/native` 的导入路径是 `MuVirus/fmi/src/backend/native`。每个包有独立 `moon.pkg`，只暴露必要的公开类型。
@@ -262,7 +269,11 @@ pub struct Callbacks {
 | native 二进制 FMU 导出 | ⚠️ 需 C 工具链 | ❌ | ❌ | ❌ |
 | WASM FMU 导出 | ❌ | ⚠️ POC | ✅ 目标 | ❌ |
 
-`preferred_target = "wasm"` 只表示默认构建目标，不意味着所有能力都走 wasm。native 后端是首个可用路径。
+`preferred_target` 只表示模块的**规范后端**（`.mbti` 按它生成，编辑器语言服务器也按它分析），不意味着所有能力都走这个后端。2026-11-24 起它从 `wasm` 改为 `native`：本项目的首个可用路径就是 native 导入器，native-only 包（`src/backend/native`、`src/cli`）此前在 wasm 规范后端下没有接口文件，公开接口不在 CI 的「接口未变化」检查范围内；改为 native 后这四个包（`cmd/main`、`src/backend/native`、`src/cli`、`tests/integration`）都补上了 `.mbti`，接口变更开始受 CI 约束。
+
+代价是镜像的一端：`src/backend/wasm` 是 wasm-only 包，在 native 规范后端下拿不到接口文件，其 `.mbti` 从仓库移除（该包目前只是 20 行的占位实现，没有 wasm 专属依赖；等 LS-WASM 绑定真的落地、依赖 WIT/组件时再谈接口跟踪）。规范后端与包的目标约束不可能同时满足——一个模块只能有一个规范后端，所以要么生产路径的接口没人守，要么实验路径的接口没人守；这里选了守生产路径。wasm 仍是受支持的目标（`moon check --target wasm`、`moon test --target wasm`），LS-WASM 路线也仍然有效。
+
+这个删除是稳定的：实测 `moon info`（native 规范后端）、`moon check --target wasm`、`moon build --target wasm`、`moon test --target wasm` 都不会把 `src/backend/wasm/pkg.generated.mbti` 写回来，所以 CI 的「拒绝脏工作区」步骤不会因此失败。代价是该包的公开接口不再被 CI 的接口检查覆盖。
 
 ---
 
