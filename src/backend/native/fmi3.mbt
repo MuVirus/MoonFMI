@@ -685,6 +685,29 @@ pub fn Fmi3Library::close(self : Fmi3Library) -> Unit raise Fmi3Error {
 }
 
 ///|
+/// FMI 3 expects `resourcePath` to be the **native absolute path** of the
+/// FMU's `resources/` directory, terminated by a file separator — it is not
+/// the `file://` URI that FMI 2 wants (see
+/// [`docs/standards/fmi3-api.md`](../../../docs/standards/fmi3-api.md) §2.3).
+/// Reference FMUs concatenate the resource file name straight onto the path,
+/// so the trailing separator has to be there already; Windows paths use `\`,
+/// POSIX paths `/`.
+fn fmi3_resource_location(path : String) -> String {
+  if host_platform_name().has_prefix("windows") {
+    let native = path.replace_all(old="/", new="\\")
+    if native.has_suffix("\\") {
+      native
+    } else {
+      native + "\\"
+    }
+  } else if path.has_suffix("/") {
+    path
+  } else {
+    path + "/"
+  }
+}
+
+///|
 fn Fmi3Library::instantiate_common(
   self : Fmi3Library,
   instance_name~ : String,
@@ -709,7 +732,7 @@ fn Fmi3Library::instantiate_common(
     self.shim,
     @utf8.encode(instance_name),
     @utf8.encode(instantiation_token),
-    @utf8.encode(fmi2_resource_location(resource_path)),
+    @utf8.encode(fmi3_resource_location(resource_path)),
     interface_kind,
     if logging_on {
       1

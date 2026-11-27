@@ -122,6 +122,24 @@ test "fmi3 feedthrough roundtrips every value type" {
 }
 
 ///|
+/// The Resource FMU loads its value from `resources/y.txt` during
+/// initialization, so it only works when the FMI 3 resource path reaches
+/// the FMU as a native directory path (FMI 3.0.2 §2.3): a `file://` URI
+/// makes the FMU fail in `fmi3ExitInitializationMode`.
+test "fmi3 resource fmu reads its resource file" {
+  let loaded = load_fmi3("fmi3/Resource.fmu", "fmi3-res")
+  let instance = loaded.instance()
+  instance.setup_experiment(start_time=0.0, stop_time=1.0)
+  init_fmi3_cs(instance)
+  instance.step(0.0, 0.1)
+  // `resources/y.txt` starts with 'a' (ASCII 97); the FMU assigns that
+  // character to the Int32 output `y` (value reference 1).
+  assert_eq(instance.get_int32([1U])[0], 97)
+  instance.terminate()
+  loaded.dispose()
+}
+
+///|
 test "fmi3 statespace reads and writes array variables" {
   let loaded = load_fmi3("fmi3/StateSpace.fmu", "fmi3-ss")
   let instance = loaded.instance()
