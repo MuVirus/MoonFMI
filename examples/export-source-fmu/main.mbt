@@ -7,7 +7,7 @@
 /// 导出器覆盖的是受限的显式模型：连续状态、直通输出、参数与输入。方程只
 /// 支持 IR 里那几种构造，它不是 Modelica 编译器。
 ///
-/// 生成的 `.fmu` 是**源码 FMU**：里面有 `modelDescription.xml`、C 源码和
+/// 生成的 `.fmu` 是源码 FMU：里面有 `modelDescription.xml`、C 源码和
 /// `CMakeLists.txt`，但没有编译好的动态库。要在 MoonFMI 里真正跑它，先用
 /// CMake 编出 `binaries/<平台>/` 下的库，再把目录重新打包。
 
@@ -34,7 +34,6 @@ fn build_ir() -> @export.ModelIr {
   ignore(ir.add_real_state(name="x", start=1.0, description="state"))
   ignore(ir.add_real_output(name="y", description="output"))
   // 方程用 IR 表达式描述：变量引用、常数与四则运算。
-  // 这一条是 x 的导数方程：x' = -k*x。
   ir.add_derivative(
     state="x",
     expr=@export.IrExpr::mul(
@@ -42,7 +41,6 @@ fn build_ir() -> @export.ModelIr {
       @export.IrExpr::v("x"),
     ),
   )
-  // 这一条是输出的代数方程：y = x。
   ir.add_output_equation(output="y", expr=@export.IrExpr::v("x"))
   ir
 }
@@ -68,7 +66,6 @@ fn main {
   let result = @export.export_source_fmu(build_ir(), options) catch {
     error => @common.fail(1, "export failed: \{error.message()}")
   }
-  // 生成的文件清单。
   println("output:  \{result.output_dir}")
   for (name, _bytes) in result.files {
     println("  \{name}")

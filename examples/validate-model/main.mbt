@@ -47,7 +47,6 @@ fn main {
   // 一次调用走完整条校验流水线：容器检查、XML 解析、MD-001..MD-063 语义
   // 规则；归档里带 WASM 组件时还会顺带检查 LS-WASM manifest。
   let (model, report) = @fmi.validate_fmu_bytes(data)
-  // 解析成功才有摘要；解析失败时原因在下面的诊断里。
   match model {
     Some(model) => {
       println("model:    \{model.model_name()}")

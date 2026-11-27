@@ -11,15 +11,15 @@
 /// 它们来自模型描述。
 
 ///|
-/// 仿真的起始时间。
+/// 仿真的起始时间，单位秒。
 const START_TIME : Double = 0.0
 
 ///|
-/// 仿真的结束时间。
+/// 仿真的结束时间，单位秒。
 const STOP_TIME : Double = 5.0
 
 ///|
-/// 积分步长。
+/// 积分步长，单位秒。ME 的时间网格由积分器决定，通信点只用于记录。
 const STEP_SIZE : Double = 0.01
 
 ///|
@@ -38,8 +38,8 @@ fn run_me(
     record=references,
     // 换成 @sim.Euler 就是一阶显式欧拉；RK4 精度更高，代价是每步四次求值。
     solver=@sim.Rk4,
-    // 连续状态数与事件指示器数：ME 的模型只给导数、不给「一步」，宿主按
-    // 这两个数字开缓冲区，然后自己积分再把状态写回去。
+    // 连续状态数与事件指示器数：ME 的模型只给导数、不提供 `fmi2DoStep`，
+    // 宿主按这两个数字开缓冲区，然后自己积分再把状态写回去。
     state_count~,
     event_indicator_count~,
   )
@@ -55,9 +55,7 @@ fn main {
     )
   }
   let path = args[0]
-  // 第二个参数可选：给了就写文件，不给就把 CSV 打到标准输出。
   let output = if args.length() > 1 { Some(args[1]) } else { None }
-  // 整个归档读进内存；后面的加载器只需要这份字节。
   let data = @fs.read_file_to_bytes(path) catch {
     error =>
       match error {
@@ -65,13 +63,11 @@ fn main {
           @common.fail(3, "cannot read '\{path}': \{message}")
       }
   }
-  // 从归档里的模型描述判断 FMI 版本：两个版本的加载器和实例类型不同。
   let (model, _report) = @fmi.validate_fmu_bytes(data)
   let is_fmi3 = match model {
     Some(@schema.V3(_)) => true
     _ => false
   }
-  // 平台串形如 "x86_64-windows"，决定去 binaries/ 下取哪个二进制。
   let host_name = @native.host_platform_name()
   let host = match @fmi.parse_host_platform(host_name) {
     Some(host) => host
@@ -83,11 +79,9 @@ fn main {
   }
   let work_dir = ".moonfmi-tmp/run-\{@env.now()}"
   let (names, result) = if is_fmi3 {
-    // ME 的加载器：除了 CS 那几件事，还要读出连续状态数与事件指示器数。
     let loaded = @native.load_fmi3_me_fmu(data, host~, temp_directory=work_dir) catch {
       error => @common.fail(1, "cannot load '\{path}': \{error.message()}")
     }
-    // 要录哪些输出：从模型描述里挑 Real 输出，拿它们的 value reference。
     let columns = @common.fmi3_columns(loaded.model())
     let references : Array[UInt32] = []
     let names : Array[String] = []
@@ -95,7 +89,6 @@ fn main {
       references.push(column.0)
       names.push(column.1)
     }
-    // 主算法只认 MeInstance 这个 trait，FMI 2 与 FMI 3 共用同一份代码。
     let result = run_me(
       loaded.instance(),
       references,
@@ -107,7 +100,6 @@ fn main {
         @common.fail(5, "simulation failed: \{error.message()}")
       }
     }
-    // 释放实例、卸载动态库、删掉解压目录。
     loaded.dispose()
     (names, result)
   } else {
@@ -135,7 +127,6 @@ fn main {
     loaded.dispose()
     (names, result)
   }
-  // 结果是一组时间点加每列一条序列，渲染成 `time,<列名>` 的 CSV。
   let csv = @common.to_csv(names, result)
   match output {
     Some(file) => {

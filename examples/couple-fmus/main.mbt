@@ -11,32 +11,34 @@
 /// `Float64_continuous_input`，再录下 Feedthrough 的输出。
 ///
 /// 关键点：连线用的是 value reference，而 value reference 只在单个模型
-/// 描述内有效，所以这里按**变量名**反查，而不是写死数字。
+/// 描述内有效，所以这里按"变量名"反查，而不是写死数字。
 ///
 /// 示例按 FMI 2 写（两个语料 FMU 都是 FMI 2）。FMI 3 的参与者把加载器换成
 /// `load_fmi3_fmu`、把列的收集换成 `fmi3_columns` 即可，其余不变。
 
 ///|
-/// 仿真的起始时间。
+/// 仿真的起始时间，单位秒。
 const START_TIME : Double = 0.0
 
 ///|
-/// 仿真的结束时间。
+/// 仿真的结束时间，单位秒。
 const STOP_TIME : Double = 1.0
 
 ///|
-/// 通信步长。取 0.1：Dahlquist 自带的步进就是这个量级，每一步都能看到源
-/// 模型的变化。
+/// 通信步长，单位秒。取 0.1：Dahlquist 自带的步进就是这个量级，每一步都能
+/// 看到源模型的变化。
 const STEP_SIZE : Double = 0.1
 
 ///|
-/// 源模型的输出变量名与目标模型的输入、输出变量名。
+/// 源模型的输出变量名。
 const SOURCE_OUTPUT : String = "x"
 
 ///|
+/// 目标模型的输入变量名。
 const TARGET_INPUT : String = "Float64_continuous_input"
 
 ///|
+/// 目标模型的输出变量名。
 const TARGET_OUTPUT : String = "Float64_continuous_output"
 
 ///|
@@ -60,9 +62,7 @@ fn main {
   }
   let source_path = args[0]
   let target_path = args[1]
-  // 第三个参数可选：给了就写文件，不给就把 CSV 打到标准输出。
   let output = if args.length() > 2 { Some(args[2]) } else { None }
-  // 两个归档各自读进内存，后面各自加载到独立的解压目录。
   let source_data = @fs.read_file_to_bytes(source_path) catch {
     error =>
       match error {
@@ -77,7 +77,6 @@ fn main {
           @common.fail(3, "cannot read '\{target_path}': \{message}")
       }
   }
-  // 平台串形如 "x86_64-windows"，决定去 binaries/ 下取哪个二进制。
   let host_name = @native.host_platform_name()
   let host = match @fmi.parse_host_platform(host_name) {
     Some(host) => host
@@ -87,8 +86,7 @@ fn main {
     _ => ()
   }
   let stamp = @env.now()
-  // 每个 FMU 解压到自己的空目录，互不干扰。加载器一次做完：开归档 →
-  // 校验模型描述 → 选平台二进制 → 加载动态库 → 实例化 FMU。
+  // 每个 FMU 解压到自己的空目录，互不干扰。
   let source = @native.load_fmi2_fmu(
     source_data,
     host~,
@@ -106,7 +104,6 @@ fn main {
       @common.fail(1, "cannot load '\{target_path}': \{error.message()}")
     }
   }
-  // 连线两端都按名字查 value reference。
   let source_vr = match find_vr(source.model(), SOURCE_OUTPUT) {
     Some(reference) => reference
     None => {

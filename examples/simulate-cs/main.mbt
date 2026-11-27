@@ -7,19 +7,17 @@
 /// FMI 2 与 FMI 3 走同一条流程：先从归档里的 `modelDescription.xml` 判断
 /// 版本，再挑对应的加载器；加载之后两边的接口都是 `CsInstance`，主算法
 /// 因此可以复用同一份代码。
-///
-/// 要改仿真区间，改下面的常量即可；换成自己的 FMU 只要换路径。
 
 ///|
-/// 仿真的起始时间。
+/// 仿真的起始时间，单位秒。
 const START_TIME : Double = 0.0
 
 ///|
-/// 仿真的结束时间。
+/// 仿真的结束时间，单位秒。
 const STOP_TIME : Double = 3.0
 
 ///|
-/// 通信步长。
+/// 通信步长，单位秒。CS 主算法在每个通信点交换一次变量。
 const STEP_SIZE : Double = 0.01
 
 ///|
@@ -47,9 +45,7 @@ fn main {
     )
   }
   let path = args[0]
-  // 第二个参数可选：给了就写文件，不给就把 CSV 打到标准输出。
   let output = if args.length() > 1 { Some(args[1]) } else { None }
-  // 整个归档读进内存；后面的加载器只需要这份字节。
   let data = @fs.read_file_to_bytes(path) catch {
     error =>
       match error {
@@ -57,13 +53,11 @@ fn main {
           @common.fail(3, "cannot read '\{path}': \{message}")
       }
   }
-  // 从归档里的模型描述判断 FMI 版本：两个版本的加载器和实例类型不同。
   let (model, _report) = @fmi.validate_fmu_bytes(data)
   let is_fmi3 = match model {
     Some(@schema.V3(_)) => true
     _ => false
   }
-  // 平台串形如 "x86_64-windows"，决定去 binaries/ 下取哪个二进制。
   let host_name = @native.host_platform_name()
   let host = match @fmi.parse_host_platform(host_name) {
     Some(host) => host
@@ -76,12 +70,9 @@ fn main {
   }
   let work_dir = ".moonfmi-tmp/run-\{@env.now()}"
   let (names, result) = if is_fmi3 {
-    // 加载器一次做完四件事：开归档 → 校验模型描述 → 选平台二进制 →
-    // 加载动态库 → 实例化 FMU。
     let loaded = @native.load_fmi3_fmu(data, host~, temp_directory=work_dir) catch {
       error => @common.fail(1, "cannot load '\{path}': \{error.message()}")
     }
-    // 要录哪些输出：从模型描述里挑 Real 输出，拿它们的 value reference。
     let columns = @common.fmi3_columns(loaded.model())
     let references : Array[UInt32] = []
     let names : Array[String] = []
@@ -89,7 +80,6 @@ fn main {
       references.push(column.0)
       names.push(column.1)
     }
-    // 主算法只认 CsInstance 这个 trait，FMI 2 与 FMI 3 共用同一份代码。
     let result = run_cs(loaded.instance(), references) catch {
       error => {
         loaded.dispose()
@@ -119,7 +109,6 @@ fn main {
     loaded.dispose()
     (names, result)
   }
-  // 结果是一组时间点加每列一条序列，渲染成 `time,<列名>` 的 CSV。
   let csv = @common.to_csv(names, result)
   match output {
     Some(file) => {

@@ -21,7 +21,6 @@ pub fn arguments() -> Array[String] {
     return args
   }
   let first = args[0]
-  // argv[0] 是构建产物路径（native 的 exe / wasm 文件），不是用户参数。
   if first.contains("/") || first.contains("\\") {
     let rest : Array[String] = []
     for index = 1; index < args.length(); index = index + 1 {
@@ -71,14 +70,12 @@ pub fn fmi3_columns(
 /// 把仿真结果渲染成 CSV：第一行是 `time,<列名>`，之后每个采样点一行。
 pub fn to_csv(names : Array[String], result : @sim.SimulationResult) -> String {
   let builder = StringBuilder()
-  // 表头：time 加上每一列的变量名。
   builder.write_string("time")
   for name in names {
     builder.write_string(",")
     builder.write_string(name)
   }
   builder.write_string("\n")
-  // 一行一个采样点：先时间，再按列取值。
   for row, time in result.times() {
     builder.write_string(time.to_string())
     for index = 0; index < names.length(); index = index + 1 {
