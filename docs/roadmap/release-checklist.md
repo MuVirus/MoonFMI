@@ -26,11 +26,11 @@
 - [ ] `moon build --target native --release cmd/main` 产出 CLI
 - [ ] 附 sha256:`main.exe` / `main` 二进制。可复现性:两次 `moon clean` + release 构建仅 PE 链接时间戳字节不同(COFF TimeDateStamp 与调试目录时间戳,识别规则:双侧均解码为合理 Unix 时间戳),其余逐位一致——已由 `moon run scripts/repro-build.mbtx --target native` 自动核对(0.7.0;2026-11-19 实测 1,399,808 字节中仅 2 字节时间戳差异)。逐字节可复现需链接器支持 SOURCE_DATE_EPOCH(上游未提供),发布时以附 sha256 为准。
 - [ ] 若发布源码导出样例 FMU:构建产物 + 生成 FMU 的 sha256
-- [ ] 版本号:遵守 roadmap 发布节奏表(`0.x` 对应阶段)
+- [ ] 版本号:遵守 roadmap 发布节奏表(`0.x` 对应阶段);主版本大于 0 的包在 MoonBit 1.0 正式版之前发不出去,见 roadmap 发布节奏表末行
 
 ## 4. SBOM(依赖清单)
 
-直接依赖(`moon.mod`;核对日期 2026-11-21):
+直接依赖(`moon.mod`;核对日期 2026-11-27):
 
 | 依赖 | 版本 | 许可证 | 用途 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -39,7 +39,7 @@
 | `moonbitlang/async` | 0.22.9 | Apache-2.0 | `--sandbox` 子进程(`src/cli`) | 0.7.0 准入,见 `research/moonbit-ecosystem.md` §13.1;仅 native |
 | `moonbitlang/x` | 0.5.7 | Apache-2.0 | `fs`、`crypto`(sha256) | 官方扩展库 |
 | `tonyfettes/c` | 0.8.0 | 见包 | C FFI 绑定(`src/backend/native`) | native 目标 |
-| `MuVirus/moonfig` | 0.2.4 | Apache-2.0 | 配置文件与环境变量 merge(`src/cli`) | first-party,0.8.0 准入,见 `research/moonbit-ecosystem.md` §13.1;仅 native,无新传递依赖 |
+| `MuVirus/moonfig` | 0.2.5 | Apache-2.0 | 配置文件与环境变量 merge(`src/cli`) | first-party,0.8.0 准入,见 `research/moonbit-ecosystem.md` §13.1;仅 native,无新传递依赖;库接口相对 0.2.4 未变 |
 
 脚本专用(不进运行时):`moonbitlang/async@0.22.9`(scripts/*.mbtx,
 tests/abi/*.mbtx)、`moonbitlang/core`(工具链自带)。测试专用:
@@ -47,7 +47,9 @@ tests/abi/*.mbtx)、`moonbitlang/core`(工具链自带)。测试专用:
 
 工具链(MoonBit `moon`/`moonc`,clang/MSVC,node,wit-bindgen,wasm-tools,
 jco)见 `docs/roadmap/p0-report.md` §2 与 `tests/fmu-wasm/README.md` §1;
-它们是构建/测试依赖,不随产物分发。
+它们是构建/测试依赖,不随产物分发。1.0 里程碑起工具链锁定在
+`1.0.0-rc1+3c0520448`(`moonc v1.0.0-rc1+3c0520448`),见
+`research/moonbit-ecosystem.md` §13.4。
 
 许可证审计:本仓库 Apache-2.0;Reference-FMUs 语料 BSD-2-Clause(仅测试,
 不入发布物);FMI 标准头文件(Modelica Association)随仓库内嵌

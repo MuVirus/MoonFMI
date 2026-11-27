@@ -2,10 +2,10 @@
 
 English | [简体中文](README_ZH.md)
 
-MoonFMI is an experimental MoonBit library and command-line tool (`moonfmi`)
-for FMUs that follow FMI 2.0.4 or 3.0.2. It runs Co-Simulation and Model
-Exchange models natively, handles FMI 3 Scheduled Execution, checks model
-descriptions, builds FMU archives, and exports simple models back to FMU.
+MoonFMI is a MoonBit library and command-line tool (`moonfmi`) for FMUs that
+follow FMI 2.0.4 or 3.0.2. It runs Co-Simulation and Model Exchange models
+natively, handles FMI 3 Scheduled Execution, checks model descriptions, builds
+FMU archives, and exports simple models back to FMU.
 
 The mooncakes module is `MuVirus/fmi`; the repository keeps the `MoonFMI`
 name.
@@ -37,8 +37,11 @@ name.
 
 ## Install
 
-Requires the [MoonBit toolchain](https://docs.moonbitlang.com) and a C
-compiler: `moon` builds the bundled native shims.
+Requires the [MoonBit toolchain](https://docs.moonbitlang.com) at version 1.0
+(currently the 1.0 release candidate; see the
+[installation guide](https://www.moonbitlang.com/download/)) and a C compiler:
+`moon` builds the bundled native shims. This release is verified against
+`moonc v1.0.0-rc1+3c0520448`, and CI pins exactly that build.
 
 ```bash
 moon add MuVirus/fmi

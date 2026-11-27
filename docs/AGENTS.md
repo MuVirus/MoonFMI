@@ -26,7 +26,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 > fmi-cross-check 全量 harness（顺延）、LS-WASM 全量 world 与 WASM 执行路径
 > （P7 实验边界）、MSCC 环提取等耦合精化（coupling.md §5）、命令行解析迁移
 > 到 moonfig `CliSource`（S4，暂不实施）。各阶段实施记录见
-> [`records/README.md`](records/README.md)（最新：[`records/2026-11-20.md`](records/2026-11-20.md)）。
+> [`records/README.md`](records/README.md)（最新：[`records/2026-11-27.md`](records/2026-11-27.md)）。
 
 ---
 
@@ -120,7 +120,7 @@ MoonFMI 的目标是用 MoonBit 构建一套可用的 FMI 工具链，优先级�
 | P8 硬化 | ✅ 首轮完成 | fuzz、性能基线、安全审查、发布清单/SBOM；持续项见 roadmap |
 | FMI-LS-WASM POC | ✅ G1–G7 收口 | component/宿主/浏览器均可运行；全量 SE/ME world 不在范围；见 [`records/2026-11-17-b.md`](records/2026-11-17-b.md) |
 | P0 总结报告 | ✅ 完成 | [`roadmap/p0-report.md`](roadmap/p0-report.md)，五个决定已定 |
-| CLI 配置层 | ✅ 完成（2026-11-20） | `simulate`/`couple` 支持 `--config`（JSON/INI/dotenv）与 `MOONFMI_` 环境变量；基于第一方库 `moonfig@0.2.4`，见 [`design/config-layer.md`](design/config-layer.md) |
+| CLI 配置层 | ✅ 完成（2026-11-20） | `simulate`/`couple` 支持 `--config`（JSON/INI/dotenv）与 `MOONFMI_` 环境变量；基于第一方库 `moonfig@0.2.5`，见 [`design/config-layer.md`](design/config-layer.md) |
 
 状态图例：✅ 完成，🟡 进行中，⬜ 未开始，⚠️ 有阻塞或待验证。
 

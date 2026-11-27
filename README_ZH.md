@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-MoonFMI 是一个实验性的 MoonBit 库与命令行工具（`moonfmi`），面向符合
+MoonFMI 是一个 MoonBit 库与命令行工具（`moonfmi`），面向符合
 FMI 2.0.4 或 3.0.2 的 FMU。它在 native 上运行联合仿真（Co-Simulation）
 与模型交换（Model Exchange），支持 FMI 3 的 Scheduled Execution，还能
 校验模型描述、打包 FMU，并把简单模型导出回 FMU。
@@ -31,8 +31,10 @@ mooncakes 上的模块名是 `MuVirus/fmi`；仓库仍叫 `MoonFMI`。
 
 ## 安装
 
-需要 [MoonBit 工具链](https://docs.moonbitlang.com) 和一个 C 编译器：
-`moon` 会编译随包附带的 native shim。
+需要 [MoonBit 工具链](https://docs.moonbitlang.com) 的 1.0 版本（目前是 1.0
+发布候选版，见[官方安装指南](https://www.moonbitlang.com/download/)）和一个
+C 编译器：`moon` 会编译随包附带的 native shim。本版本在
+`moonc v1.0.0-rc1+3c0520448` 上验证，CI 也锁定到该构建。
 
 ```bash
 moon add MuVirus/fmi

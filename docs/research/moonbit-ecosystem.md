@@ -478,17 +478,17 @@ import {
 
 ### 13.1 已在用的第三方依赖
 
-版本号对照 mooncakes 的模块接口（`https://mooncakes.io/api/v0/modules/<用户>/<模块>`）逐个查过，下面五个都已经是最新发布版本，没有可升级项。
+版本号对照 mooncakes 的模块接口（`https://mooncakes.io/api/v0/modules/<用户>/<模块>`）逐个查过，下面几个都已经是最新发布版本，没有可升级项。
 
 | 依赖 | 锁定版本 | mooncakes 最新 | 许可证 | 用在哪 | 备注 |
 | --- | --- | --- | --- | --- | --- |
 | `Milky2018/xml` | 0.6.1 | 0.6.1 | Apache-2.0 | `src/xml` | 无传递依赖；pull 模式；位置信息完整 |
 | `hustcer/fzip` | 0.8.8 | 0.8.8 | Apache-2.0 | `src/zip` | 无传递依赖；只用来解压，安全策略自写 |
 | `moonbitlang/async` | 0.22.9 | 0.22.9 | Apache-2.0 | `scripts/check.mbtx`（frontmatter 锁定，不进 `moon.mod`） | 官方异步运行时；门禁脚本靠它的 `@process` 派生工具链子进程（仅 native 后端），2026-11-10 发布，Windows 走 IOCP 实现 |
-| `moonbitlang/x` | 0.5.7 | 0.5.7 | Apache-2.0 | `src/xml`（`encoding`）、native 后端与集成测试（`fs`） | 官方实验包，接口可能变 |
+| `moonbitlang/x` | 0.5.7 | 0.5.9 | Apache-2.0 | `src/xml`（`encoding`）、native 后端与集成测试（`fs`） | 官方实验包，接口可能变；**留在 0.5.7**：0.5.9 是 2026-11-23 之后的新版本，但 `moonfig@0.2.5` 的传递依赖锁在 0.5.7，且本包用到的是 `fs`/`crypto` 这类稳定面；升级另案评估，不夹在这次发布里 |
 | `tonyfettes/c` | 0.8.0 | 0.8.0 | Apache-2.0 | `src/backend/native`、集成测试 | 传递依赖 `tonyfettes/nat@0.1.2` |
 
-`moonbitlang/core` 随工具链发布，不在 `moon.mod` 里，版本由 `moon` 的版本固定。
+`moonbitlang/core` 随工具链发布，不在 `moon.mod` 里，版本由 `moon` 的版本固定——1.0 里程碑起固定在 `moonc v1.0.0-rc1+3c0520448`（见 §13.4）。
 
 **2026-11-15 评估：`moonbitlang/async` 进入 `scripts/check.mbtx`。** 背景：`scripts/check.sh`/`check.ps1` 两份门禁脚本需要手工保持同步，改用 MoonBit 单文件脚本（`.mbtx`，moonc v0.10.19 起格式改进、语言服务支持）统一为一份。选型过程：`.mbtx` 只能通过 `moonbitlang/async` 的 `@process` 派生子进程（wasm 后端没有该包，必须 `--target native`），core 无进程 API，`tonyfettes/dl` 装不上（见 §13.2），无替代品。版本经 mooncakes API 核实为最新（0.22.9，未 yanked），Apache-2.0，官方维护。frontmatter 逐包锁 `@0.22.9`，因脚本模式的无版本导入会解析到"本地索引最新"，违反锁版纪律。该依赖只服务于开发者/CI 工具脚本，不进产品代码路径，`moon.mod` 不受影响。实测（Windows 11、moon 0.1.20261104）：子进程/退出码/stdin 继承、文件 IO、目录遍历全部通过，依赖缓存后脚本启动约 1 秒。
 
@@ -500,6 +500,8 @@ import {
 **2026-11-20 已引入：`MuVirus/moonfig@0.2.4` 进入 `moon.mod`（锁版本），仅 `src/cli` 包导入**（该包 `supported_targets = "native"`，wasm 构建不受影响）。用途：`simulate`/`couple` 的配置文件与环境变量入口——JSON/INI/dotenv 三种格式由 `format_detect` 按后缀与内容判定，环境变量用 `MOONFMI_` 前缀加双下划线分层。传递依赖仍只有 `moonbitlang/x@0.5.7`，**没有新增传递依赖**；`moon info` 的 `.mbti` diff 为空（配置层全部是包内私有项，公开 API 未变）。实现细节与取舍见 [`../design/config-layer.md`](../design/config-layer.md)，集成中发现的库能力缺口与临时替代见 [`../roadmap/moonfig-gaps.md`](../roadmap/moonfig-gaps.md)。
 
 **2026-11-20 评估：`MuVirus/moonfig@0.2.4`（第一方自有库）。** 背景：CLI 只有命令行一种输入通道——17 个长选项分散在 6 个手写解析点，没有配置文件入口，环境变量只用于 `doctor` 读 `PATH` 与 `--sandbox` 的子进程标记；实验规格无法存盘、无法进 CI 复现。`moonfig` 是同作者（MuVirus）的 MoonBit 原生配置库，提供多来源合并、类型化提取、来源追踪与校验。版本 0.2.4 经 mooncakes API 核实为最新（2026-11-20 15:11 UTC 发布，未 yanked，build_status success），Apache-2.0，下载量 285，依赖者 0（MoonFMI 将是第一个消费者）；传递依赖仅 `moonbitlang/x@0.5.7`，与本项目已锁版本一致，**不引入新的传递依赖**。0.2.x 相对 0.1.x 是破坏性重构（包路径由 `core/source/*` 改为 `core/format/*`，TOML/YAML/XML/CBOR/serde 拆成独立适配器模块），0.2.4 相对 0.2.3 同样是破坏性变更（环境变量分隔符改为按需开启、`CliSource` 接受负数值），接入须锁 `@0.2.4` 且只用 core 稳定面（`Config`/`Getter`/`Rule`）。替代方案：自研最小配置读取（约 200–300 行），但合并、校验、来源追踪都要重造并与同作者的库分叉。不引入的后果：配置层缺口保留，CLI 取值解析继续分散在 6 处。方案与取舍见 [`../design/config-layer.md`](../design/config-layer.md)，集成过程中发现的库能力缺口与临时替代见 [`../roadmap/moonfig-gaps.md`](../roadmap/moonfig-gaps.md)。关于 §13.3 规则 5（发布不足一个月不进核心路径）：该条针对未审计的第三方包，moonfig 是第一方自有库，风险性质不同——但 0.2.x 当天两次破坏性变更且无依赖者，接入会替上游试错，因此设计按阶段落地并保留行为等价性测试作闸门。
+
+**2026-11-27 评估：`MuVirus/moonfig@0.2.5`（版本升级，用户批准）。** 背景：这次发布要落到 MoonBit 1.0 工具链上（见 §13.4），上游正好在 2026-11-27 发布了"锁定 MoonBit 1.0 发布候选版"的 0.2.5，配置层与工具链基线因此对齐。版本经 mooncakes API 核实为最新（0.2.5，2026-11-27 13:35 UTC 发布，未 yanked，build_status success，`latest_version` = 0.2.5），Apache-2.0，同作者第一方库；传递依赖仍只有 `moonbitlang/x@0.5.7`，与本项目已锁版本一致，**不引入新的传递依赖**。上游 0.2.4 → 0.2.5 的差异只有两笔提交：把 CI 锁到 `1.0.0-rc1+3c0520448` 并在 README 写明 1.0 要求——**库 API 相对 0.2.4 未变**（上一处破坏性变更仍在 0.2.4 的 `with_separator` / `CliHyphenValues`），所以这是零接口改动的升级。替代方案：继续锁 0.2.4（可行，但上游已把 1.0 要求写进 README，两边的工具链基线会对不上）。不升级的后果：配置层仍跑在未声明 MoonBit 1.0 的上游构建上，1.0 的发布说明无法一句话说清工具链基线。
 
 ### 13.2 计划需要、但生态里没有（或不能用）的能力
 
@@ -517,3 +519,16 @@ import {
 3. 能用手头的库或标准库解决，就不新增依赖；安全边界（路径、大小、压缩比、实体）永远自己写，不外包给库的“默认行为”。
 4. 引入或升级后，更新 §13.1 的表格并锁版本；评估过程写在本文件，不写进代码注释。
 5. 发布不足一个月、下载量极低的包，不进核心路径；只能用于试验，并准备自研退路。
+
+### 13.4 工具链基线：MoonBit 1.0（2026-11-27 起）
+
+1.0 里程碑这一版把工具链基线从"跟随 `latest`"改成"锁定到已验证的构建"。
+
+| 项 | 值 |
+| --- | --- |
+| 锁定版本 | `1.0.0-rc1+3c0520448`（`moon` 0.1.20261126，`moonc v1.0.0-rc1+3c0520448`） |
+| 上游状态 | `latest` 与该精确构建是目前仅有的两个可下载版本（`1.0.0`、`1.0.0-rc1` 等别名均 403） |
+| 安装脚本 | Unix `bash -s -- 1.0.0-rc1+3c0520448`；Windows `MOONBIT_INSTALL_VERSION=1.0.0-rc1+3c0520448` |
+| 变更原因 | 上游现在发布带版本号的构件（`binaries/<version>/…`、`cores/core-<version>…`），两个安装脚本都接受版本参数——此前"无法锁定"的记录（2026-11-16）已过期 |
+
+2026-11-16 记的"工具链无法固定版本"（见 [`../roadmap/risks.md`](../roadmap/risks.md)）**已不成立**：当时所有带版本的路径都返回 403，现在带版本号的构件可下载，且本地与 CI 都跑同一个构建。CI 两个工作流都改为锁定版本，不再跟随 `latest`，因此工具链漂移不再是风险项。

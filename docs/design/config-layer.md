@@ -1,8 +1,8 @@
 # CLI 配置层设计（moonfig 集成）
 
-> 状态：**已实现（0.8.0 开发中）**。moonfig `0.2.4` 已引入 `moon.mod`（锁版本），配置层落在 [`src/cli/config.mbt`](../../src/cli/config.mbt)。S1–S3 已完成；S4（命令行解析迁到 `CliSource`）按本文 §5 暂不实施。
+> 状态：**已实现（0.9.0 发布）**。moonfig `0.2.5` 已引入 `moon.mod`（锁版本），配置层落在 [`src/cli/config.mbt`](../../src/cli/config.mbt)。S1–S3 已完成；S4（命令行解析迁到 `CliSource`）按本文 §5 暂不实施。
 >
-> 实现与本文的差异：`validate`、`info`、`package`、`doctor` 仍是纯命令行（配置段只覆盖 `simulate` 与 `couple`）；来源追踪子命令（§4.7）未做；未知键只报警告（§4.4）。本版按 moonfig **0.2.4** 重新核对——0.2.4 修掉了初版方案里的两条关键缺口（G-01 环境变量键映射、G-03 命令行负数值）。
+> 实现与本文的差异：`validate`、`info`、`package`、`doctor` 仍是纯命令行（配置段只覆盖 `simulate` 与 `couple`）；来源追踪子命令（§4.7）未做；未知键只报警告（§4.4）。本版按 moonfig **0.2.5** 重新核对——0.2.4 修掉了初版方案里的两条关键缺口（环境变量键映射、命令行负数值；台账编号见 [`../roadmap/moonfig-gaps.md`](../roadmap/moonfig-gaps.md) §5，已按维护规则从台账中删除），0.2.5 相对 0.2.4 **库接口未变**（上游只把 CI 锁到 MoonBit 1.0 发布候选版并在 README 写明 1.0 要求）。
 
 ---
 
@@ -139,7 +139,7 @@ moonfig 的 `Config::snapshot()` 能给出每个键的来源。第一版**不做
 
 moonfig 0.2.3 及以前，`CliSource` 有两条限制让"命令行交给 moonfig"不可行：源只能一种值风格（MoonFMI 用 `Separate`），且 `Separate` 下以 `-` 开头的值被当作下一个选项——`moonfmi simulate m.fmu --start-time -1` 会丢值，而负的起始时间是当前实现允许的输入（`parse_simulation_double` 不禁止负数）。
 
-0.2.4 的 `CliHyphenValues` 解掉了第二条：`Separate` 下形似负数的参数（`-1`、`-1.5`、`-1e3`）默认就算值，`Always` 可放宽到任意 `-` 开头，`Never` 恢复旧边界。**G-03 因此关闭，迁移路径打开。**
+0.2.4 的 `CliHyphenValues` 解掉了第二条：`Separate` 下形似负数的参数（`-1`、`-1.5`、`-1e3`）默认就算值，`Always` 可放宽到任意 `-` 开头，`Never` 恢复旧边界。**该缺口因此关闭，迁移路径打开。**
 
 第一阶段（S1–S3）仍保留 MoonFMI 自己的命令行解析器，但理由变了——不再是"moonfig 表达不了"，而是**行为兼容性**：现有错误消息文本与退出码是对外契约（`src/cli/cli_wbtest.mbt` 锁定退出码），moonfig 的 `ConfigError` 语义不同（见 G-04）。
 

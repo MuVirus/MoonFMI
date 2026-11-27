@@ -4,7 +4,9 @@
 >
 > 协作方式：MoonFMI 并入 moonfig 后，本文件即成为两边共享的缺口台账——MoonFMI 侧继续按"临时替代"推进，上游侧按"上游建议"逐条处理。任何一方都可以随时往本文件追加条目。
 >
-> 当前基准：moonfig **0.2.4**（2026-11-20 15:11 UTC）。0.2.4 关闭了 G-01、G-03 两条。
+> 维护规则：**条目被上游关闭后，即从本文件删除其全部内容**（清单行、逐条说明、临时替代条目一并删掉），不保留"已解决"段落；关闭记录只留在 §5 版本追踪。
+>
+> 当前基准：moonfig **0.2.5**（2026-11-27 13:35 UTC）。本文件只保留开放条目。
 
 ---
 
@@ -25,9 +27,7 @@ moonfig（MuVirus/moonfig）与 MoonFMI 同作者。集成方案见 [`../design/
 
 | 编号 | 缺口 | 优先级 | 状态 | 临时替代 | 上游建议 |
 | --- | --- | --- | --- | --- | --- |
-| G-01 | 环境变量键映射无法表达 kebab-case | 高 | **已解决（0.2.4）** | 键名统一 snake_case，配置文件侧仍接受 kebab 别名 | `EnvSource::with_separator` 已提供可配置分隔符 |
 | G-02 | 数组型键只能整体覆盖，没有追加语义 | 中 | 开放 | MoonFMI 在回填阶段自己拼接 | 为列表型键提供 append / union 合并策略 |
-| G-03 | `Separate` 风格下负数值不可用 | 中 | **已解决（0.2.4）** | 无需替代（命令行第一阶段仍自有） | `CliHyphenValues` 已提供三档策略 |
 | G-04 | 错误消息不可定制，默认不含来源 | 中 | 开放 | MoonFMI 捕获 `ConfigError` 后用 `origin_of` 重写 | 提供错误消息渲染钩子 / 默认带 origin |
 | G-05 | 校验规则没有"警告"级别 | 中 | 开放 | MoonFMI 用 `snapshot()` 自己比对 | `Rule` 增加 severity 或"只收警告"模式 |
 | G-06 | 没有声明式"选项规格"单一事实来源 | 中 | 开放 | MoonFMI 自建规格表 | 提供可驱动校验与文档的 schema |
@@ -35,23 +35,11 @@ moonfig（MuVirus/moonfig）与 MoonFMI 同作者。集成方案见 [`../design/
 | G-08 | 文档里 "core module" 一词指两样东西 | 低 | 开放 | 无（按实测包依赖图判断） | 统一术语（模块 vs 包） |
 | G-09 | 环境变量无法表达数组型配置 | 低 | 开放 | 数组型选项只支持配置文件与命令行 | 约定型数组变量（如 `NAME_1`、`NAME_2`）或明确声明为设计取舍 |
 
+编号一经分配不再复用；条目关闭后按上面的维护规则删除，编号因此会留下空档，关闭记录见 §5。
+
 ---
 
 ## 3. 逐条说明
-
-### G-01 环境变量键映射无法表达 kebab-case
-
-**状态：已由 0.2.4 解决。**
-
-**原现象**：0.2.3 的 `env_source` 把 `_` 和 `.` 都当作层级分隔符，键名统一转小写（`MOONFIG_DEMO_PORT` → `db.port`），`-` 不是分隔符。MoonFMI 的配置键是 kebab-case，`MOONFMI_SIMULATE_STOP_TIME` 会被映射成 `simulate.stop.time`——三段路径，取不到 `simulate.stop-time`。受影响的键包括 `stop-time`、`step-size`、`start-time`、`loop-iterations`、`loop-tolerance`。
-
-**0.2.4 的解法**：`EnvSource::with_separator(separator)` 让分隔符可配。默认只按 `.` 分层；`with_separator("_")` 恢复 0.2.3 行为；`with_separator("__")` 按双下划线分层、单个下划线留在键名里（`APP_DB__HOST_NAME` → `db.host_name`）。
-
-**MoonFMI 的用法**：内部键统一 snake_case，环境变量写成 `MOONFMI_SIMULATE__STOP_TIME` → `simulate.stop_time`，由 `with_separator("__")` 原生映射。
-
-**临时替代（残留）**：配置文件侧仍接受 kebab-case 写法（`stop-time`），读入后归一为 snake_case。这是一行机械替换，不是映射表。
-
-**上游建议**：已满足。若要更进一步，可以支持"键名归一回调"，让下游把 `stop-time` 与 `stop_time` 都映射到同一键——但 MoonFMI 侧的机械替换已经够用，优先级低。
 
 ### G-02 数组型键只能整体覆盖
 
@@ -62,20 +50,6 @@ moonfig（MuVirus/moonfig）与 MoonFMI 同作者。集成方案见 [`../design/
 **临时替代**：配置层只合并标量键；数组型键（`set`、`connect`）在回填阶段由 MoonFMI 自己拼接，顺序为"配置文件在前、命令行在后"。这与字段级回填的整体设计一致，不需要动 moonfig。
 
 **上游建议**：为列表型键提供显式的合并策略（append / union / 按元素去重）。注意 `MergeRule::Custom` 收到的是两个 `Value`，能否按路径区分数组与标量需要确认。
-
-### G-03 `Separate` 风格下负数值不可用
-
-**状态：已由 0.2.4 解决。**
-
-**原现象**：0.2.3 的 `CliSource` 规定一个源只能一种值风格，`Separate` 下"值以 `-` 开头会被当作下一个选项"，负数要用 `Equals` 写 `--key=-1`。上游在决策记录里说明这是"静默丢值"——`--port -1` 会得到 `port = true`，`-1` 走进短选项路径后消失。
-
-**0.2.4 的解法**：`CliHyphenValues::{Never, NegativeNumbers, Always}`，默认 `NegativeNumbers`。`Separate` 下形似负数的参数（`-1`、`-1.5`、`-1e3`）算值；`Always` 适合 `--pattern -x` 这类任意 `-` 开头的值；`Never` 恢复旧边界。单独一个 `-` 在任何策略下都是值，`--` 永远是终止符。
-
-**对 MoonFMI 的影响**：初版方案里"命令行解析不能交给 moonfig"的理由之一消失了。方案因此从"不能交给"改为"第一阶段仍自有，理由是行为兼容性；迁移路径已打开"（见 [`../design/config-layer.md`](../design/config-layer.md) §5）。
-
-**临时替代**：无需。
-
-**上游建议**：已满足。留意其判定是形状检查（`-` 后跟数字）而非完整数值解析，`-1abc` 也会被当作值——这是上游明确记录的取舍。
 
 ### G-04 错误消息不可定制，默认不含来源
 
@@ -147,12 +121,12 @@ moonfig（MuVirus/moonfig）与 MoonFMI 同作者。集成方案见 [`../design/
 
 | 上游能力 | 回收 MoonFMI 侧的什么 |
 | --- | --- |
-| G-01 键名映射（0.2.4 已解决） | 配置文件侧的 kebab 别名归一可保留（纯机械替换），但环境变量侧不再需要自建映射 |
 | G-02 列表合并 | 删掉回填阶段对 `set`/`connect` 的手工拼接，改用 `MergeRule` |
-| G-03 负数值（0.2.4 已解决） | 不再有替代可收；可评估把命令行解析整体迁到 `CliSource`（`../design/config-layer.md` §5 的 S4） |
 | G-04 错误渲染 | 删掉 MoonFMI 的 `ConfigError` 包装层，直接用 moonfig 的消息 |
 | G-05 警告级 | 删掉 MoonFMI 用 `snapshot()` 做的未知键比对 |
 | G-06 规格表 | 规格表若上移到 moonfig，MoonFMI 侧改为消费 schema |
+
+已关闭条目的残留事项不在本表：配置文件侧的 kebab 别名归一保留、命令行解析迁到 `CliSource` 的评估，都在 [`../design/config-layer.md`](../design/config-layer.md) §5。
 
 回收时必须重跑行为等价性测试（无 `--config` 时输出逐字节相同），确认没有回归。
 
@@ -163,7 +137,8 @@ moonfig（MuVirus/moonfig）与 MoonFMI 同作者。集成方案见 [`../design/
 | moonfig 版本 | 发布时间 | 与本台账的关系 |
 | --- | --- | --- |
 | 0.2.3 | 2026-11-20 01:10 UTC | 初版方案的基准；G-01、G-03、G-08 由此发现 |
-| 0.2.4 | 2026-11-20 15:11 UTC | 关闭 G-01（`with_separator`）、G-03（`CliHyphenValues`）；G-08 仍开 |
+| 0.2.4 | 2026-11-20 15:11 UTC | 关闭 G-01（`with_separator`）、G-03（`CliHyphenValues`），两条已按维护规则从本文件删除；G-08 仍开 |
+| 0.2.5 | 2026-11-27 13:35 UTC | 库接口相对 0.2.4 未变（上游只锁定 MoonBit 1.0 工具链并在 README 写明 1.0 要求），台账无新增条目；G-08 仍开 |
 
 ---
 
@@ -171,7 +146,7 @@ moonfig（MuVirus/moonfig）与 MoonFMI 同作者。集成方案见 [`../design/
 
 - 本文件是唯一台账，MoonFMI 与 moonfig 两边都以它为准，避免口头约定丢失。
 - 每条缺口按"优先级 → 影响面"排序处理；G-04 优先级最高，因为它直接影响配置层的错误质量。G-02、G-05、G-06 影响的是"好用"而非"能用"。
-- 上游落地后在本文件标注"已解决"+ 版本号，并在 [`../research/moonbit-ecosystem.md`](../research/moonbit-ecosystem.md) §13.1 的依赖记录里同步版本。
+- 上游落地后按维护规则从本文件删除该条目，并在 §5 版本追踪里记下关闭它的版本号；同时在 [`../research/moonbit-ecosystem.md`](../research/moonbit-ecosystem.md) §13.1 的依赖记录里同步版本。
 - MoonFMI 侧升级 moonfig 版本时，先看本文件是否有未回收的临时替代，再决定是否升级。
 
 ---

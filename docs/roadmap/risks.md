@@ -274,8 +274,11 @@
   `x86_64-windows`，Linux 上生成的 FMU 找不到 `linux64` 二进制。测试改为按
   宿主平台推导平台目录、库扩展名和 clang 参数（`-shared` / `-dynamiclib` /
   `-shared -fPIC`），并在 WSL Ubuntu 22.04 复现验证。
-- 遗留：工具链仍无法固定版本（上游只发布 `latest`），版本漂移由
-  "Show toolchain versions" 步骤观测；升级时按记录排查。
+- 遗留（2026-11-27 关闭）：工具链曾无法固定版本（上游只发布 `latest`），版本
+  漂移由 "Show toolchain versions" 步骤观测；上游现在发布带版本号的构件
+  （`binaries/<version>/…`、`cores/core-<version>…`），两个安装脚本都接受版本
+  参数，CI 已锁定 `1.0.0-rc1+3c0520448`，漂移不再是风险项（见
+  [`../research/moonbit-ecosystem.md`](../research/moonbit-ecosystem.md) §13.4）。
 - 关联：[`../../.github/workflows/ci.yml`](../../.github/workflows/ci.yml)、[`../../scripts/check.mbtx`](../../scripts/check.mbtx)。
 
 ---

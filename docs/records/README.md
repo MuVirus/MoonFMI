@@ -16,6 +16,7 @@
 
 | 日期 | 内容 |
 | --- | --- |
+| [`2026-11-27`](2026-11-27.md) | 1.0 里程碑的内容以 `0.9.0` 发布（mooncakes 在 MoonBit 1.0 正式版之前不收主版本 > 0）：工具链锁定 MoonBit 1.0 发布候选版 `1.0.0-rc1+3c0520448`、moonfig 升到 0.2.5、FMI 3 资源路径修正、CHANGELOG 与 SBOM 同步 |
 | [`2026-11-24`](2026-11-24.md) | 规范后端改为 native：LSP 在 native-only 包里恢复补全，native-only 补上 `.mbti`（接口变更纳入 CI 检查） |
 | [`2026-11-23`](2026-11-23.md) | 0.8.2 遗留项收尾：Roberts CS 归因修正与 event-mode 回退、intermediate-update 通道、自建时钟 FMU MoonfmiClocks（CS/ME/couple/早退协商端到端）；同日新增 `examples/` 可运行示例 |
 | [`2026-11-22`](2026-11-22.md) | 0.8.1 需求缺口收尾：ME time event、FMI 3 setter/数组、CS/ME 时钟调度与 couple 时钟连线、MD-007/052 + 规则矩阵、Stair/Roberts 语料、版本政策对齐 |

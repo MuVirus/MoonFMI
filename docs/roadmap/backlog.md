@@ -226,6 +226,17 @@
 
 ---
 
+## 10.4 0.9 增量（2026-11-27，1.0 里程碑的内容，全部完成）
+
+| ID | 任务 | 优先级 | 规模 | 验收 |
+| --- | --- | --- | --- | --- |
+| R-10 ✅ | 工具链基线升到 MoonBit 1.0：锁定 `1.0.0-rc1+3c0520448`，CI 两个工作流都不再跟随 `latest` | P1 | M | ubuntu / windows / arm 三个 job 跑同一个锁定构建；`moon version --all` 显示 `moonc v1.0.0-rc1+3c0520448`；README 写明 1.0 要求 |
+| R-11 ✅ | moonfig 升到 0.2.5（库接口相对 0.2.4 未变），配置层基线、台账与 SBOM 同步 | P1 | S | `moon check --target native --deny-warn` 通过；`.mbti` 无变化；`docs/roadmap/moonfig-gaps.md` 基准与 §5 版本追踪同步到 0.2.5 |
+| R-12 ✅ | 版本号 0.8.2 → 0.9.0（`moon.mod` 与 CLI 常量同步），CHANGELOG 补 `[0.9.0]` | P1 | S | 根包版本锁测试通过；`moonfmi version` → 0.9.0；JSON 契约仍是 `/v1`（无破坏性变更）；主版本 > 0 的闸门说明写进 CHANGELOG 与 roadmap |
+| R-13 ✅ | FMI 3 资源路径改成原生路径（带结尾分隔符），不再复用 FMI 2 的 `file://` URI | P1 | M | `fmi3/Resource.fmu` 的 CS 跑通（`resources/y.txt` 读出 97）；交叉检查表该行由 FAIL/skip 变 ok；新增单元测试 + 集成回归测试 |
+
+---
+
 ## 11. 相关文档
 
 - 阶段：[`roadmap.md`](roadmap.md)

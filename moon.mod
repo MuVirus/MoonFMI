@@ -11,7 +11,7 @@
 
 name = "MuVirus/fmi"
 
-version = "0.8.2"
+version = "0.9.0"
 
 readme = "README.md"
 
@@ -23,7 +23,7 @@ keywords = [ ]
 
 preferred_target = "native"
 
-description = "An experimental MoonBit interface to FMI-compliant FMUs."
+description = "A MoonBit interface to FMI-compliant FMUs."
 
 import {
   "Milky2018/xml@0.6.1",
@@ -31,5 +31,5 @@ import {
   "moonbitlang/async@0.22.9",
   "moonbitlang/x@0.5.7",
   "tonyfettes/c@0.8.0",
-  "MuVirus/moonfig@0.2.4",
+  "MuVirus/moonfig@0.2.5",
 }

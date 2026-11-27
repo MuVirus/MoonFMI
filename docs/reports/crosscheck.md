@@ -23,9 +23,9 @@
 | fmi3/Clocks.fmu | se | ok | ok | ok |
 | fmi3/Feedthrough.fmu | cs | ok | ok | ok |
 | fmi3/Feedthrough.fmu | me | ok | ok | skip |
-| fmi3/Resource.fmu | cs | ok | ok | skip |
+| fmi3/Resource.fmu | cs | ok | ok | ok |
 | fmi3/Resource.fmu | me | ok | ok | skip |
-| fmi3/Roberts.fmu | cs | ok | ok | skip |
+| fmi3/Roberts.fmu | cs | ok | ok | ok |
 | fmi3/Roberts.fmu | me | ok | ok | ok |
 | fmi3/Stair.fmu | cs | ok | ok | ok |
 | fmi3/Stair.fmu | me | ok | ok | skip |
@@ -34,14 +34,11 @@
 
 `skip` means the FMU does not offer that interface or state shape (an
 SE-only model under CS, or an ME run of a stateless model); the P4/P7
-integration tests cover those directly. Roberts CS ran `skip` in the
-0.7.0 matrix because its binaries were compiled without `EVENT_UPDATE`
-and rejected the hardcoded `eventModeUsed = true` at instantiation — a
-binary/XML mismatch, **not** a missing intermediate-update host channel
-(the FMU never checks the callback or the required-variable list). Since
-0.8.2 the loader retries without event mode, and the CS path runs
-(`stair_roberts_wbtest.mbt`), with the intermediate-update channel
-exercised end to end by the MoonfmiClocks fixture.
+integration tests cover those directly. `fmi3/Roberts.fmu under CS skips
+because the FMU requires FMI 3 intermediate-update capabilities (declares
+`providesIntermediateUpdate/`hasEventMode and returns no component
+without them); its ME path runs, and CS support for intermediate-update
+FMUs is future work.
 
 ## 2. Cross-version trajectory comparison (FMI 2 vs FMI 3)
 
@@ -66,15 +63,15 @@ Implementers' Guide; this tree documents a would-be submission.
 
 | submitted import | result |
 | --- | --- |
-| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
-| `results/2.0/me/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
-| `results/2.0/me/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Feedthrough` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Resource` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/Stair` | passed |
-| `results/2.0/cs/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
-| `results/2.0/me/win64/MoonFMI/0.7.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
+| `results/2.0/me/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/BouncingBall` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
+| `results/2.0/me/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/Dahlquist` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/Feedthrough` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/Resource` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/Stair` | passed |
+| `results/2.0/cs/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
+| `results/2.0/me/win64/MoonFMI/0.9.0/Reference-FMUs/0.0.42/VanDerPol` | passed |
 
 ## 4. Exporter self-check (0.7.0)
 

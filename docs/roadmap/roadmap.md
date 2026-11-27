@@ -361,7 +361,8 @@
 | `0.6` | WASM 实验版 |
 | `0.7` | 补强批次：CLI 输入（--set）、couple 信号类型 + 环求解、LS-WASM 校验、矩阵导出、安全硬化（R2/R5/R7/sandbox）、aarch64 CI（2026-11-19，见 backlog §10.1） |
 | `0.8` | 配置层：simulate/couple 的 `--config` 文件与 `MOONFMI_*` 环境变量，moonfig 0.2.4 准入（2026-11-21，见 design/config-layer.md） |
-| `1.0` | 硬化、文档、交叉检查达标 |
+| `0.9` | 1.0 里程碑的内容（硬化、文档、交叉检查达标）+ 工具链锁定 MoonBit 1.0 发布候选版 `1.0.0-rc1+3c0520448` + moonfig 升到 0.2.5 + FMI 3 资源路径修正（2026-11-27 发布） |
+| `1.0` | 同一里程碑改以 `1.0.0` 发布：mooncakes 在 MoonBit 1.0 **正式版**之前不收主版本大于 0 的包（`Publishing versions with a major version greater than 0 is not enabled`），所以内容先以 `0.9.0` 发布，闸门打开后再发 `1.0.0` |
 
 版本号只是建议；以退出标准为准。
 

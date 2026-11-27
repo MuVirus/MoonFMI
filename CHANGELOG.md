@@ -8,9 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Version numbers always take the smallest possible increment (patch first,
 no skipping): fixes go to the patch number, features to the minor number,
 and a breaking JSON-contract change bumps the `/vN` suffix before it may
-touch the module version.
+touch the module version. The module version also stays below `1.0.0` for as
+long as mooncakes refuses major versions: publishing `1.0.0` or later is
+gated on the MoonBit 1.0 **stable** release, so the `1.0` milestone content
+ships as `0.9.0` until that gate opens.
 
 ## [Unreleased]
+
+## [0.9.0] - 2026-11-27
+
+The `1.0` milestone content — hardening, docs, cross-check standards met —
+shipped under the largest version mooncakes currently accepts. The registry
+rejects a major version greater than 0 (`Publishing versions with a major
+version greater than 0 is not enabled`), because publishing `1.0.0` or later
+is gated on the MoonBit 1.0 stable release and the toolchain in use is still
+the 1.0 release candidate. `1.0.0` remains the planned version for when that
+gate opens.
 
 ### Added
 
@@ -25,6 +38,14 @@ touch the module version.
 
 ### Changed
 
+- MoonBit 1.0 is now the minimum toolchain. The release is verified against
+  `moonc v1.0.0-rc1+3c0520448`, and CI pins that exact build instead of
+  tracking `latest`: upstream now publishes versioned toolchain artifacts and
+  both install scripts accept a version, so the pin is reproducible.
+- The configuration layer moves to `MuVirus/moonfig@0.2.5`. The library API is
+  unchanged from 0.2.4 — 0.2.5 is the upstream build that pins the MoonBit 1.0
+  release candidate — and it adds no transitive dependency (`moonbitlang/x@0.5.7`
+  was already locked here).
 - The module's canonical backend is now `native` (`preferred_target` in
   `moon.mod`), matching the project's first usable path. The native-only
   packages — `src/backend/native`, `src/cli`, `cmd/main` and
@@ -40,6 +61,14 @@ touch the module version.
   `moon test --target wasm`). Its public interface is therefore no longer
   covered by the CI interface check until the wasm backend has real
   content to expose.
+
+### Fixed
+
+- FMI 3 FMUs that ship a `resources/` directory could not be initialized: the
+  host handed them an FMI 2 style `file://` URI, while FMI 3.0.2 §2.3 asks
+  for the native path of the `resources/` directory, terminated by a file
+  separator. The Reference-FMU `Resource` model failed in
+  `fmi3ExitInitializationMode`; it now initializes and runs.
 
 ## [0.8.2] - 2026-11-23
 
@@ -315,7 +344,8 @@ tag.
 
 ## Link references
 
-[Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/MuVirus/MoonFMI/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.9.0
 [0.8.2]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.2
 [0.8.1]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.1
 [0.8.0]: https://github.com/MuVirus/MoonFMI/releases/tag/v0.8.0
